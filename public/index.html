@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Security Camera Threat Detection Demo</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #131c33;
+      --text: #dbe7ff;
+      --muted: #9ab0d6;
+      --ok: #34d399;
+      --warn: #f59e0b;
+      --critical: #ef4444;
+      --accent: #60a5fa;
+    }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    main {
+      max-width: 900px;
+      margin: 32px auto;
+      padding: 0 16px;
+    }
+    .header {
+      background: linear-gradient(135deg, #0f172a, #1e3a8a);
+      border: 1px solid #2b4a8f;
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid #243252;
+      border-radius: 12px;
+      padding: 14px;
+    }
+    .muted { color: var(--muted); font-size: 0.92rem; }
+    .chip {
+      display: inline-block;
+      font-size: 0.75rem;
+      border-radius: 999px;
+      padding: 2px 8px;
+      margin-left: 8px;
+      border: 1px solid #334a7c;
+      color: var(--muted);
+    }
+    .sev-ok { color: var(--ok); }
+    .sev-warn { color: var(--warn); }
+    .sev-critical { color: var(--critical); }
+    code {
+      background: #0e162b;
+      border: 1px solid #26385e;
+      border-radius: 6px;
+      padding: 2px 6px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="header">
+      <h1>Security Camera Threat Detection</h1>
+      <p class="muted">Camera events are processed at the edge by Expanso. Only high-signal alerts flow downstream.</p>
+      <p><strong>Flow:</strong> Camera feeds → Edge pipeline → Classified alerts → Dashboard/API</p>
+    </section>
+
+    <section class="grid">
+      <article class="card">
+        <h3>Lobby Entrance <span class="chip">cam-001</span></h3>
+        <p class="muted">Last event: Person loitering near entry</p>
+        <p class="sev-warn"><strong>Severity:</strong> Warning</p>
+      </article>
+      <article class="card">
+        <h3>Loading Dock <span class="chip">cam-014</span></h3>
+        <p class="muted">Last event: Authorized delivery vehicle</p>
+        <p class="sev-ok"><strong>Severity:</strong> Normal</p>
+      </article>
+      <article class="card">
+        <h3>Server Room <span class="chip">cam-021</span></h3>
+        <p class="muted">Last event: Motion after access window</p>
+        <p class="sev-critical"><strong>Severity:</strong> Critical</p>
+      </article>
+    </section>
+
+    <section class="card" style="margin-top: 12px;">
+      <h3>Run locally</h3>
+      <p class="muted">From repo root:</p>
+      <p><code>python3 -m http.server 43050 --directory public</code></p>
+    </section>
+  </main>
+</body>
+</html>

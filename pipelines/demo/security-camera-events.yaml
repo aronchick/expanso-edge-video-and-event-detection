@@ -1,0 +1,38 @@
+apiVersion: expanso.io/v1alpha1
+kind: Pipeline
+metadata:
+  name: security-camera-events
+  description: Filter and classify security camera events at the edge
+
+spec:
+  sources:
+    - name: camera-events
+      type: file
+      config:
+        path: /tmp/camera-events.jsonl
+
+  transforms:
+    - name: parse-json
+      type: json.parse
+    - name: drop-noise
+      type: filter
+      config:
+        expression: "event.motion_score >= 0.55"
+    - name: classify-risk
+      type: map
+      config:
+        expression: |
+          {
+            "camera_id": event.camera_id,
+            "zone": event.zone,
+            "event_type": event.event_type,
+            "risk_score": event.motion_score,
+            "classification": event.motion_score > 0.85 ? "critical" : (event.motion_score > 0.70 ? "warning" : "normal"),
+            "timestamp": event.timestamp
+          }
+
+  sinks:
+    - name: alerts
+      type: file
+      config:
+        path: /tmp/security-alerts.jsonl

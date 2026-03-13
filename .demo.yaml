@@ -1,0 +1,7 @@
+name: "Security Camera Threat Detection"
+slug: security-cameras
+type: static
+password_env: DEMO_SECURITY_CAMERAS_PASSWORD
+description: "Edge security camera demo: motion events are filtered and enriched by an Expanso pipeline, then surfaced to a lightweight dashboard."
+owner: team@expanso.io
+created: 2026-03-13
