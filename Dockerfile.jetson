@@ -1,9 +1,9 @@
 FROM dustynv/l4t-pytorch:r35.4.1
 
 # Install our dependencies
+# Don't install opencv — base image has CUDA-enabled OpenCV already
 RUN pip3 install --no-cache-dir \
     ultralytics \
-    opencv-python-headless \
     pydantic \
     pyyaml \
     fastapi \
