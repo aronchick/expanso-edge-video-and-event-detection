@@ -121,7 +121,7 @@ async def get_detections() -> JSONResponse:
         from ultralytics import YOLO
 
         model = YOLO("yolov8s-worldv2.pt")
-        model.set_classes(["cardboard box", "shipping box", "package", "person"])
+        model.set_classes(["cardboard box", "shipping box", "package", "carton"])
     except Exception as e:
         return JSONResponse({"error": f"Model load failed: {e}"}, status_code=503)
 
@@ -137,7 +137,7 @@ async def get_detections() -> JSONResponse:
         arr = np.frombuffer(frame_bytes, dtype=np.uint8)
         frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
 
-        preds = model(frame, verbose=False, conf=0.15)
+        preds = model(frame, verbose=False, conf=0.10)
         dets = []
         boxes = 0
         people = 0
@@ -147,11 +147,8 @@ async def get_detections() -> JSONResponse:
                 conf = float(box.conf[0])
                 name = model.names[cls_id]
                 x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-                is_box = cls_id < 3  # 0,1,2 = box classes
-                if is_box:
-                    boxes += 1
-                else:
-                    people += 1
+                # All classes are box variants now (no person class)
+                boxes += 1
                 dets.append({"class": name, "confidence": round(conf, 2), "bbox": [x1, y1, x2, y2]})
 
         results[cam_id] = {"status": "online", "boxes": boxes, "people": people, "detections": dets}
