@@ -1,11 +1,20 @@
 # Security Camera Box Counting Demo — Configuration
 # ================================================
 #
-# This config drives both the inference pipeline and the Expanso pipeline.
-# Edit camera URLs and counting line coordinates for your physical setup.
+# Environment variables are expanded using ${VAR} or ${VAR:default} syntax.
+# Set these before running:
+#
+#   export CAM_USER=admin
+#   export CAM_PASS_OUTSIDE=yourpassword
+#   export CAM_PASS_INSIDE=yourpassword
+#   export CAM_IP_OUTSIDE=192.168.1.172
+#   export CAM_IP_INSIDE=192.168.1.15
+#
+# Or create a .env file and source it:
+#   source .env && uv run esc-infer config.yaml
 
-device_id: "recomputer-j3011-001"
-site_id: "warehouse-demo"
+device_id: "${DEVICE_ID:recomputer-j3011-001}"
+site_id: "${SITE_ID:warehouse-demo}"
 
 # Detection mode: "box" or "person"
 detect_mode: "box"
@@ -20,8 +29,6 @@ confidence_threshold: 0.3
 # detect_classes: [0]  # COCO class 0 = person
 
 # Class mapping: YOLO's COCO class -> display name
-# Since YOLO doesn't have a "cardboard box" class, it will detect boxes
-# as suitcase, backpack, etc. We map them all to "box" for display.
 class_map:
   suitcase: "box"
   backpack: "box"
@@ -31,16 +38,10 @@ class_map:
   cup: "box"
   cell phone: "box"
 
-# Cameras
-# -------
-# url: RTSP URL, video file path, or device index (e.g., "0" for USB webcam)
-# counting_line_y: y-coordinate of the counting line in frame pixels
-# count_direction: "down" = count when object crosses line going downward
-# direction_filter: "right" or "left" — only count objects moving this way on x-axis
-# role: "outside" (counts departures) or "inside" (counts arrivals)
+# Cameras — IPs and credentials from environment variables
 cameras:
   - camera_id: "cam-outside"
-    url: "rtsp://admin:YOUR_PASSWORD@192.168.1.172:554/h264Preview_01_sub"
+    url: "rtsp://${CAM_USER:admin}:${CAM_PASS_OUTSIDE}@${CAM_IP_OUTSIDE}:554/h264Preview_01_sub"
     counting_line_y: 180
     counting_line_x_start: 20
     counting_line_x_end: 620
@@ -49,7 +50,7 @@ cameras:
     role: "outside"
 
   - camera_id: "cam-inside"
-    url: "rtsp://admin:YOUR_PASSWORD@192.168.1.15:554/h264Preview_01_sub"
+    url: "rtsp://${CAM_USER:admin}:${CAM_PASS_INSIDE}@${CAM_IP_INSIDE}:554/h264Preview_01_sub"
     counting_line_y: 180
     counting_line_x_start: 20
     counting_line_x_end: 620
@@ -59,15 +60,13 @@ cameras:
 
 # Counting parameters
 cooldown_seconds: 3.0
-size_filter_min_area: 3000
+size_filter_min_area: 1500
 size_filter_max_area: 200000
-size_filter_min_width: 40
+size_filter_min_width: 30
 
 # Inference
 inference_interval: 1  # process every frame
 
 # File paths
-raw_events_path: "raw-events.ndjson"
 state_path: "state.json"
 commands_path: "commands.json"
-archive_path: "enriched-events.ndjson"

@@ -1,11 +1,43 @@
-"""Configuration for the security camera demo."""
+"""Configuration for the security camera demo.
+
+Supports environment variable substitution in YAML values using
+${VAR_NAME} or ${VAR_NAME:default} syntax. This keeps secrets
+(camera passwords) and environment-specific values (IPs) out of
+the config file.
+"""
 
 from __future__ import annotations
 
+import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
+
+
+def _expand_env_vars(value: str) -> str:
+    """Expand ${VAR} and ${VAR:default} in a string."""
+    if not isinstance(value, str):
+        return value
+
+    def _replace(match: re.Match) -> str:
+        var = match.group(1)
+        default = match.group(3)  # group 3 is after the ':'
+        return os.environ.get(var, default if default is not None else match.group(0))
+
+    return re.sub(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(:([^}]*))?\}", _replace, value)
+
+
+def _expand_recursive(data: dict | list | str) -> dict | list | str:
+    """Recursively expand env vars in a parsed YAML structure."""
+    if isinstance(data, dict):
+        return {k: _expand_recursive(v) for k, v in data.items()}
+    if isinstance(data, list):
+        return [_expand_recursive(item) for item in data]
+    if isinstance(data, str):
+        return _expand_env_vars(data)
+    return data
 
 
 @dataclass
@@ -57,8 +89,18 @@ class DemoConfig:
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> DemoConfig:
+        # Load .env file if it exists alongside the config
+        env_path = Path(path).parent / ".env"
+        if env_path.exists():
+            for line in env_path.read_text().splitlines():
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, _, val = line.partition("=")
+                    os.environ.setdefault(key.strip(), val.strip())
+
         with open(path) as f:
             data = yaml.safe_load(f)
+        data = _expand_recursive(data)
 
         cameras = []
         for cam_data in data.get("cameras", []):
