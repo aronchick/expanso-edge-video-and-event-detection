@@ -227,9 +227,17 @@ def map_class_name(raw_class: str, class_map: dict[str, str], mode: str) -> str:
     return "box"
 
 
+_log_file = None
+
+
 def log(msg: str) -> None:
-    """Log to stderr so stdout stays clean for Expanso subprocess capture."""
-    print(msg, file=sys.stderr, flush=True)
+    """Log to file only — never stdout (Expanso JSON) or stderr."""
+    global _log_file
+    if _log_file is None:
+        log_path = os.environ.get("ESC_LOG_FILE", "/tmp/esc-infer.log")
+        _log_file = open(log_path, "a")
+    _log_file.write(f"{datetime.now().isoformat()} {msg}\n")
+    _log_file.flush()
 
 
 def check_commands(commands_path: str) -> str | None:
@@ -246,29 +254,26 @@ def check_commands(commands_path: str) -> str | None:
 
 
 def run_pipeline(config: DemoConfig) -> None:
-    """Main inference loop."""
-    # Suppress ANSI colors from YOLO — Expanso reads our stdout as JSON
+    """Main inference loop. Stdout is JSON-only for Expanso. All logs go to file."""
+    # Suppress all non-JSON output — Expanso reads our stdout
     os.environ["YOLO_VERBOSE"] = "false"
     os.environ["NO_COLOR"] = "1"
+    os.environ["UV_NO_PROGRESS"] = "1"
 
-    log("=" * 60)
-    log("  Security Camera Box Counting — Inference Pipeline")
-    log(f"  Device: {config.device_id}")
-    log(f"  Mode: {config.detect_mode}")
-    log(f"  Cameras: {len(config.cameras)}")
-    log("=" * 60)
+    # Redirect stderr to log file to prevent any library output leaking
+    log_path = os.environ.get("ESC_LOG_FILE", "/tmp/esc-infer.log")
+    stderr_log = open(log_path, "a")
+    os.dup2(stderr_log.fileno(), sys.stderr.fileno())
+
+    log(f"Starting pipeline: device={config.device_id} mode={config.detect_mode}")
 
     # Load YOLO model
-    log(f"\nLoading {config.model_name}...")
     model = YOLO(f"{config.model_name}.pt")
 
     # If using YOLO-World (open-vocabulary), set custom classes
     if "world" in config.model_name.lower():
         world_classes = ["cardboard box", "shipping box", "package", "person"]
-        log(f"Setting YOLO-World classes: {world_classes}")
         model.set_classes(world_classes)
-
-    log(f"Model loaded: {config.model_name}")
 
     # Set up camera threads
     camera_threads: dict[str, CameraThread] = {}
@@ -304,9 +309,7 @@ def run_pipeline(config: DemoConfig) -> None:
     # Initialize state
     state = DashboardState(detect_mode=config.detect_mode)
 
-    log("\nWaiting for camera streams...")
     time.sleep(2)
-    log("Starting inference loop. Press Ctrl+C to stop.\n")
 
     frame_count = 0
     fps_timer = time.time()
@@ -317,7 +320,6 @@ def run_pipeline(config: DemoConfig) -> None:
             # Check for commands
             action = check_commands(config.commands_path)
             if action == "reset":
-                log("\n>>> SESSION RESET <<<\n")
                 for counter in counters.values():
                     counter.reset()
                 state = DashboardState(detect_mode=config.detect_mode)
@@ -419,19 +421,7 @@ def run_pipeline(config: DemoConfig) -> None:
                     )
                     emit_event(event)
 
-                    # Log
-                    direction_str = "departed" if cam_config.role == "outside" else "arrived"
-                    count = (
-                        evt_data["departures"]
-                        if cam_config.role == "outside"
-                        else evt_data["arrivals"]
-                    )
-                    now_str = datetime.now().strftime("%I:%M:%S %p")
-                    log(
-                        f"  {now_str}  {cam_id}  "
-                        f"{mapped_class.capitalize()} {direction_str}  "
-                        f"(count: {count})"
-                    )
+                    pass  # Event emitted via emit_event above
 
             # Update dashboard state
             outside_counter = None
@@ -489,11 +479,10 @@ def run_pipeline(config: DemoConfig) -> None:
                 write_state(config.state_path, state)
 
     except KeyboardInterrupt:
-        log("\n\nShutting down...")
+        pass
     finally:
         for ct in camera_threads.values():
             ct.stop()
-        log("Pipeline stopped.")
 
 
 def main() -> None:
@@ -504,9 +493,6 @@ def main() -> None:
         config = DemoConfig.from_yaml(config_path)
     else:
         config = DemoConfig.default_dock_door()
-        if not config_path:
-            log("No config file specified. Using default dock door config.")
-            log("Edit config.yaml or pass a config file as argument.\n")
 
     run_pipeline(config)
 
