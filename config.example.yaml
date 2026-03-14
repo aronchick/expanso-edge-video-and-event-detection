@@ -20,7 +20,9 @@ site_id: "${SITE_ID:warehouse-demo}"
 detect_mode: "box"
 
 # Model configuration
-model_name: "yolov8s"
+# yolov8s-worldv2 = open-vocabulary, detects "cardboard box" directly
+# yolov8s = standard COCO classes only (no box class)
+model_name: "yolov8s-worldv2"
 model_precision: "fp16"
 confidence_threshold: 0.3
 

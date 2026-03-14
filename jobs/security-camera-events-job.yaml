@@ -1,14 +1,13 @@
 # Job: Security Camera Box Counting Pipeline
-# Reads raw detection events from inference subprocess, enriches with
-# metadata, maps class names, adds lineage, and outputs to archive + stdout.
+# Runs the versioned inference package (expanso-security-camera) as a
+# subprocess. Expanso manages the lifecycle, restarts on failure.
 #
-# Usage:
+# The inference engine is a pip package installed via uv:
+#   pyproject.toml defines expanso-security-camera==0.1.0
+#   Entry point: esc-infer (runs RTSP → YOLO-World → crossing events)
+#
+# Deploy:
 #   expanso-cli job deploy jobs/security-camera-events-job.yaml
-#
-# Prerequisites:
-#   Inference engine running on edge node:
-#     uv run esc-infer config.yaml
-#   (writes CrossingEvents as NDJSON to stdout, captured by subprocess input)
 
 name: security-camera-events
 type: pipeline
@@ -16,8 +15,13 @@ type: pipeline
 config:
   input:
     subprocess:
-      name: tail
-      args: ["-F", "/data/raw-events.ndjson"]
+      name: /home/daaronch/.local/bin/uv
+      args:
+        - --directory
+        - /home/daaronch/security-cameras
+        - run
+        - esc-infer
+        - config.yaml
       codec: lines
       restart_on_exit: true
 
@@ -46,16 +50,13 @@ config:
           }
           root.enriched_at = now()
 
-      # Class name mapping
+      # Class name mapping — normalize detection labels
       - mapping: |
           let raw_class = this.detection.object_class_raw.or("")
           let mapped = match $raw_class {
             "suitcase" => "box",
             "backpack" => "box",
             "handbag" => "box",
-            "sports ball" => "box",
-            "bottle" => "box",
-            "cup" => "box",
             "cardboard box" => "box",
             "shipping box" => "box",
             "package" => "box",
@@ -79,7 +80,7 @@ config:
       pattern: fan_out
       outputs:
         - file:
-            path: "/data/enriched-events.ndjson"
+            path: "/home/daaronch/security-cameras/enriched-events.ndjson"
             codec: lines
 
         - stdout:

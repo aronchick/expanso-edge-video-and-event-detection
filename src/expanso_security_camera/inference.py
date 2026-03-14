@@ -257,6 +257,13 @@ def run_pipeline(config: DemoConfig) -> None:
     # Load YOLO model
     log(f"\nLoading {config.model_name}...")
     model = YOLO(f"{config.model_name}.pt")
+
+    # If using YOLO-World (open-vocabulary), set custom classes
+    if "world" in config.model_name.lower():
+        world_classes = ["cardboard box", "shipping box", "package", "person"]
+        log(f"Setting YOLO-World classes: {world_classes}")
+        model.set_classes(world_classes)
+
     log(f"Model loaded: {config.model_name}")
 
     # Set up camera threads

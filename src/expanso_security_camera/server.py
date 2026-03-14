@@ -106,6 +106,59 @@ async def get_snapshot(camera_id: str) -> StreamingResponse:
     )
 
 
+@app.get("/api/detections")
+async def get_detections() -> JSONResponse:
+    """Run YOLO-World on both cameras and return box counts + detections.
+
+    This gives a real-time snapshot of what each camera sees right now,
+    independent of the counting/crossing logic.
+    """
+    urls = _load_camera_urls()
+    if not urls:
+        return JSONResponse({"error": "No cameras configured"}, status_code=503)
+
+    try:
+        from ultralytics import YOLO
+
+        model = YOLO("yolov8s-worldv2.pt")
+        model.set_classes(["cardboard box", "shipping box", "package", "person"])
+    except Exception as e:
+        return JSONResponse({"error": f"Model load failed: {e}"}, status_code=503)
+
+    results = {}
+    for cam_id, url in urls.items():
+        frame_bytes = _grab_frame(url)
+        if frame_bytes is None:
+            results[cam_id] = {"status": "offline", "boxes": 0, "people": 0, "detections": []}
+            continue
+
+        import numpy as np
+
+        arr = np.frombuffer(frame_bytes, dtype=np.uint8)
+        frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+
+        preds = model(frame, verbose=False, conf=0.15)
+        dets = []
+        boxes = 0
+        people = 0
+        if preds and preds[0].boxes is not None:
+            for box in preds[0].boxes:
+                cls_id = int(box.cls[0])
+                conf = float(box.conf[0])
+                name = model.names[cls_id]
+                x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+                is_box = cls_id < 3  # 0,1,2 = box classes
+                if is_box:
+                    boxes += 1
+                else:
+                    people += 1
+                dets.append({"class": name, "confidence": round(conf, 2), "bbox": [x1, y1, x2, y2]})
+
+        results[cam_id] = {"status": "online", "boxes": boxes, "people": people, "detections": dets}
+
+    return JSONResponse(results)
+
+
 @app.post("/api/reset")
 async def reset_session() -> JSONResponse:
     """Send a reset command to the inference process."""
