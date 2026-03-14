@@ -62,24 +62,22 @@ pipeline:
     # pipeline level — not in inference code.
     # To change what you're counting, edit this mapping.
     - mapping: |
-        root = if this.detection != null {
-          let raw_class = this.detection.object_class_raw.or("")
-          let mapped = match raw_class {
-            "suitcase" => "box",
-            "backpack" => "box",
-            "handbag" => "box",
-            "sports ball" => "box",
-            "bottle" => "box",
-            "cup" => "box",
-            "person" => "person",
-            _ => "object"
-          }
-          root = this
-          root.detection.object_class = mapped
-          root
-        } else {
-          this
+        let raw_class = this.detection.object_class_raw.or("")
+        let mapped = match $raw_class {
+          "suitcase" => "box",
+          "backpack" => "box",
+          "handbag" => "box",
+          "sports ball" => "box",
+          "bottle" => "box",
+          "cup" => "box",
+          "cardboard box" => "box",
+          "shipping box" => "box",
+          "package" => "box",
+          "person" => "person",
+          _ => "object"
         }
+        root = this
+        root.detection.object_class = if this.detection != null { $mapped } else { "" }
 
     # ── 5. Lineage tracking ──────────────────────────
     # Every event gets lineage for audit trail.
