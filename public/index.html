@@ -148,6 +148,18 @@
       display: flex; align-items: center; justify-content: center;
       height: 200px; color: var(--text-dim); font-size: 0.85rem;
     }
+    .camera-feed-count {
+      position: absolute; bottom: 12px; right: 14px;
+      font-family: var(--font-mono); font-size: 2.5rem; font-weight: 700;
+      color: #fff; text-shadow: 0 2px 8px rgba(0,0,0,0.7);
+      line-height: 1;
+    }
+    .camera-feed-count-label {
+      position: absolute; bottom: 12px; left: 14px;
+      font-family: var(--font-display); font-size: 0.75rem; font-weight: 600;
+      color: rgba(255,255,255,0.8); text-shadow: 0 1px 4px rgba(0,0,0,0.7);
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
 
     /* Controls */
     .controls { display: flex; gap: 12px; margin-bottom: 24px; }
@@ -204,15 +216,19 @@
       </div>
     </div>
 
-    <!-- Camera feeds -->
+    <!-- Camera feeds with count overlays -->
     <div class="camera-feeds">
       <div class="camera-feed">
-        <span class="camera-feed-label">CAM-OUTSIDE</span>
+        <span class="camera-feed-label">CAM-OUTSIDE &middot; Departures</span>
         <img id="feed-outside" alt="Camera 1">
+        <span class="camera-feed-count-label">Boxes Departed</span>
+        <span class="camera-feed-count" id="feed-count-outside" style="color: var(--blue);">0</span>
       </div>
       <div class="camera-feed">
-        <span class="camera-feed-label">CAM-INSIDE</span>
+        <span class="camera-feed-label">CAM-INSIDE &middot; Arrivals</span>
         <img id="feed-inside" alt="Camera 2">
+        <span class="camera-feed-count-label">Boxes Arrived</span>
+        <span class="camera-feed-count" id="feed-count-inside" style="color: var(--green);">0</span>
       </div>
     </div>
 
@@ -311,6 +327,9 @@
 
       animateNumber('departures', dep);
       animateNumber('arrivals', arr);
+      // Update counts on camera feeds
+      $('feed-count-outside').textContent = String(dep);
+      $('feed-count-inside').textContent = String(arr);
 
       $('session-id').textContent = state.session_id || '—';
       $('fps').textContent = (state.inference_fps || 0).toFixed(1);
