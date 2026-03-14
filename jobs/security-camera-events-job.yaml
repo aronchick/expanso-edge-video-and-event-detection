@@ -27,11 +27,13 @@ config:
 
   pipeline:
     processors:
-      # Parse JSON
+      # Parse JSON — drop any line that isn't valid JSON
+      # (inference writes log/banner text to stderr, but some
+      # may leak through; this silently drops non-JSON lines)
       - mapping: |
-          root = this.parse_json()
+          root = this.parse_json().catch(deleted())
 
-      # Schema validation — drop malformed events
+      # Schema validation — drop events without schema_version
       - mapping: |
           root = if this.schema_version == null {
             deleted()
