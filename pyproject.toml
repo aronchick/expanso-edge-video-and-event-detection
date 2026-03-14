@@ -2,7 +2,7 @@
 name = "expanso-security-camera"
 version = "0.1.0"
 description = "Edge video analytics for box counting and discrepancy detection"
-requires-python = ">=3.11"
+requires-python = ">=3.8"
 dependencies = [
     "ultralytics>=8.1.0",
     "opencv-python-headless>=4.8.0",
