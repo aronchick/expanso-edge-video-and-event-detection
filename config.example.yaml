@@ -1,0 +1,73 @@
+# Security Camera Box Counting Demo — Configuration
+# ================================================
+#
+# This config drives both the inference pipeline and the Expanso pipeline.
+# Edit camera URLs and counting line coordinates for your physical setup.
+
+device_id: "recomputer-j3011-001"
+site_id: "warehouse-demo"
+
+# Detection mode: "box" or "person"
+detect_mode: "box"
+
+# Model configuration
+model_name: "yolov8s"
+model_precision: "fp16"
+confidence_threshold: 0.3
+
+# For person counting, uncomment:
+# detect_mode: "person"
+# detect_classes: [0]  # COCO class 0 = person
+
+# Class mapping: YOLO's COCO class -> display name
+# Since YOLO doesn't have a "cardboard box" class, it will detect boxes
+# as suitcase, backpack, etc. We map them all to "box" for display.
+class_map:
+  suitcase: "box"
+  backpack: "box"
+  handbag: "box"
+  sports ball: "box"
+  bottle: "box"
+  cup: "box"
+  cell phone: "box"
+
+# Cameras
+# -------
+# url: RTSP URL, video file path, or device index (e.g., "0" for USB webcam)
+# counting_line_y: y-coordinate of the counting line in frame pixels
+# count_direction: "down" = count when object crosses line going downward
+# direction_filter: "right" or "left" — only count objects moving this way on x-axis
+# role: "outside" (counts departures) or "inside" (counts arrivals)
+cameras:
+  - camera_id: "cam-outside"
+    url: "rtsp://admin:YOUR_PASSWORD@192.168.1.172:554/h264Preview_01_sub"
+    counting_line_y: 180
+    counting_line_x_start: 20
+    counting_line_x_end: 620
+    count_direction: "down"
+    direction_filter: "right"
+    role: "outside"
+
+  - camera_id: "cam-inside"
+    url: "rtsp://admin:YOUR_PASSWORD@192.168.1.15:554/h264Preview_01_sub"
+    counting_line_y: 180
+    counting_line_x_start: 20
+    counting_line_x_end: 620
+    count_direction: "down"
+    direction_filter: "left"
+    role: "inside"
+
+# Counting parameters
+cooldown_seconds: 3.0
+size_filter_min_area: 3000
+size_filter_max_area: 200000
+size_filter_min_width: 40
+
+# Inference
+inference_interval: 1  # process every frame
+
+# File paths
+raw_events_path: "raw-events.ndjson"
+state_path: "state.json"
+commands_path: "commands.json"
+archive_path: "enriched-events.ndjson"

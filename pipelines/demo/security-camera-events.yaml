@@ -1,38 +1,127 @@
-apiVersion: expanso.io/v1alpha1
-kind: Pipeline
-metadata:
-  name: security-camera-events
-  description: Filter and classify security camera events at the edge
+# Expanso Edge Pipeline: Security Camera Box Counting
+# ====================================================
+#
+# Single command to run the entire system:
+#   expanso-edge run pipelines/demo/security-camera-events.yaml
+#
+# This pipeline:
+#   1. Spawns the inference engine as a subprocess (uv run esc-infer)
+#   2. Captures its stdout (raw CrossingEvents as NDJSON)
+#   3. Validates, enriches, and maps every event
+#   4. Routes to local archive, stdout, and upstream API
+#
+# The inference engine writes events to stdout, logs to stderr.
+# Expanso captures stdout as input. Deterministic and versionable.
+#
+# For simulation (no cameras):
+#   ESC_CMD=esc-simulate ESC_ARGS="--fast --discrepancy" \
+#     expanso-edge run pipelines/demo/security-camera-events.yaml
 
-spec:
-  sources:
-    - name: camera-events
-      type: file
-      config:
-        path: /tmp/camera-events.jsonl
+input:
+  subprocess:
+    name: uv
+    args:
+      - run
+      - "${ESC_CMD:esc-infer}"
+      - "${ESC_ARGS:config.yaml}"
+    codec: lines
+    restart_on_exit: true
 
-  transforms:
-    - name: parse-json
-      type: json.parse
-    - name: drop-noise
-      type: filter
-      config:
-        expression: "event.motion_score >= 0.55"
-    - name: classify-risk
-      type: map
-      config:
-        expression: |
-          {
-            "camera_id": event.camera_id,
-            "zone": event.zone,
-            "event_type": event.event_type,
-            "risk_score": event.motion_score,
-            "classification": event.motion_score > 0.85 ? "critical" : (event.motion_score > 0.70 ? "warning" : "normal"),
-            "timestamp": event.timestamp
+pipeline:
+  processors:
+    # ── 1. Parse JSON ──────────────────────────────────
+    - mapping: |
+        root = this.parse_json()
+
+    # ── 2. Schema validation ──────────────────────────
+    # Reject events without a schema_version field
+    - mapping: |
+        root = if this.schema_version == null {
+          deleted()
+        } else {
+          this
+        }
+
+    # ── 3. Metadata enrichment ────────────────────────
+    # Add device/site/pipeline context to every event.
+    # This makes every event self-describing and mergeable
+    # across devices and sites.
+    - mapping: |
+        root = this
+        root.source = {
+          "device_id": env("DEVICE_ID").or("recomputer-j3011-001"),
+          "site_id": env("SITE_ID").or("warehouse-demo"),
+          "camera_id": this.camera_id.or("unknown"),
+          "pipeline_version": "1.0.0"
+        }
+        root.enriched_at = now()
+
+    # ── 4. Class name mapping ─────────────────────────
+    # Normalize raw COCO class names to business labels.
+    # This is where "suitcase" → "box" happens at the
+    # pipeline level — not in inference code.
+    # To change what you're counting, edit this mapping.
+    - mapping: |
+        root = if this.detection != null {
+          let raw_class = this.detection.object_class_raw.or("")
+          let mapped = match raw_class {
+            "suitcase" => "box",
+            "backpack" => "box",
+            "handbag" => "box",
+            "sports ball" => "box",
+            "bottle" => "box",
+            "cup" => "box",
+            "person" => "person",
+            _ => "object"
           }
+          root = this
+          root.detection.object_class = mapped
+          root
+        } else {
+          this
+        }
 
-  sinks:
-    - name: alerts
-      type: file
-      config:
-        path: /tmp/security-alerts.jsonl
+    # ── 5. Lineage tracking ──────────────────────────
+    # Every event gets lineage for audit trail.
+    # Downstream consumers know: which node, which pipeline,
+    # when it was ingested.
+    - mapping: |
+        root = this
+        root.lineage = {
+          "edge_node": env("EDGE_NODE_ID").or(env("HOSTNAME")).or("unknown"),
+          "pipeline": "security-camera-events",
+          "ingested_at": now().ts_format("2006-01-02T15:04:05.000Z")
+        }
+
+output:
+  broker:
+    pattern: fan_out
+    outputs:
+      # Output 1: Local NDJSON archive (on NVMe SSD)
+      - file:
+          path: "${OUTPUT_DIR:./enriched-events.ndjson}"
+          codec: lines
+
+      # Output 2: Stdout for debugging / live monitoring
+      - stdout:
+          codec: lines
+
+      # Output 3: Upstream HTTP POST
+      # Uncomment when Expanso Cloud or customer API is ready:
+      # - http_client:
+      #     url: "${UPSTREAM_URL:https://cloud.expanso.io/api/v1/events}"
+      #     verb: POST
+      #     headers:
+      #       Content-Type: application/json
+      #       Authorization: "Bearer ${ESC_API_TOKEN}"
+      #     batching:
+      #       count: 10
+      #       period: 5s
+
+# Buffer for offline resilience (uncomment for production)
+# buffer:
+#   memory:
+#     limit: 10000
+#     batch_policy:
+#       count: 50
+#       period: 5s

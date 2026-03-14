@@ -1,0 +1,67 @@
+# Expanso Edge Pipeline: Video Segment Recorder
+# ===============================================
+#
+# Records RTSP camera streams to segmented MP4 files on local NVMe.
+# Emits recording metadata events (segment path, timestamps, size)
+# through the Expanso pipeline for cataloging and upstream notification.
+#
+# Run with:
+#   expanso-edge run pipelines/demo/security-camera-recorder.yaml
+#
+# Uses 4K main stream for recording (not the 720p sub-stream used
+# for inference). Segments default to 5 minutes. Configure via:
+#   SEGMENT_DURATION=300 RECORDING_DIR=recordings \
+#     expanso-edge run pipelines/demo/security-camera-recorder.yaml
+#
+# This runs alongside the analytics pipeline — both share the same
+# cameras but serve different purposes:
+#   - Analytics pipeline: real-time detection + counting (sub-stream)
+#   - Recorder pipeline: evidence capture (main stream)
+
+input:
+  subprocess:
+    name: uv
+    args:
+      - run
+      - esc-record
+      - "${ESC_CONFIG:config.yaml}"
+    codec: lines
+    restart_on_exit: true
+
+pipeline:
+  processors:
+    # ── 1. Parse JSON ──────────────────────────────────
+    - mapping: |
+        root = this.parse_json()
+
+    # ── 2. Enrich with device/site context ────────────
+    - mapping: |
+        root = this
+        root.source = {
+          "device_id": env("DEVICE_ID").or("recomputer-j3011-001"),
+          "site_id": env("SITE_ID").or("warehouse-demo"),
+          "pipeline_version": "1.0.0"
+        }
+        root.recorded_at = now()
+
+output:
+  broker:
+    pattern: fan_out
+    outputs:
+      # Output 1: Local recording catalog
+      - file:
+          path: "${OUTPUT_DIR:./recording-catalog.ndjson}"
+          codec: lines
+
+      # Output 2: Stdout for monitoring
+      - stdout:
+          codec: lines
+
+      # Output 3: Upstream notification (so cloud knows segments exist)
+      # Uncomment when upstream API is ready:
+      # - http_client:
+      #     url: "${UPSTREAM_URL:https://cloud.expanso.io/api/v1/recordings}"
+      #     verb: POST
+      #     headers:
+      #       Content-Type: application/json
+      #       Authorization: "Bearer ${ESC_API_TOKEN}"
