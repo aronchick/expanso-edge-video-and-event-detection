@@ -247,6 +247,10 @@ def check_commands(commands_path: str) -> str | None:
 
 def run_pipeline(config: DemoConfig) -> None:
     """Main inference loop."""
+    # Suppress ANSI colors from YOLO — Expanso reads our stdout as JSON
+    os.environ["YOLO_VERBOSE"] = "false"
+    os.environ["NO_COLOR"] = "1"
+
     log("=" * 60)
     log("  Security Camera Box Counting — Inference Pipeline")
     log(f"  Device: {config.device_id}")

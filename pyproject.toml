@@ -12,6 +12,7 @@ dependencies = [
     "fastapi>=0.110.0",
     "uvicorn>=0.27.0",
     "lapx>=0.5.0",
+    "clip @ git+https://github.com/ultralytics/CLIP.git",
 ]
 
 [project.scripts]
@@ -24,6 +25,9 @@ esc-test-cameras = "expanso_security_camera.test_cameras:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/expanso_security_camera"]
