@@ -485,8 +485,8 @@
       const ts = Date.now();
       const outside = $('feed-outside');
       const inside = $('feed-inside');
-      if (outside) outside.src = '/api/snapshot/cam-outside?t=' + ts;
-      if (inside) inside.src = '/api/snapshot/cam-inside?t=' + ts;
+      if (outside) outside.src = '/api/snapshot/cam-outside?annotate=true&t=' + ts;
+      if (inside) inside.src = '/api/snapshot/cam-inside?annotate=true&t=' + ts;
     }
 
     setInterval(fetchState, 1000);

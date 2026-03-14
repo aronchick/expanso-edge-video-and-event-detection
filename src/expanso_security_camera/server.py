@@ -102,8 +102,11 @@ async def get_state() -> JSONResponse:
 
 
 @app.get("/api/snapshot/{camera_id}")
-async def get_snapshot(camera_id: str) -> StreamingResponse:
-    """Return a live JPEG snapshot from a camera."""
+async def get_snapshot(camera_id: str, annotate: str = "false") -> StreamingResponse:
+    """Return a live JPEG snapshot from a camera.
+
+    Pass ?annotate=true to overlay YOLO-World bounding boxes.
+    """
     urls = _load_camera_urls()
     url = urls.get(camera_id)
     if not url:
@@ -112,6 +115,18 @@ async def get_snapshot(camera_id: str) -> StreamingResponse:
     jpg_bytes = _grab_frame(url)
     if jpg_bytes is None:
         return JSONResponse({"error": f"Cannot read from {camera_id}"}, status_code=503)
+
+    # If annotate requested, run YOLO and draw boxes
+    if annotate.lower() == "true":
+        import numpy as np
+
+        arr = np.frombuffer(jpg_bytes, dtype=np.uint8)
+        frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        model = _load_detection_model()
+        results = model(frame, verbose=False, conf=0.10)
+        frame = results[0].plot()
+        _, jpg_bytes = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        jpg_bytes = jpg_bytes.tobytes()
 
     return StreamingResponse(
         io.BytesIO(jpg_bytes),
