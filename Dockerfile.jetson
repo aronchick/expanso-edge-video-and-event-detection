@@ -1,0 +1,25 @@
+FROM dustynv/l4t-pytorch:r35.4.1
+
+# Install our dependencies
+RUN pip3 install --no-cache-dir \
+    ultralytics \
+    opencv-python-headless \
+    pydantic \
+    pyyaml \
+    fastapi \
+    uvicorn \
+    lapx \
+    eval_type_backport \
+    git+https://github.com/ultralytics/CLIP.git
+
+# Install our package
+COPY . /app
+WORKDIR /app
+RUN pip3 install --no-cache-dir -e .
+
+# Suppress YOLO noise
+ENV YOLO_VERBOSE=false
+ENV NO_COLOR=1
+
+# Default command: run inference (stdout = JSON for Expanso)
+CMD ["esc-infer", "config.yaml"]
