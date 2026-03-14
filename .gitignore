@@ -27,3 +27,4 @@ node_modules/
 config.yaml
 .ruff_cache/
 uv.lock
+.credentials

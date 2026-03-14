@@ -127,6 +127,28 @@
     .ev-count { color: var(--text-muted); margin-left: auto; }
     .event-empty { color: var(--text-dim); text-align: center; padding: 20px; font-size: 0.85rem; }
 
+    /* Camera feeds */
+    .camera-feeds { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+    @media (max-width: 800px) { .camera-feeds { grid-template-columns: 1fr; } }
+    .camera-feed {
+      background: var(--bg-elevated); border: 1px solid var(--border-subtle);
+      border-radius: 16px; overflow: hidden; position: relative;
+    }
+    .camera-feed img {
+      width: 100%; height: auto; display: block;
+      border-radius: 16px;
+    }
+    .camera-feed-label {
+      position: absolute; top: 10px; left: 12px;
+      font-family: var(--font-mono); font-size: 0.7rem; font-weight: 600;
+      background: rgba(0,0,0,0.6); color: var(--text-primary);
+      padding: 3px 8px; border-radius: 6px;
+    }
+    .camera-feed-offline {
+      display: flex; align-items: center; justify-content: center;
+      height: 200px; color: var(--text-dim); font-size: 0.85rem;
+    }
+
     /* Controls */
     .controls { display: flex; gap: 12px; margin-bottom: 24px; }
     .btn {
@@ -179,6 +201,18 @@
         <div class="recon-status" id="recon-status" style="color:var(--green)">ALL BOXES ACCOUNTED FOR</div>
         <div class="recon-detail" id="recon-detail">0 departed · 0 arrived</div>
         <div class="recon-detail" id="recon-first-detected" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- Camera feeds -->
+    <div class="camera-feeds">
+      <div class="camera-feed">
+        <span class="camera-feed-label">CAM-OUTSIDE</span>
+        <img id="feed-outside" alt="Camera 1">
+      </div>
+      <div class="camera-feed">
+        <span class="camera-feed-label">CAM-INSIDE</span>
+        <img id="feed-inside" alt="Camera 2">
       </div>
     </div>
 
@@ -347,8 +381,19 @@
       } catch (e) { console.error('Reset failed:', e); }
     });
 
+    // Camera snapshots — refresh every 2 seconds
+    function refreshCameras() {
+      const ts = Date.now();
+      const outside = $('feed-outside');
+      const inside = $('feed-inside');
+      if (outside) outside.src = '/api/snapshot/cam-outside?t=' + ts;
+      if (inside) inside.src = '/api/snapshot/cam-inside?t=' + ts;
+    }
+
     setInterval(fetchState, 1000);
+    setInterval(refreshCameras, 2000);
     fetchState();
+    refreshCameras();
   </script>
 </body>
 </html>

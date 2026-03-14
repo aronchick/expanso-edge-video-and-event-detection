@@ -1,7 +1,7 @@
 """Self-hosted web dashboard server.
 
 Runs on the Jetson alongside the Expanso pipeline. Serves the dashboard
-UI and a JSON API that the frontend polls for live state.
+UI, a JSON state API, and live camera snapshot endpoints.
 
 Run with:
     uv run esc-server
@@ -11,18 +11,54 @@ Then open http://<jetson-ip>:8080 in a browser.
 
 from __future__ import annotations
 
+import io
 import json
 import sys
 from pathlib import Path
 
+import cv2
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from expanso_security_camera.config import DemoConfig
+
 STATE_PATH = Path("state.json")
+CONFIG_PATH = Path("config.yaml")
 PUBLIC_DIR = Path(__file__).parent.parent.parent / "public"
 
 app = FastAPI(title="Box Transfer Monitor", docs_url=None, redoc_url=None)
+
+# Cache camera URLs from config
+_camera_urls: dict[str, str] = {}
+
+
+def _load_camera_urls() -> dict[str, str]:
+    """Load camera URLs from config (cached)."""
+    global _camera_urls
+    if not _camera_urls and CONFIG_PATH.exists():
+        try:
+            config = DemoConfig.from_yaml(str(CONFIG_PATH))
+            _camera_urls = {c.camera_id: c.url for c in config.cameras}
+        except Exception:
+            pass
+    return _camera_urls
+
+
+def _grab_frame(url: str) -> bytes | None:
+    """Grab a single fresh frame from an RTSP stream, return as JPEG bytes."""
+    cap = cv2.VideoCapture(url)
+    if not cap.isOpened():
+        return None
+    # Flush buffer
+    for _ in range(3):
+        cap.read()
+    ret, frame = cap.read()
+    cap.release()
+    if not ret:
+        return None
+    _, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+    return jpg.tobytes()
 
 
 @app.get("/api/state")
@@ -48,6 +84,25 @@ async def get_state() -> JSONResponse:
             "pipeline_status": "waiting",
             "detect_mode": "box",
         }
+    )
+
+
+@app.get("/api/snapshot/{camera_id}")
+async def get_snapshot(camera_id: str) -> StreamingResponse:
+    """Return a live JPEG snapshot from a camera."""
+    urls = _load_camera_urls()
+    url = urls.get(camera_id)
+    if not url:
+        return JSONResponse({"error": f"Unknown camera: {camera_id}"}, status_code=404)
+
+    jpg_bytes = _grab_frame(url)
+    if jpg_bytes is None:
+        return JSONResponse({"error": f"Cannot read from {camera_id}"}, status_code=503)
+
+    return StreamingResponse(
+        io.BytesIO(jpg_bytes),
+        media_type="image/jpeg",
+        headers={"Cache-Control": "no-cache, no-store"},
     )
 
 
