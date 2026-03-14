@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -29,8 +30,21 @@ PUBLIC_DIR = Path(__file__).parent.parent.parent / "public"
 
 app = FastAPI(title="Box Transfer Monitor", docs_url=None, redoc_url=None)
 
-# Cache camera URLs from config
+# Cache camera URLs and YOLO model (loaded once at startup)
 _camera_urls: dict[str, str] = {}
+_detection_model = None
+
+
+def _load_detection_model():
+    """Load YOLO-World model once, cache globally."""
+    global _detection_model
+    if _detection_model is None:
+        from ultralytics import YOLO
+
+        os.environ["YOLO_VERBOSE"] = "false"
+        _detection_model = YOLO("yolov8s-worldv2.pt")
+        _detection_model.set_classes(["cardboard box", "shipping box", "package", "carton"])
+    return _detection_model
 
 
 def _load_camera_urls() -> dict[str, str]:
@@ -118,10 +132,7 @@ async def get_detections() -> JSONResponse:
         return JSONResponse({"error": "No cameras configured"}, status_code=503)
 
     try:
-        from ultralytics import YOLO
-
-        model = YOLO("yolov8s-worldv2.pt")
-        model.set_classes(["cardboard box", "shipping box", "package", "carton"])
+        model = _load_detection_model()
     except Exception as e:
         return JSONResponse({"error": f"Model load failed: {e}"}, status_code=503)
 
@@ -173,10 +184,29 @@ async def index() -> HTMLResponse:
     return HTMLResponse("<h1>Dashboard not found</h1>", status_code=404)
 
 
+@app.get("/architecture")
+async def architecture() -> HTMLResponse:
+    """Architecture diagram page."""
+    arch_path = PUBLIC_DIR / "architecture.html"
+    if arch_path.exists():
+        return HTMLResponse(arch_path.read_text())
+    return HTMLResponse("<h1>Architecture page not found</h1>", status_code=404)
+
+
 # Serve static assets (JS, CSS, images) at /static/
 # NOT at / which would intercept API routes
 if PUBLIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(PUBLIC_DIR)), name="static")
+
+
+@app.on_event("startup")
+async def startup():
+    """Preload YOLO model and camera config at startup."""
+    _load_camera_urls()
+    try:
+        _load_detection_model()
+    except Exception:
+        pass  # Model will load on first request if startup fails
 
 
 def main() -> None:
@@ -190,7 +220,6 @@ def main() -> None:
         except ValueError:
             pass
 
-    print(f"Dashboard server starting on http://0.0.0.0:{port}", file=sys.stderr)
     uvicorn.run(app, host="0.0.0.0", port=port, log_level="warning")
 
 

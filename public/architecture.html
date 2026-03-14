@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Architecture — Box Transfer Monitor</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-deep: #06080f; --bg-base: #0a0e1a; --bg-elevated: #1e293b;
+      --border-subtle: rgba(148,163,184,0.08); --border-medium: rgba(148,163,184,0.15);
+      --text-primary: #f1f5f9; --text-secondary: #94a3b8; --text-muted: #64748b;
+      --blue: #60a5fa; --green: #34d399; --indigo: #818cf8; --cyan: #22d3ee;
+      --font-display: 'Space Grotesk', system-ui, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+    body { font-family: var(--font-display); background: var(--bg-deep); color: var(--text-primary); margin: 0; }
+    .container { max-width: 960px; margin: 0 auto; padding: 32px 20px; }
+    a { color: var(--indigo); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    h1 { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.03em; margin-bottom: 8px; }
+    h2 { font-size: 1.2rem; font-weight: 600; color: var(--cyan); margin-top: 32px; margin-bottom: 12px; }
+    p { color: var(--text-secondary); line-height: 1.7; margin-bottom: 16px; }
+    .back { font-size: 0.85rem; margin-bottom: 24px; display: inline-block; }
+    .diagram {
+      background: var(--bg-elevated); border: 1px solid var(--border-medium);
+      border-radius: 16px; padding: 24px; margin: 20px 0;
+      font-family: var(--font-mono); font-size: 0.78rem; line-height: 1.6;
+      white-space: pre; overflow-x: auto; color: var(--text-secondary);
+    }
+    .highlight { color: var(--cyan); font-weight: 700; }
+    .note { color: var(--indigo); }
+    .component {
+      background: var(--bg-elevated); border: 1px solid var(--border-subtle);
+      border-radius: 12px; padding: 16px 20px; margin: 12px 0;
+    }
+    .component h3 { font-size: 0.95rem; color: var(--text-primary); margin: 0 0 6px 0; }
+    .component p { font-size: 0.85rem; margin: 0; }
+    .tag {
+      display: inline-block; font-family: var(--font-mono); font-size: 0.7rem;
+      background: rgba(129,140,248,0.12); color: var(--indigo);
+      padding: 2px 8px; border-radius: 4px; margin-right: 6px;
+    }
+    .footer { text-align: center; padding: 32px; font-size: 0.75rem; color: var(--text-muted); }
+    .footer .expanso { color: var(--indigo); font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a href="/" class="back">&larr; Back to Dashboard</a>
+    <h1>System Architecture</h1>
+    <p>Everything runs through <strong>Expanso Edge</strong>. No isolated scripts, no unversioned code.</p>
+
+    <div class="diagram"><span class="highlight">Reolink Cameras (PoE)</span>
+  |
+  | RTSP H.264 streams (192.168.2.x)
+  |
+  v
+<span class="highlight">Expanso Edge Pipeline 1: Inference</span>  <span class="note">[deployed via Expanso Cloud]</span>
+  |
+  | subprocess: uv run esc-infer  <span class="note">(expanso-security-camera==0.1.0)</span>
+  | - YOLO-World open-vocabulary detection
+  | - ByteTrack multi-object tracking
+  | - Line-crossing state machine counter
+  | - Output: CrossingEvents as NDJSON (stdout)
+  |
+  | Expanso processors:
+  | - parse_json + catch(deleted())
+  | - Schema validation
+  | - Metadata enrichment (device_id, site_id)
+  | - Class name mapping (suitcase → box)
+  | - Lineage tracking (edge_node, pipeline, timestamp)
+  |
+  +--&gt; enriched-events.ndjson  <span class="note">(local NVMe archive)</span>
+  +--&gt; stdout  <span class="note">(monitoring)</span>
+  +--&gt; upstream HTTP POST  <span class="note">(Expanso Cloud / customer API)</span>
+  |
+  v
+<span class="highlight">Dashboard Web Server</span>  <span class="note">(esc-server on port 8080)</span>
+  |
+  | FastAPI serving:
+  |   GET /              Dashboard UI
+  |   GET /api/state     Pipeline state (from state.json)
+  |   GET /api/snapshot  Live camera JPEG snapshots
+  |   GET /api/detections  YOLO-World box counts per camera
+  |   POST /api/reset    Reset counting session
+  |
+  v
+<span class="highlight">Browser</span>  <span class="note">(any device on LAN → http://&lt;jetson-ip&gt;:8080)</span></div>
+
+    <h2>Components</h2>
+
+    <div class="component">
+      <h3>Expanso Edge Agent</h3>
+      <p>Native binary on Jetson. Connects to Expanso Cloud, receives pipeline deployments, manages subprocess lifecycle.</p>
+      <span class="tag">systemd</span><span class="tag">expanso user</span><span class="tag">v2.1.12</span>
+    </div>
+
+    <div class="component">
+      <h3>expanso-security-camera (Python package)</h3>
+      <p>Versioned pip package managed by uv. Contains inference engine, event schemas, counting logic, dashboard server.</p>
+      <span class="tag">v0.1.0</span><span class="tag">pyproject.toml</span><span class="tag">uv managed</span>
+    </div>
+
+    <div class="component">
+      <h3>YOLO-World v2 (yolov8s-worldv2)</h3>
+      <p>Open-vocabulary object detection. Detects "cardboard box" directly without fine-tuning. Runs on Jetson GPU.</p>
+      <span class="tag">24.7MB</span><span class="tag">CLIP text encoder</span><span class="tag">open-vocabulary</span>
+    </div>
+
+    <div class="component">
+      <h3>Reolink RLC-810A Cameras (x2)</h3>
+      <p>4K PoE bullet cameras. RTSP streaming. Isolated on 192.168.2.x subnet, DHCP from Jetson.</p>
+      <span class="tag">4K main</span><span class="tag">720p sub</span><span class="tag">PoE powered</span>
+    </div>
+
+    <h2>Hardware</h2>
+    <div class="component">
+      <h3>Seeed reComputer J3011</h3>
+      <p>Jetson Orin Nano 8GB. 1024 CUDA cores, 32 Tensor Cores, 67 TOPS. 128GB NVMe SSD. JetPack R35.</p>
+      <span class="tag">$716</span><span class="tag">palm-sized</span><span class="tag">15W</span>
+    </div>
+
+    <div class="component">
+      <h3>Total System Cost</h3>
+      <p>reComputer ($716) + 2x cameras ($110) + PoE switch ($40) = <strong>$866</strong>. No server rack, no NVR, no per-camera licensing.</p>
+    </div>
+
+    <h2>Data Flow</h2>
+    <p>All events follow a single path: Camera &rarr; Inference (YOLO-World) &rarr; Expanso Edge enrichment &rarr; Archive + Upstream. The dashboard reads state produced by the pipeline. No data bypasses Expanso.</p>
+    <p>Events are schema-versioned (v1.0.0), self-describing, and mergeable across cameras and sites via session_id and site_id fields.</p>
+
+    <h2>Deployment</h2>
+    <p>Pipelines deploy from <strong>cloud.expanso.io</strong> to the edge node. The CLI command:</p>
+    <div class="diagram">expanso-cli job deploy jobs/security-camera-events-job.yaml</div>
+    <p>Expanso Cloud pushes the job to the Jetson. The agent starts the subprocess, monitors health, restarts on failure. Version updates are a new <code>job deploy</code>.</p>
+  </div>
+
+  <div class="footer">
+    Powered by <span class="expanso">Expanso Edge</span> &middot; Seeed reComputer J3011
+  </div>
+</body>
+</html>
