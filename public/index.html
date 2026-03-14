@@ -217,48 +217,32 @@
       </div>
     </header>
 
+    <!-- Inventory Banner -->
+    <div class="inventory-banner inventory-ok" id="inventory-banner">
+      <div class="inventory-title" id="inventory-title">Scanning cameras...</div>
+      <div class="inventory-counts" id="inventory-counts"></div>
+      <div class="inventory-baseline" id="inventory-baseline"></div>
+    </div>
+
     <div class="session-bar">
+      <span>BASELINE: <span id="baseline-count">—</span> boxes</span>
       <span>SESSION: <span id="session-id">—</span></span>
       <span>FPS: <span id="fps">0.0</span></span>
-      <span>MODE: <span id="detect-mode">BOX</span></span>
     </div>
 
-    <div class="cards">
-      <div class="card blue">
-        <div class="card-icon">📹</div>
-        <div class="card-label">Camera 1 &middot; Outside</div>
-        <div class="card-number blue" id="departures">0</div>
-        <div class="card-sub">Boxes Departed</div>
-      </div>
-      <div class="card green">
-        <div class="card-icon">📹</div>
-        <div class="card-label">Camera 2 &middot; Inside</div>
-        <div class="card-number green" id="arrivals">0</div>
-        <div class="card-sub">Boxes Arrived</div>
-      </div>
-      <div class="card match" id="recon-card">
-        <div class="glow"></div>
-        <div class="card-icon" id="recon-icon">✅</div>
-        <div class="card-label">Reconciliation</div>
-        <div class="recon-status" id="recon-status" style="color:var(--green)">ALL BOXES ACCOUNTED FOR</div>
-        <div class="recon-detail" id="recon-detail">0 departed · 0 arrived</div>
-        <div class="recon-detail" id="recon-first-detected" style="display:none"></div>
-      </div>
-    </div>
-
-    <!-- Camera feeds with count overlays -->
+    <!-- Camera feeds with live detection counts -->
     <div class="camera-feeds">
       <div class="camera-feed">
-        <span class="camera-feed-label">CAM-OUTSIDE &middot; Departures</span>
+        <span class="camera-feed-label">CAM-OUTSIDE &middot; Location A</span>
         <img id="feed-outside" alt="Camera 1">
-        <span class="camera-feed-count-label">Boxes Departed</span>
-        <span class="camera-feed-count" id="feed-count-outside" style="color: var(--blue);">0</span>
+        <span class="camera-feed-count-label">Boxes Detected</span>
+        <span class="camera-feed-count" id="feed-count-outside" style="color: var(--blue);">—</span>
       </div>
       <div class="camera-feed">
-        <span class="camera-feed-label">CAM-INSIDE &middot; Arrivals</span>
+        <span class="camera-feed-label">CAM-INSIDE &middot; Location B</span>
         <img id="feed-inside" alt="Camera 2">
-        <span class="camera-feed-count-label">Boxes Arrived</span>
-        <span class="camera-feed-count" id="feed-count-inside" style="color: var(--green);">0</span>
+        <span class="camera-feed-count-label">Boxes Detected</span>
+        <span class="camera-feed-count" id="feed-count-inside" style="color: var(--green);">—</span>
       </div>
     </div>
 
@@ -270,6 +254,7 @@
     </div>
 
     <div class="controls">
+      <button class="btn" id="baseline-btn">📐 Set Baseline</button>
       <button class="btn" id="reset-btn">🔄 New Session</button>
     </div>
 
@@ -349,68 +334,129 @@
       scroll.appendChild(frag);
     }
 
+    // ── Inventory tracking state ──
+    let baseline = null;  // set by "Set Baseline" button
+    let lastOutsideBoxes = 0;
+    let lastInsideBoxes = 0;
+
+    function updateInventoryBanner(outsideBoxes, insideBoxes) {
+      const banner = $('inventory-banner');
+      const title = $('inventory-title');
+      const counts = $('inventory-counts');
+      const baselineEl = $('inventory-baseline');
+
+      lastOutsideBoxes = outsideBoxes;
+      lastInsideBoxes = insideBoxes;
+      const total = outsideBoxes + insideBoxes;
+
+      // Update camera feed counts
+      $('feed-count-outside').textContent = String(outsideBoxes);
+      $('feed-count-inside').textContent = String(insideBoxes);
+      $('baseline-count').textContent = baseline !== null ? String(baseline) : '—';
+
+      counts.textContent = '';
+      const makeNum = (n, color) => {
+        const s = document.createElement('span');
+        s.className = 'num';
+        s.style.color = color;
+        s.textContent = String(n);
+        return s;
+      };
+
+      // Build counts line: "Location A: 8  +  Location B: 2  =  Total: 10"
+      counts.appendChild(document.createTextNode('Location A: '));
+      counts.appendChild(makeNum(outsideBoxes, 'var(--blue)'));
+      counts.appendChild(document.createTextNode('  +  Location B: '));
+      counts.appendChild(makeNum(insideBoxes, 'var(--green)'));
+      counts.appendChild(document.createTextNode('  =  Total: '));
+      counts.appendChild(makeNum(total, 'var(--text-primary)'));
+
+      if (baseline === null) {
+        banner.className = 'inventory-banner inventory-ok';
+        title.textContent = 'Counting boxes...';
+        title.style.color = 'var(--text-secondary)';
+        baselineEl.textContent = 'Press "Set Baseline" to lock the starting count';
+      } else if (total === baseline) {
+        banner.className = 'inventory-banner inventory-ok';
+        title.textContent = '\u2705 ALL ' + baseline + ' BOXES ACCOUNTED FOR';
+        title.style.color = 'var(--green)';
+        baselineEl.textContent = 'Baseline: ' + baseline + ' boxes';
+      } else if (total < baseline) {
+        const missing = baseline - total;
+        banner.className = 'inventory-banner inventory-short';
+        title.textContent = '\u26a0\ufe0f ' + missing + ' BOX' + (missing > 1 ? 'ES' : '') + ' MISSING';
+        title.style.color = 'var(--red)';
+        baselineEl.textContent = 'Baseline: ' + baseline + ' \u2014 Current: ' + total + ' \u2014 Missing: ' + missing;
+      } else {
+        banner.className = 'inventory-banner inventory-ok';
+        title.textContent = 'Total: ' + total + ' boxes (above baseline of ' + baseline + ')';
+        title.style.color = 'var(--text-secondary)';
+        baselineEl.textContent = 'Baseline: ' + baseline;
+      }
+    }
+
     function updateDashboard(state) {
-      const dep = state.camera_outside_departures || 0;
-      const arr = state.camera_inside_arrivals || 0;
-      const disc = state.discrepancy || 0;
-      const status = state.status || 'WAITING';
-
-      animateNumber('departures', dep);
-      animateNumber('arrivals', arr);
-      // Update counts on camera feeds
-      $('feed-count-outside').textContent = String(dep);
-      $('feed-count-inside').textContent = String(arr);
-
-      $('session-id').textContent = state.session_id || '—';
+      $('session-id').textContent = state.session_id || '\u2014';
       $('fps').textContent = (state.inference_fps || 0).toFixed(1);
-      $('detect-mode').textContent = (state.detect_mode || 'box').toUpperCase();
-      $('last-update').textContent = state.last_event_ts ? formatTime(state.last_event_ts) : 'Waiting for events...';
+      $('last-update').textContent = state.last_event_ts
+        ? formatTime(state.last_event_ts) : 'Waiting for events...';
 
       // Status badge
       const badge = $('status-badge');
+      badge.textContent = '';
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      badge.appendChild(dot);
       if (state.pipeline_status === 'running') {
         badge.className = 'badge';
-        badge.textContent = '';
-        const dot = document.createElement('span');
-        dot.className = 'dot';
-        badge.appendChild(dot);
         badge.appendChild(document.createTextNode(' LIVE'));
       } else {
         badge.className = 'badge offline';
-        badge.textContent = '';
-        const dot = document.createElement('span');
-        dot.className = 'dot';
-        badge.appendChild(dot);
         badge.appendChild(document.createTextNode(' OFFLINE'));
       }
 
-      // Reconciliation
-      const card = $('recon-card');
-      const reconStatus = $('recon-status');
-      const detail = $('recon-detail');
-      const firstDet = $('recon-first-detected');
-
-      if (status === 'MATCH' || disc === 0) {
-        card.className = 'card match';
-        $('recon-icon').textContent = '✅';
-        reconStatus.style.color = 'var(--green)';
-        reconStatus.textContent = 'ALL BOXES ACCOUNTED FOR';
-        detail.textContent = dep + ' departed \u00b7 ' + arr + ' arrived';
-        firstDet.style.display = 'none';
-      } else {
-        card.className = 'card alert';
-        $('recon-icon').textContent = '⚠️';
-        reconStatus.style.color = 'var(--red)';
-        const absd = Math.abs(disc);
-        reconStatus.textContent = absd + ' BOX' + (absd > 1 ? 'ES' : '') + ' UNACCOUNTED FOR';
-        detail.textContent = dep + ' departed \u00b7 ' + arr + ' arrived \u00b7 ' + absd + ' missing';
-        if (state.first_discrepancy_at) {
-          firstDet.textContent = 'First detected: ' + formatTime(state.first_discrepancy_at);
-          firstDet.style.display = 'block';
-        }
-      }
-
       renderEvents(state.recent_events);
+    }
+
+    // ── Detection polling (box counts per camera) ──
+    async function fetchDetections() {
+      try {
+        const res = await fetch('/api/detections');
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const outside = data['cam-outside'] || {};
+        const inside = data['cam-inside'] || {};
+
+        updateInventoryBanner(
+          outside.boxes || 0,
+          inside.boxes || 0
+        );
+
+        // Add detection events to event log
+        const scroll = $('event-scroll');
+        const empty = $('event-empty');
+        if (outside.boxes > 0 || inside.boxes > 0) {
+          empty.style.display = 'none';
+          const row = document.createElement('div');
+          row.className = 'event-row';
+          const ts = document.createElement('span');
+          ts.className = 'ev-time';
+          ts.textContent = new Date().toLocaleTimeString('en-US',
+            {hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true});
+          const det = document.createElement('span');
+          det.className = 'ev-camera';
+          det.textContent = 'detection';
+          const msg = document.createElement('span');
+          msg.style.color = 'var(--text-secondary)';
+          msg.textContent = 'A:' + (outside.boxes||0) + ' B:' + (inside.boxes||0) +
+            ' Total:' + ((outside.boxes||0) + (inside.boxes||0));
+          row.append(ts, det, msg);
+          scroll.insertBefore(row, scroll.firstChild);
+          // Keep max 30 rows
+          while (scroll.children.length > 30) scroll.removeChild(scroll.lastChild);
+        }
+      } catch { /* retry */ }
     }
 
     async function fetchState() {
@@ -420,14 +466,17 @@
       } catch { /* retry next tick */ }
     }
 
+    // Set Baseline button
+    $('baseline-btn').addEventListener('click', () => {
+      baseline = lastOutsideBoxes + lastInsideBoxes;
+      updateInventoryBanner(lastOutsideBoxes, lastInsideBoxes);
+    });
+
     $('reset-btn').addEventListener('click', async () => {
-      try {
-        await fetch('/api/reset', { method: 'POST' });
-        $('departures').textContent = '0';
-        $('arrivals').textContent = '0';
-        prevValues['departures'] = 0;
-        prevValues['arrivals'] = 0;
-      } catch (e) { console.error('Reset failed:', e); }
+      baseline = null;
+      try { await fetch('/api/reset', { method: 'POST' }); }
+      catch (e) { console.error('Reset failed:', e); }
+      updateInventoryBanner(0, 0);
     });
 
     // Camera snapshots — refresh every 2 seconds
@@ -441,8 +490,10 @@
 
     setInterval(fetchState, 1000);
     setInterval(refreshCameras, 2000);
+    setInterval(fetchDetections, 3000);
     fetchState();
     refreshCameras();
+    fetchDetections();
   </script>
 </body>
 </html>
