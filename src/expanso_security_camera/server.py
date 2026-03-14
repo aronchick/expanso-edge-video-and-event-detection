@@ -123,9 +123,10 @@ async def index() -> HTMLResponse:
     return HTMLResponse("<h1>Dashboard not found</h1>", status_code=404)
 
 
-# Serve static assets (JS, CSS, images)
+# Serve static assets (JS, CSS, images) at /static/
+# NOT at / which would intercept API routes
 if PUBLIC_DIR.exists():
-    app.mount("/", StaticFiles(directory=str(PUBLIC_DIR), html=True), name="static")
+    app.mount("/static", StaticFiles(directory=str(PUBLIC_DIR)), name="static")
 
 
 def main() -> None:
