@@ -256,6 +256,7 @@
     <div class="controls">
       <button class="btn" id="baseline-btn">📐 Set Baseline</button>
       <button class="btn" id="reset-btn">🔄 New Session</button>
+      <a href="/architecture" class="btn" style="text-decoration:none">📊 Architecture</a>
     </div>
 
     <div class="footer">
@@ -468,8 +469,20 @@
       } catch { /* retry next tick */ }
     }
 
-    // Set Baseline button
-    $('baseline-btn').addEventListener('click', () => {
+    // Set Baseline button — fetch fresh detections first
+    $('baseline-btn').addEventListener('click', async () => {
+      // Force a fresh detection scan before setting baseline
+      $('inventory-title').textContent = 'Scanning...';
+      try {
+        const res = await fetch('/api/detections');
+        if (res.ok) {
+          const data = await res.json();
+          const ob = (data['cam-outside'] || {}).boxes || 0;
+          const ib = (data['cam-inside'] || {}).boxes || 0;
+          lastOutsideBoxes = ob;
+          lastInsideBoxes = ib;
+        }
+      } catch { /* use cached values */ }
       baseline = lastOutsideBoxes + lastInsideBoxes;
       updateInventoryBanner(lastOutsideBoxes, lastInsideBoxes);
     });
