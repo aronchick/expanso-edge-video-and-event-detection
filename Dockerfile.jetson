@@ -1,7 +1,7 @@
 FROM dustynv/l4t-pytorch:r35.4.1
 
 # Install our dependencies
-# Don't install opencv — base image has CUDA-enabled OpenCV already
+# Install deps — then remove pip's opencv (conflicts with base image's CUDA OpenCV)
 RUN pip3 install --no-cache-dir \
     ultralytics \
     pydantic \
@@ -10,7 +10,8 @@ RUN pip3 install --no-cache-dir \
     uvicorn \
     lapx \
     eval_type_backport \
-    git+https://github.com/ultralytics/CLIP.git
+    git+https://github.com/ultralytics/CLIP.git \
+    && pip3 uninstall -y opencv-python opencv-python-headless 2>/dev/null; true
 
 # Install our package
 COPY . /app
