@@ -1,0 +1,86 @@
+# Job: Security Camera Box Counting Pipeline
+# Reads raw detection events from inference subprocess, enriches with
+# metadata, maps class names, adds lineage, and outputs to archive + stdout.
+#
+# Usage:
+#   expanso-cli job deploy jobs/security-camera-events-job.yaml
+#
+# Prerequisites:
+#   Inference engine running on edge node:
+#     uv run esc-infer config.yaml
+#   (writes CrossingEvents as NDJSON to stdout, captured by subprocess input)
+
+name: security-camera-events
+type: pipeline
+
+config:
+  input:
+    subprocess:
+      name: tail
+      args: ["-F", "/data/raw-events.ndjson"]
+      codec: lines
+      restart_on_exit: true
+
+  pipeline:
+    processors:
+      # Parse JSON
+      - mapping: |
+          root = this.parse_json()
+
+      # Schema validation — drop malformed events
+      - mapping: |
+          root = if this.schema_version == null {
+            deleted()
+          } else {
+            this
+          }
+
+      # Metadata enrichment
+      - mapping: |
+          root = this
+          root.source = {
+            "device_id": env("DEVICE_ID").or("recomputer-j3011-001"),
+            "site_id": env("SITE_ID").or("warehouse-demo"),
+            "camera_id": this.camera_id.or("unknown"),
+            "pipeline_version": "1.0.0"
+          }
+          root.enriched_at = now()
+
+      # Class name mapping
+      - mapping: |
+          let raw_class = this.detection.object_class_raw.or("")
+          let mapped = match $raw_class {
+            "suitcase" => "box",
+            "backpack" => "box",
+            "handbag" => "box",
+            "sports ball" => "box",
+            "bottle" => "box",
+            "cup" => "box",
+            "cardboard box" => "box",
+            "shipping box" => "box",
+            "package" => "box",
+            "person" => "person",
+            _ => "object"
+          }
+          root = this
+          root.detection.object_class = if this.detection != null { $mapped } else { "" }
+
+      # Lineage tracking
+      - mapping: |
+          root = this
+          root.lineage = {
+            "edge_node": env("EDGE_NODE_ID").or(env("HOSTNAME")).or("unknown"),
+            "pipeline": "security-camera-events",
+            "ingested_at": now().ts_format("2006-01-02T15:04:05.000Z")
+          }
+
+  output:
+    broker:
+      pattern: fan_out
+      outputs:
+        - file:
+            path: "/data/enriched-events.ndjson"
+            codec: lines
+
+        - stdout:
+            codec: lines
