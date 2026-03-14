@@ -15,8 +15,14 @@ type: pipeline
 config:
   input:
     subprocess:
-      name: /home/daaronch/security-cameras/scripts/run-inference.sh
-      args: []
+      name: /home/daaronch/.local/bin/uv
+      args:
+        - --directory
+        - /home/daaronch/security-cameras
+        - run
+        - --quiet
+        - esc-infer
+        - config.yaml
       codec: lines
       restart_on_exit: true
 
