@@ -1,10 +1,9 @@
 # Job: Security Camera Box Counting Pipeline
-# Runs the versioned inference package (expanso-security-camera) as a
-# subprocess. Expanso manages the lifecycle, restarts on failure.
+# Runs the versioned inference package from a git tag.
+# Expanso manages lifecycle, restarts on failure.
 #
-# The inference engine is a pip package installed via uv:
-#   pyproject.toml defines expanso-security-camera==0.1.0
-#   Entry point: esc-infer (runs RTSP → YOLO-World → crossing events)
+# Package: expanso-security-camera v0.1.0
+# Source: github.com/expanso-io/demos-security-cameras@v0.1.0
 #
 # Deploy:
 #   expanso-cli job deploy jobs/security-camera-events-job.yaml
@@ -15,22 +14,19 @@ type: pipeline
 config:
   input:
     subprocess:
-      name: /home/daaronch/.local/bin/uv
+      name: /home/daaronch/.local/bin/uvx
       args:
-        - --directory
-        - /home/daaronch/security-cameras
-        - run
         - --quiet
+        - --from
+        - "expanso-security-camera @ git+https://github.com/expanso-io/demos-security-cameras.git@v0.1.0"
         - esc-infer
-        - config.yaml
+        - /home/daaronch/security-cameras/config.yaml
       codec: lines
       restart_on_exit: true
 
   pipeline:
     processors:
-      # Parse JSON — drop any line that isn't valid JSON
-      # (inference writes log/banner text to stderr, but some
-      # may leak through; this silently drops non-JSON lines)
+      # Parse JSON — silently drop non-JSON lines
       - mapping: |
           root = this.parse_json().catch(deleted())
 

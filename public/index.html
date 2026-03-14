@@ -337,6 +337,7 @@
 
     // ── Inventory tracking state ──
     let baseline = null;  // set by "Set Baseline" button
+    let refreshCount = 0;
     let lastOutsideBoxes = 0;
     let lastInsideBoxes = 0;
 
@@ -485,8 +486,12 @@
       const ts = Date.now();
       const outside = $('feed-outside');
       const inside = $('feed-inside');
-      if (outside) outside.src = '/api/snapshot/cam-outside?annotate=true&t=' + ts;
-      if (inside) inside.src = '/api/snapshot/cam-inside?annotate=true&t=' + ts;
+      // Annotate every 4th refresh (~8 seconds), plain snapshot otherwise
+      const doAnnotate = (refreshCount % 4 === 0);
+      const ann = doAnnotate ? '&annotate=true' : '';
+      if (outside) outside.src = '/api/snapshot/cam-outside?t=' + ts + ann;
+      if (inside) inside.src = '/api/snapshot/cam-inside?t=' + ts + ann;
+      refreshCount++;
     }
 
     setInterval(fetchState, 1000);
