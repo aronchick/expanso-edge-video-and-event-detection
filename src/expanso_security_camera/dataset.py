@@ -205,7 +205,7 @@ def _call_gemini_for_boxes(image_path: str, expected_boxes: int) -> list[dict]:
 
     url = (
         f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"gemini-2.5-flash-preview-05-20:generateContent?key={api_key}"
+        f"gemini-2.0-flash:generateContent?key={api_key}"
     )
     req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
 
