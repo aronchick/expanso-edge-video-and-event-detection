@@ -243,16 +243,62 @@ def _call_gemini_for_boxes(image_path: str, expected_boxes: int) -> list[dict]:
         return []
 
 
-def label(sample_every: int = 1) -> None:
-    """Batch-label captured frames using Claude vision.
+def _label_one(img_path: Path) -> tuple[str, int, str | None]:
+    """Label a single image. Returns (stem, num_boxes, error_or_none)."""
+    frame = cv2.imread(str(img_path))
+    if frame is None:
+        return (img_path.stem, 0, "cannot read")
 
-    Sends every Nth frame to Claude CLI, asks it to identify bounding
-    boxes around the expected number of cardboard boxes. Skips already-
-    labeled frames. Uses OAuth login — no API key needed.
+    h, w = frame.shape[:2]
+
+    meta_path = META_DIR / f"{img_path.stem}.json"
+    expected = 8
+    if meta_path.exists():
+        meta = json.loads(meta_path.read_text())
+        expected = meta.get("expected_boxes", 8)
+
+    try:
+        dets = _call_gemini_for_boxes(str(img_path), expected)
+
+        lines = []
+        for d in dets:
+            x1, y1, x2, y2 = d["bbox"]
+            xc = (x1 + x2) / 2 / w
+            yc = (y1 + y2) / 2 / h
+            bw = (x2 - x1) / w
+            bh = (y2 - y1) / h
+            lines.append(f"0 {xc:.6f} {yc:.6f} {bw:.6f} {bh:.6f}")
+        (LABELS_DIR / f"{img_path.stem}.txt").write_text("\n".join(lines))
+
+        review = frame.copy()
+        for d in dets:
+            bx1, by1, bx2, by2 = map(int, d["bbox"])
+            cv2.rectangle(review, (bx1, by1), (bx2, by2), (0, 255, 0), 2)
+        cv2.putText(
+            review,
+            f"{len(dets)}/{expected} boxes [Gemini]",
+            (10, 25),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 255, 0),
+            2,
+        )
+        cv2.imwrite(str(REVIEW_DIR / f"{img_path.stem}.jpg"), review)
+        return (img_path.stem, len(dets), None)
+
+    except Exception as e:
+        return (img_path.stem, 0, str(e))
+
+
+def label(sample_every: int = 1, workers: int = 10) -> None:
+    """Batch-label captured frames using Gemini vision, parallelized.
 
     Args:
         sample_every: Label every Nth frame (1 = all, 5 = every 5th)
+        workers: Number of concurrent API requests (default 10)
     """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     images = sorted(IMAGES_DIR.glob("*.jpg"))
     if not images:
         print("No images found. Run 'capture' first.")
@@ -265,71 +311,36 @@ def label(sample_every: int = 1) -> None:
         print(f"All {len(images)} images already labeled. Nothing to do.")
         return
 
-    # Sample if requested
     to_label = to_label[::sample_every]
 
     for d in (LABELS_DIR, REVIEW_DIR):
         d.mkdir(parents=True, exist_ok=True)
 
-    print(f"Labeling {len(to_label)} images via Gemini Flash")
+    print(f"Labeling {len(to_label)} images via Gemini Flash ({workers} parallel workers)")
 
     labeled = 0
     errors = 0
-    for idx, img_path in enumerate(to_label):
-        frame = cv2.imread(str(img_path))
-        if frame is None:
-            continue
+    start = time.time()
 
-        h, w = frame.shape[:2]
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(_label_one, img): img for img in to_label}
+        for i, future in enumerate(as_completed(futures)):
+            stem, n_boxes, err = future.result()
+            if err:
+                errors += 1
+                if errors <= 5 or errors % 20 == 0:
+                    print(f"  ERROR {stem}: {err}")
+            else:
+                labeled += 1
 
-        meta_path = META_DIR / f"{img_path.stem}.json"
-        expected = 8
-        if meta_path.exists():
-            meta = json.loads(meta_path.read_text())
-            expected = meta.get("expected_boxes", 8)
+            done = labeled + errors
+            if done % 10 == 0 or done == len(to_label):
+                elapsed = time.time() - start
+                rate = done / elapsed if elapsed > 0 else 0
+                print(f"  [{done}/{len(to_label)}] {labeled} ok, {errors} err ({rate:.1f}/s)")
 
-        try:
-            dets = _call_gemini_for_boxes(str(img_path), expected)
-
-            # Write YOLO-format labels
-            lines = []
-            for d in dets:
-                x1, y1, x2, y2 = d["bbox"]
-                xc = (x1 + x2) / 2 / w
-                yc = (y1 + y2) / 2 / h
-                bw = (x2 - x1) / w
-                bh = (y2 - y1) / h
-                lines.append(f"0 {xc:.6f} {yc:.6f} {bw:.6f} {bh:.6f}")
-            (LABELS_DIR / f"{img_path.stem}.txt").write_text("\n".join(lines))
-
-            # Review image
-            review = frame.copy()
-            for d in dets:
-                bx1, by1, bx2, by2 = map(int, d["bbox"])
-                cv2.rectangle(review, (bx1, by1), (bx2, by2), (0, 255, 0), 2)
-            cv2.putText(
-                review,
-                f"{len(dets)}/{expected} boxes [Gemini]",
-                (10, 25),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (0, 255, 0),
-                2,
-            )
-            cv2.imwrite(str(REVIEW_DIR / f"{img_path.stem}.jpg"), review)
-
-            labeled += 1
-            if (idx + 1) % 5 == 0 or idx == 0:
-                print(f"  [{idx + 1}/{len(to_label)}] {img_path.stem}: {len(dets)} boxes")
-
-        except Exception as e:
-            errors += 1
-            print(f"  [{idx + 1}/{len(to_label)}] {img_path.stem}: ERROR {e}")
-
-        # Pace requests to avoid rate limits
-        time.sleep(2.0)
-
-    print(f"\nDone! {labeled} labeled, {errors} errors")
+    elapsed = time.time() - start
+    print(f"\nDone! {labeled} labeled, {errors} errors ({elapsed:.0f}s)")
     print(f"  Labels → {LABELS_DIR}/")
     print(f"  Review → {REVIEW_DIR}/")
 
