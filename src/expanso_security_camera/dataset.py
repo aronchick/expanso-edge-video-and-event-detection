@@ -209,8 +209,18 @@ def _call_gemini_for_boxes(image_path: str, expected_boxes: int) -> list[dict]:
     )
     req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
 
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
+    # Retry with backoff on rate limit
+    for attempt in range(5):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            break
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt < 4:
+                wait = 2 ** attempt  # 1, 2, 4, 8s
+                time.sleep(wait)
+                continue
+            raise
 
     text = data["candidates"][0]["content"]["parts"][0]["text"]
 
@@ -312,6 +322,9 @@ def label(sample_every: int = 1) -> None:
         except Exception as e:
             errors += 1
             print(f"  [{idx + 1}/{len(to_label)}] {img_path.stem}: ERROR {e}")
+
+        # Rate limit: ~10 requests/sec for free tier
+        time.sleep(0.3)
 
     print(f"\nDone! {labeled} labeled, {errors} errors")
     print(f"  Labels → {LABELS_DIR}/")
