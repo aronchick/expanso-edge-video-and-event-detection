@@ -15,7 +15,6 @@ Three-step workflow:
 
 from __future__ import annotations
 
-import base64
 import json
 import os
 import random
@@ -234,78 +233,21 @@ def _draw_numbered_candidates(frame, dets: list[dict]) -> np.ndarray:
     return img
 
 
-def _get_claude_auth_token() -> str | None:
-    """Read OAuth token from Claude Code's credentials file."""
-    creds_path = Path.home() / ".claude" / ".credentials.json"
-    if not creds_path.exists():
-        return None
-    try:
-        data = json.loads(creds_path.read_text())
-        return data.get("claudeAiOauth", {}).get("accessToken")
-    except (json.JSONDecodeError, OSError):
-        return None
+def _call_claude_cli(image_path: str, prompt: str) -> list[int]:
+    """Call Claude via CLI — uses OAuth login, no API key needed."""
+    import shutil
+    import subprocess
 
-
-def _call_anthropic(b64_image: str, prompt: str) -> list[int]:
-    import anthropic
-
-    # Use Claude Code OAuth token if no API key set
-    auth_token = None
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        auth_token = _get_claude_auth_token()
-        if not auth_token:
-            raise RuntimeError(
-                "No ANTHROPIC_API_KEY and no Claude Code OAuth token found. "
-                "Run 'claude login' or set ANTHROPIC_API_KEY."
-            )
-
-    client = anthropic.Anthropic(
-        **({"auth_token": auth_token} if auth_token else {}),
+    claude_bin = shutil.which("claude") or str(Path.home() / ".local" / "bin" / "claude")
+    result = subprocess.run(
+        [claude_bin, "-p", prompt, image_path, "--output-format", "text"],
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=256,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "image/jpeg",
-                            "data": b64_image,
-                        },
-                    },
-                    {"type": "text", "text": prompt},
-                ],
-            }
-        ],
-    )
-    return _parse_indices(response.content[0].text)
-
-
-def _call_openai(b64_image: str, prompt: str) -> list[int]:
-    import openai
-
-    client = openai.OpenAI()
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        max_tokens=256,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{b64_image}"},
-                    },
-                    {"type": "text", "text": prompt},
-                ],
-            }
-        ],
-    )
-    return _parse_indices(response.choices[0].message.content)
+    if result.returncode != 0:
+        raise RuntimeError(f"claude CLI failed: {result.stderr.strip()}")
+    return _parse_indices(result.stdout)
 
 
 def _parse_indices(text: str) -> list[int]:
@@ -323,15 +265,15 @@ def _parse_indices(text: str) -> list[int]:
 
 def validate(
     sample_every: int = 10,
-    provider: str = "anthropic",
 ) -> None:
-    """Offline validation: send sampled frames to Claude/OpenAI.
+    """Offline validation: send sampled frames to Claude CLI.
 
-    For every Nth image, sends the frame with ALL YOLO candidates
-    (not just top-N) to the vision LLM and asks which are real boxes.
+    For every Nth image, draws all YOLO candidates on the frame,
+    sends to `claude -p` (uses OAuth login), asks which are real boxes.
     Rewrites the label file with the validated detections.
-    Non-sampled frames keep their YOLO top-N labels.
     """
+    import tempfile
+
     images = sorted(IMAGES_DIR.glob("*.jpg"))
     metas = sorted(META_DIR.glob("*.json"))
 
@@ -343,7 +285,7 @@ def validate(
     paired = [(img, META_DIR / f"{img.stem}.json") for img in images if img.stem in meta_stems]
 
     to_validate = paired[::sample_every]
-    print(f"Validating {len(to_validate)} of {len(paired)} frames with {provider}")
+    print(f"Validating {len(to_validate)} of {len(paired)} frames via claude CLI")
     print()
 
     validated = 0
@@ -363,10 +305,13 @@ def validate(
 
         h, w = frame.shape[:2]
 
-        # Draw all candidates numbered for LLM
+        # Draw all candidates numbered
         annotated = _draw_numbered_candidates(frame, all_candidates)
-        jpg_bytes = _encode_frame_jpeg(annotated, quality=80)
-        b64 = base64.b64encode(jpg_bytes).decode("utf-8")
+
+        # Write to temp file for claude CLI
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+            tmp_path = f.name
+            cv2.imwrite(tmp_path, annotated, [cv2.IMWRITE_JPEG_QUALITY, 80])
 
         n = len(all_candidates)
         prompt = (
@@ -378,11 +323,7 @@ def validate(
         )
 
         try:
-            if provider == "anthropic":
-                valid_indices = _call_anthropic(b64, prompt)
-            else:
-                valid_indices = _call_openai(b64, prompt)
-
+            valid_indices = _call_claude_cli(tmp_path, prompt)
             dets = [all_candidates[j] for j in valid_indices if j < len(all_candidates)]
 
             # Rewrite label file
@@ -403,7 +344,7 @@ def validate(
                 cv2.rectangle(review, (bx1, by1), (bx2, by2), (0, 255, 0), 2)
             cv2.putText(
                 review,
-                f"{len(dets)}/{expected} boxes [LLM]",
+                f"{len(dets)}/{expected} boxes [Claude]",
                 (10, 25),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.7,
@@ -421,9 +362,11 @@ def validate(
         except Exception as e:
             errors += 1
             print(f"  [{idx + 1}/{len(to_validate)}] {img_path.stem}: ERROR {e}")
+        finally:
+            os.unlink(tmp_path)
 
     print(f"\nDone! {validated} validated, {errors} errors")
-    print(f"  Green boxes in {REVIEW_DIR}/ = LLM-validated")
+    print(f"  Green boxes in {REVIEW_DIR}/ = Claude-validated")
     print("  Orange boxes = YOLO-only (not sampled)")
 
 
@@ -504,7 +447,7 @@ def main() -> None:
         print()
         print("Validate options:")
         print("  --sample-every N   Validate every Nth frame (default: 10)")
-        print("  --provider X       anthropic or openai (default: anthropic)")
+        print("  --sample-every N   Validate every Nth frame (default: 10)")
         sys.exit(1)
 
     cmd = sys.argv[1]
@@ -523,7 +466,6 @@ def main() -> None:
     elif cmd == "validate":
         validate(
             sample_every=_parse_arg("--sample-every", 10, int),
-            provider=_parse_arg("--provider", "anthropic", str),
         )
 
     elif cmd == "export":
