@@ -1,18 +1,13 @@
 """Dataset builder for fine-tuning YOLO on your actual camera images.
 
-Three-step workflow:
-1. CAPTURE:  Grab frames from cameras at intervals
-2. LABEL:    Auto-label with YOLO-World, save in YOLO format for correction
-3. EXPORT:   Generate YOLO-format dataset ready for fine-tuning
-
-Run with:
-    uv run esc-dataset capture config.yaml          # grab 50 frames per camera
-    uv run esc-dataset capture config.yaml --count 200  # grab 200 frames
-    uv run esc-dataset label                        # auto-label with YOLO-World
-    uv run esc-dataset export                       # create train/val split
-
-After step 2, manually review labels in dataset/labels/ and fix any that are
-wrong. Then run step 3 to create the final dataset.
+Primary workflow — known-count capture:
+    # 8 boxes in frame, capture 2 min at 5fps on cam-inside
+    uv run esc-dataset collect config.yaml --boxes 8 --camera cam-inside
+    # Remove a box, repeat
+    uv run esc-dataset collect config.yaml --boxes 7 --camera cam-inside
+    # ... down to 1, then:
+    uv run esc-dataset export
+    uv run esc-finetune dataset/yolo_dataset/data.yaml
 """
 
 from __future__ import annotations
@@ -30,130 +25,155 @@ import numpy as np
 DATASET_DIR = Path("dataset")
 IMAGES_DIR = DATASET_DIR / "images"
 LABELS_DIR = DATASET_DIR / "labels"
-REVIEW_DIR = DATASET_DIR / "review"  # Annotated images for visual review
+REVIEW_DIR = DATASET_DIR / "review"
 
-# Single class for fine-tuning: 0 = box
 CLASS_NAMES = ["box"]
 
-
-def capture_frames(config_path: str, count: int = 50, interval: float = 2.0) -> None:
-    """Capture frames from cameras at regular intervals."""
-    from expanso_security_camera.config import DemoConfig
-
-    config = DemoConfig.from_yaml(config_path)
-    IMAGES_DIR.mkdir(parents=True, exist_ok=True)
-
-    print(f"Capturing {count} frames per camera (interval={interval}s)")
-    print(f"Output → {IMAGES_DIR}/")
-
-    for cam in config.cameras:
-        print(f"\nCamera: {cam.camera_id} ({cam.url})")
-        cap = cv2.VideoCapture(cam.url)
-        if not cap.isOpened():
-            print("  FAILED: Cannot connect")
-            continue
-
-        # Flush buffer
-        for _ in range(5):
-            cap.read()
-
-        captured = 0
-        for i in range(count):
-            ret, frame = cap.read()
-            if not ret:
-                # Try reconnecting
-                cap.release()
-                time.sleep(1)
-                cap = cv2.VideoCapture(cam.url)
-                if not cap.isOpened():
-                    print(f"  Lost connection at frame {i}")
-                    break
-                continue
-
-            fname = f"{cam.camera_id}_{i:04d}.jpg"
-            cv2.imwrite(str(IMAGES_DIR / fname), frame)
-            captured += 1
-
-            if (i + 1) % 10 == 0:
-                print(f"  {i + 1}/{count} frames captured")
-
-            time.sleep(interval)
-
-        cap.release()
-        print(f"  Captured {captured} frames for {cam.camera_id}")
-
-    total = len(list(IMAGES_DIR.glob("*.jpg")))
-    print(f"\nTotal frames captured: {total}")
-    print("Next step: uv run esc-dataset label")
+BOX_CLASSES = [
+    "cardboard box",
+    "shipping box",
+    "package",
+    "carton",
+    "box",
+    "parcel",
+    "crate",
+    "container",
+    "brown box",
+    "sealed box",
+    "stacked boxes",
+    "rectangular object",
+    "delivery package",
+    "moving box",
+]
 
 
-def auto_label(conf: float = 0.08, imgsz: int = 640) -> None:
-    """Auto-label captured images using YOLO-World.
+def collect(
+    config_path: str,
+    expected_boxes: int,
+    camera_id: str = "cam-inside",
+    duration: int = 120,
+    fps: float = 5.0,
+    conf: float = 0.03,
+) -> None:
+    """Capture frames and auto-label with known box count.
 
-    Generates YOLO-format .txt files alongside each image.
-    Also creates annotated review images for visual verification.
+    There are always exactly `expected_boxes` boxes in the frame. YOLO-World
+    runs at very low confidence to find all candidates. We take the top N
+    detections by confidence as labels. Frames where YOLO finds fewer than
+    N are kept too — we just use what it found (the model will learn from
+    the partial labels). Frames where detections are clearly garbage
+    (zero detections, or huge bbox covering >50% of frame) are discarded.
+
+    Args:
+        config_path: Path to config.yaml
+        expected_boxes: Known number of boxes in the scene
+        camera_id: Which camera to capture from
+        duration: Capture duration in seconds
+        fps: Frames per second to capture
+        conf: YOLO confidence threshold (very low to catch everything)
     """
     from ultralytics import YOLO
 
+    from expanso_security_camera.config import DemoConfig
+
     os.environ["YOLO_VERBOSE"] = "false"
+    config = DemoConfig.from_yaml(config_path)
 
-    images = sorted(IMAGES_DIR.glob("*.jpg"))
-    if not images:
-        print(f"No images found in {IMAGES_DIR}/. Run 'capture' first.")
-        return
+    # Find the camera URL
+    cam_url = None
+    for cam in config.cameras:
+        if cam.camera_id == camera_id:
+            cam_url = cam.url
+            break
+    if cam_url is None:
+        print(f"Camera '{camera_id}' not found in config. Available:")
+        for cam in config.cameras:
+            print(f"  {cam.camera_id}")
+        sys.exit(1)
 
-    print(f"Auto-labeling {len(images)} images with YOLO-World...")
-    print(f"  Confidence threshold: {conf}")
-    print(f"  Image size: {imgsz}")
-
+    IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     LABELS_DIR.mkdir(parents=True, exist_ok=True)
     REVIEW_DIR.mkdir(parents=True, exist_ok=True)
 
     model = YOLO("yolov8s-worldv2.pt")
-    model.set_classes(
-        [
-            "cardboard box",
-            "shipping box",
-            "package",
-            "carton",
-            "box",
-            "parcel",
-            "crate",
-            "container",
-            "brown box",
-            "sealed box",
-            "stacked boxes",
-            "rectangular object",
-            "delivery package",
-            "moving box",
-        ]
-    )
+    model.set_classes(BOX_CLASSES)
 
-    stats = {"total_images": 0, "total_boxes": 0, "images_with_boxes": 0}
+    interval = 1.0 / fps
+    total_frames = int(duration * fps)
 
-    for img_path in images:
-        frame = cv2.imread(str(img_path))
-        if frame is None:
+    print(f"Collecting {camera_id}: {expected_boxes} boxes")
+    print(f"  {total_frames} frames over {duration}s ({fps} fps)")
+    print(f"  YOLO conf={conf} (low — we pick top {expected_boxes} by confidence)")
+    print()
+
+    # Connect to camera with persistent connection
+    cap = cv2.VideoCapture(cam_url)
+    if not cap.isOpened():
+        print(f"Cannot connect to {camera_id}")
+        sys.exit(1)
+
+    # Flush stale buffer
+    for _ in range(5):
+        cap.read()
+
+    kept = 0
+    discarded = 0
+    existing = len(list(IMAGES_DIR.glob("*.jpg")))
+    frame_idx = existing  # Continue numbering from previous runs
+
+    start = time.time()
+    for i in range(total_frames):
+        frame_start = time.time()
+
+        ret, frame = cap.read()
+        if not ret:
+            # Reconnect
+            cap.release()
+            time.sleep(0.5)
+            cap = cv2.VideoCapture(cam_url)
+            if not cap.isOpened():
+                print(f"  Lost connection at frame {i}")
+                break
             continue
 
         h, w = frame.shape[:2]
-        stats["total_images"] += 1
+        frame_area = h * w
 
-        # Run detection at multiple scales and merge
-        all_dets = []
-        for sz in (imgsz, imgsz + 320):
-            results = model(frame, verbose=False, conf=conf, imgsz=sz, iou=0.3)
-            if results and results[0].boxes is not None:
-                for box in results[0].boxes:
-                    x1, y1, x2, y2 = map(float, box.xyxy[0].tolist())
-                    c = float(box.conf[0])
-                    all_dets.append({"bbox": [x1, y1, x2, y2], "conf": c})
+        # Run YOLO at very low confidence to get all candidates
+        results = model(frame, verbose=False, conf=conf, imgsz=640, iou=0.5)
+        raw_dets = []
+        if results and results[0].boxes is not None:
+            for box in results[0].boxes:
+                x1, y1, x2, y2 = map(float, box.xyxy[0].tolist())
+                c = float(box.conf[0])
+                bbox_area = (x2 - x1) * (y2 - y1)
+                # Skip garbage: bbox covering >40% of frame
+                if bbox_area > frame_area * 0.4:
+                    continue
+                # Skip tiny noise: bbox < 0.5% of frame
+                if bbox_area < frame_area * 0.005:
+                    continue
+                raw_dets.append({"bbox": [x1, y1, x2, y2], "conf": c})
 
-        # NMS merge
-        dets = _nms_merge_simple(all_dets, iou_threshold=0.4)
+        # Discard frame if zero detections
+        if len(raw_dets) == 0:
+            discarded += 1
+            if i % 50 == 0:
+                print(f"  [{i}/{total_frames}] 0 detections — skip")
+            elapsed = time.time() - frame_start
+            if elapsed < interval:
+                time.sleep(interval - elapsed)
+            continue
 
-        # Write YOLO-format label (class x_center y_center width height — normalized)
-        label_path = LABELS_DIR / img_path.with_suffix(".txt").name
+        # Take top N by confidence (N = expected_boxes)
+        raw_dets.sort(key=lambda d: d["conf"], reverse=True)
+        dets = raw_dets[:expected_boxes]
+
+        # Save image
+        fname = f"{camera_id}_{frame_idx:05d}"
+        cv2.imwrite(str(IMAGES_DIR / f"{fname}.jpg"), frame)
+
+        # Write YOLO-format labels
         lines = []
         for d in dets:
             x1, y1, x2, y2 = d["bbox"]
@@ -162,48 +182,53 @@ def auto_label(conf: float = 0.08, imgsz: int = 640) -> None:
             bw = (x2 - x1) / w
             bh = (y2 - y1) / h
             lines.append(f"0 {xc:.6f} {yc:.6f} {bw:.6f} {bh:.6f}")
+        (LABELS_DIR / f"{fname}.txt").write_text("\n".join(lines))
 
-        label_path.write_text("\n".join(lines))
-
-        if dets:
-            stats["images_with_boxes"] += 1
-            stats["total_boxes"] += len(dets)
-
-        # Draw review image
-        review_img = frame.copy()
-        for i, d in enumerate(dets):
-            x1, y1, x2, y2 = map(int, d["bbox"])
-            cv2.rectangle(review_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        # Save review image
+        review = frame.copy()
+        for d in dets:
+            bx1, by1, bx2, by2 = map(int, d["bbox"])
+            cv2.rectangle(review, (bx1, by1), (bx2, by2), (0, 255, 0), 2)
             cv2.putText(
-                review_img,
-                f"box {d['conf']:.2f}",
-                (x1, y1 - 5),
+                review,
+                f"{d['conf']:.2f}",
+                (bx1, by1 - 4),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
+                0.4,
                 (0, 255, 0),
                 1,
             )
         cv2.putText(
-            review_img,
-            f"{len(dets)} boxes",
-            (10, 30),
+            review,
+            f"{len(dets)}/{expected_boxes} boxes (frame {frame_idx})",
+            (10, 25),
             cv2.FONT_HERSHEY_SIMPLEX,
-            1.0,
+            0.7,
             (0, 255, 255),
             2,
         )
-        cv2.imwrite(str(REVIEW_DIR / img_path.name), review_img)
+        cv2.imwrite(str(REVIEW_DIR / f"{fname}.jpg"), review)
 
-    print("\nLabeling complete:")
-    print(f"  Images: {stats['total_images']}")
-    print(f"  Images with boxes: {stats['images_with_boxes']}")
-    print(f"  Total boxes labeled: {stats['total_boxes']}")
+        kept += 1
+        frame_idx += 1
+
+        if (i + 1) % 50 == 0:
+            found = len(raw_dets)
+            used = len(dets)
+            print(f"  [{i + 1}/{total_frames}] found={found} used={used} kept={kept}")
+
+        elapsed = time.time() - frame_start
+        if elapsed < interval:
+            time.sleep(interval - elapsed)
+
+    cap.release()
+    total_time = time.time() - start
+
+    print(f"\nDone! {kept} frames kept, {discarded} discarded ({total_time:.0f}s)")
+    print(f"  Total dataset: {len(list(IMAGES_DIR.glob('*.jpg')))} images")
+    print(f"  Images → {IMAGES_DIR}/")
     print(f"  Labels → {LABELS_DIR}/")
-    print(f"  Review images → {REVIEW_DIR}/")
-    print(f"\n*** IMPORTANT: Review the images in {REVIEW_DIR}/ ***")
-    print(f"*** Fix any wrong labels in {LABELS_DIR}/ before exporting ***")
-    print("*** Each .txt file has one line per box: class x_center y_center w h ***")
-    print("\nNext step: uv run esc-dataset export")
+    print(f"  Review → {REVIEW_DIR}/")
 
 
 def _nms_merge_simple(dets: list[dict], iou_threshold: float = 0.4) -> list[dict]:
@@ -227,157 +252,15 @@ def _nms_merge_simple(dets: list[dict], iou_threshold: float = 0.4) -> list[dict
     return [dets[i] for i in indices.flatten()]
 
 
-def auto_label_known_count(
-    config_path: str,
-    expected_boxes: int = 8,
-    duration: int = 300,
-    interval: float = 3.0,
-    conf: float = 0.05,
-    tolerance: int = 0,
-) -> None:
-    """Auto-label by capturing frames where YOLO finds exactly N boxes.
-
-    You set up a known number of boxes, move them around over the duration,
-    and this captures frames continuously. Only frames where YOLO detects
-    exactly expected_boxes (± tolerance) are kept as training data.
-
-    No manual bounding box labeling needed — YOLO-World provides the boxes,
-    the known count validates them.
-    """
-    from ultralytics import YOLO
-
-    from expanso_security_camera.config import DemoConfig
-
-    os.environ["YOLO_VERBOSE"] = "false"
-    config = DemoConfig.from_yaml(config_path)
-
-    IMAGES_DIR.mkdir(parents=True, exist_ok=True)
-    LABELS_DIR.mkdir(parents=True, exist_ok=True)
-    REVIEW_DIR.mkdir(parents=True, exist_ok=True)
-
-    model = YOLO("yolov8s-worldv2.pt")
-    model.set_classes(
-        [
-            "cardboard box",
-            "shipping box",
-            "package",
-            "carton",
-            "box",
-            "parcel",
-            "crate",
-            "container",
-            "brown box",
-            "sealed box",
-            "stacked boxes",
-            "rectangular object",
-            "delivery package",
-            "moving box",
-        ]
-    )
-
-    lo = expected_boxes - tolerance
-    hi = expected_boxes + tolerance
-
-    print(f"Auto-label: expecting {expected_boxes} boxes (accepting {lo}-{hi})")
-    print(f"Duration: {duration}s, interval: {interval}s, conf: {conf}")
-    print("Move boxes around while this runs!\n")
-
-    kept = 0
-    discarded = 0
-    start = time.time()
-    frame_idx = 0
-
-    while time.time() - start < duration:
-        for cam in config.cameras:
-            cap = cv2.VideoCapture(cam.url)
-            for _ in range(3):
-                cap.read()
-            ret, frame = cap.read()
-            cap.release()
-            if not ret:
-                continue
-
-            h, w = frame.shape[:2]
-
-            # Run detection at low conf to find all candidates
-            results = model(frame, verbose=False, conf=conf, imgsz=640, iou=0.5)
-            dets = []
-            if results and results[0].boxes is not None:
-                for box in results[0].boxes:
-                    x1, y1, x2, y2 = map(float, box.xyxy[0].tolist())
-                    c = float(box.conf[0])
-                    dets.append({"bbox": [x1, y1, x2, y2], "conf": c})
-
-            n = len(dets)
-            elapsed = int(time.time() - start)
-
-            if lo <= n <= hi:
-                # Good frame — save image + labels
-                fname = f"{cam.camera_id}_{frame_idx:04d}"
-                cv2.imwrite(str(IMAGES_DIR / f"{fname}.jpg"), frame)
-
-                # Write YOLO-format labels
-                lines = []
-                for d in dets:
-                    x1, y1, x2, y2 = d["bbox"]
-                    xc = (x1 + x2) / 2 / w
-                    yc = (y1 + y2) / 2 / h
-                    bw = (x2 - x1) / w
-                    bh = (y2 - y1) / h
-                    lines.append(f"0 {xc:.6f} {yc:.6f} {bw:.6f} {bh:.6f}")
-                (LABELS_DIR / f"{fname}.txt").write_text("\n".join(lines))
-
-                # Save review image
-                review = frame.copy()
-                for d in dets:
-                    bx1, by1, bx2, by2 = map(int, d["bbox"])
-                    cv2.rectangle(review, (bx1, by1), (bx2, by2), (0, 255, 0), 2)
-                cv2.putText(
-                    review,
-                    f"{n} boxes (KEPT)",
-                    (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.8,
-                    (0, 255, 0),
-                    2,
-                )
-                cv2.imwrite(str(REVIEW_DIR / f"{fname}.jpg"), review)
-
-                kept += 1
-                print(f"  [{elapsed}s] {cam.camera_id}: {n} boxes → KEPT ({kept} total)")
-            else:
-                discarded += 1
-                if discarded % 5 == 0:
-                    print(f"  [{elapsed}s] {cam.camera_id}: {n} boxes → skip (need {lo}-{hi})")
-
-            frame_idx += 1
-
-        time.sleep(interval)
-
-    print(f"\nDone! {kept} frames kept, {discarded} discarded")
-    print(f"  Images → {IMAGES_DIR}/")
-    print(f"  Labels → {LABELS_DIR}/")
-    print(f"  Review → {REVIEW_DIR}/")
-    if kept > 0:
-        print("\nNext step: uv run esc-dataset export")
-        print("Then:      uv run esc-finetune dataset/yolo_dataset/data.yaml")
-    else:
-        print("\nNo frames matched. Try:")
-        print("  - Lower --conf (currently {})".format(conf))
-        print("  - Add --tolerance 1 to accept ±1 box")
-        print("  - Better lighting")
-
-
 def export_dataset(val_split: float = 0.2) -> None:
     """Create YOLO-format dataset with train/val split."""
     images = sorted(IMAGES_DIR.glob("*.jpg"))
     labels = sorted(LABELS_DIR.glob("*.txt"))
 
     if not images:
-        print("No images found. Run 'capture' and 'label' first.")
+        print("No images found. Run 'collect' first.")
         return
 
-    # Match images to labels
     label_stems = {lbl.stem for lbl in labels}
     paired = [(img, LABELS_DIR / f"{img.stem}.txt") for img in images if img.stem in label_stems]
 
@@ -387,13 +270,11 @@ def export_dataset(val_split: float = 0.2) -> None:
 
     print(f"Found {len(paired)} image/label pairs")
 
-    # Shuffle and split
     random.shuffle(paired)
     split_idx = int(len(paired) * (1 - val_split))
     train_pairs = paired[:split_idx]
     val_pairs = paired[split_idx:]
 
-    # Create output structure
     out_dir = DATASET_DIR / "yolo_dataset"
     for split in ("train", "val"):
         (out_dir / split / "images").mkdir(parents=True, exist_ok=True)
@@ -404,7 +285,6 @@ def export_dataset(val_split: float = 0.2) -> None:
             shutil.copy2(img_path, out_dir / split / "images" / img_path.name)
             shutil.copy2(lbl_path, out_dir / split / "labels" / lbl_path.name)
 
-    # Write data.yaml for YOLO training
     data_yaml = out_dir / "data.yaml"
     data_yaml.write_text(
         f"path: {out_dir.resolve()}\n"
@@ -434,37 +314,36 @@ def main() -> None:
     """Entry point for esc-dataset command."""
     if len(sys.argv) < 2:
         print("Usage:")
-        print("  uv run esc-dataset auto-label config.yaml --boxes 8")
-        print("  uv run esc-dataset capture config.yaml [--count 50]")
-        print("  uv run esc-dataset label [--conf 0.08]")
+        print("  uv run esc-dataset collect config.yaml --boxes 8 [--camera cam-inside]")
         print("  uv run esc-dataset export [--val-split 0.2]")
+        print()
+        print("Collect workflow (repeat for 8, 7, 6, ... 1 boxes):")
+        print("  1. Set up N boxes in front of camera")
+        print("  2. uv run esc-dataset collect config.yaml --boxes N")
+        print("  3. Remove a box, repeat")
+        print("  4. uv run esc-dataset export")
+        print("  5. uv run esc-finetune dataset/yolo_dataset/data.yaml")
         sys.exit(1)
 
     cmd = sys.argv[1]
 
-    if cmd == "auto-label":
+    if cmd == "collect":
         config_path = sys.argv[2] if len(sys.argv) > 2 else "config.yaml"
-        auto_label_known_count(
+        collect(
             config_path=config_path,
             expected_boxes=_parse_arg("--boxes", 8, int),
-            duration=_parse_arg("--duration", 300, int),
-            interval=_parse_arg("--interval", 3.0, float),
-            conf=_parse_arg("--conf", 0.05, float),
-            tolerance=_parse_arg("--tolerance", 0, int),
+            camera_id=_parse_arg("--camera", "cam-inside", str),
+            duration=_parse_arg("--duration", 120, int),
+            fps=_parse_arg("--fps", 5.0, float),
+            conf=_parse_arg("--conf", 0.03, float),
         )
-
-    elif cmd == "capture":
-        config_path = sys.argv[2] if len(sys.argv) > 2 else "config.yaml"
-        capture_frames(config_path, count=_parse_arg("--count", 50, int))
-
-    elif cmd == "label":
-        auto_label(conf=_parse_arg("--conf", 0.08, float))
 
     elif cmd == "export":
         export_dataset(val_split=_parse_arg("--val-split", 0.2, float))
 
     else:
         print(f"Unknown command: {cmd}")
+        print("Available: collect, export")
         sys.exit(1)
 
 
