@@ -116,7 +116,7 @@ def _detect_boxes(frame) -> list[dict]:
     """
     model = _load_detection_model()
     is_finetuned = Path("box-detector-finetuned.pt").exists()
-    conf = 0.15 if is_finetuned else 0.08
+    conf = 0.15 if is_finetuned else 0.02
 
     # Enhance dark frames before detection
     enhanced = _enhance_low_light(frame)
