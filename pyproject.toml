@@ -13,6 +13,8 @@ dependencies = [
     "uvicorn>=0.27.0",
     "lapx>=0.5.0",
     "clip @ git+https://github.com/ultralytics/CLIP.git",
+    "anthropic>=0.40.0",
+    "openai>=1.50.0",
 ]
 
 [project.scripts]

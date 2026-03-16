@@ -1,17 +1,20 @@
 """Dataset builder for fine-tuning YOLO on your actual camera images.
 
-Primary workflow — known-count capture:
-    # 8 boxes in frame, capture 2 min at 5fps on cam-inside
-    uv run esc-dataset collect config.yaml --boxes 8 --camera cam-inside
-    # Remove a box, repeat
-    uv run esc-dataset collect config.yaml --boxes 7 --camera cam-inside
-    # ... down to 1, then:
+Uses YOLO-World for candidate bounding boxes + Claude/OpenAI vision to
+validate which candidates are real boxes. YOLO is great at spatial coords,
+vision LLMs are great at understanding what's actually a box.
+
+Workflow:
+    uv run esc-dataset collect config.yaml --boxes 8
+    # remove a box, repeat for 7, 6, ... 1
     uv run esc-dataset export
     uv run esc-finetune dataset/yolo_dataset/data.yaml
 """
 
 from __future__ import annotations
 
+import base64
+import json
 import os
 import random
 import shutil
@@ -47,6 +50,125 @@ BOX_CLASSES = [
 ]
 
 
+def _encode_frame_jpeg(frame, quality: int = 70) -> bytes:
+    """Encode frame as JPEG bytes."""
+    _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
+    return buf.tobytes()
+
+
+def _draw_numbered_candidates(frame, dets: list[dict]) -> np.ndarray:
+    """Draw numbered candidate boxes on frame for LLM validation."""
+    img = frame.copy()
+    for i, d in enumerate(dets):
+        x1, y1, x2, y2 = map(int, d["bbox"])
+        color = (0, 255, 0)
+        cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
+        label = f"#{i + 1}"
+        cv2.putText(img, label, (x1 + 2, y1 + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 3)
+        cv2.putText(img, label, (x1 + 2, y1 + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+    return img
+
+
+def _validate_with_llm(
+    frame,
+    dets: list[dict],
+    expected_boxes: int,
+    provider: str = "anthropic",
+) -> list[int]:
+    """Send annotated frame to vision LLM, get back which candidates are real boxes.
+
+    Returns list of 0-based indices of valid detections.
+    """
+    annotated = _draw_numbered_candidates(frame, dets)
+    jpg_bytes = _encode_frame_jpeg(annotated, quality=80)
+    b64 = base64.b64encode(jpg_bytes).decode("utf-8")
+
+    n = len(dets)
+    prompt = (
+        f"This security camera image shows a scene with exactly {expected_boxes} "
+        f"cardboard boxes (some may be partially occluded). "
+        f"I've drawn {n} numbered candidate bounding boxes (#1 through #{n}). "
+        f"Which candidates are correctly placed on real cardboard boxes? "
+        f"Return ONLY a JSON array of the candidate numbers that are real boxes. "
+        f"Example: [1, 3, 5, 7]. No explanation, just the JSON array."
+    )
+
+    if provider == "anthropic":
+        return _call_anthropic(b64, prompt)
+    elif provider == "openai":
+        return _call_openai(b64, prompt)
+    else:
+        raise ValueError(f"Unknown provider: {provider}")
+
+
+def _call_anthropic(b64_image: str, prompt: str) -> list[int]:
+    """Call Claude vision API."""
+    import anthropic
+
+    client = anthropic.Anthropic()
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=256,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/jpeg",
+                            "data": b64_image,
+                        },
+                    },
+                    {"type": "text", "text": prompt},
+                ],
+            }
+        ],
+    )
+    return _parse_indices(response.content[0].text)
+
+
+def _call_openai(b64_image: str, prompt: str) -> list[int]:
+    """Call OpenAI vision API."""
+    import openai
+
+    client = openai.OpenAI()
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        max_tokens=256,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{b64_image}"},
+                    },
+                    {"type": "text", "text": prompt},
+                ],
+            }
+        ],
+    )
+    return _parse_indices(response.choices[0].message.content)
+
+
+def _parse_indices(text: str) -> list[int]:
+    """Parse JSON array of 1-based indices from LLM response, return 0-based."""
+    text = text.strip()
+    # Find JSON array in response
+    start = text.find("[")
+    end = text.rfind("]")
+    if start == -1 or end == -1:
+        return []
+    try:
+        indices = json.loads(text[start : end + 1])
+        # Convert 1-based to 0-based
+        return [i - 1 for i in indices if isinstance(i, int) and i >= 1]
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+
 def collect(
     config_path: str,
     expected_boxes: int,
@@ -54,15 +176,15 @@ def collect(
     duration: int = 120,
     fps: float = 5.0,
     conf: float = 0.03,
+    llm_every: int = 10,
+    provider: str = "anthropic",
 ) -> None:
-    """Capture frames and auto-label with known box count.
+    """Capture frames, label with YOLO + LLM validation.
 
-    There are always exactly `expected_boxes` boxes in the frame. YOLO-World
-    runs at very low confidence to find all candidates. We take the top N
-    detections by confidence as labels. Frames where YOLO finds fewer than
-    N are kept too — we just use what it found (the model will learn from
-    the partial labels). Frames where detections are clearly garbage
-    (zero detections, or huge bbox covering >50% of frame) are discarded.
+    Every frame: YOLO-World at low conf → candidate boxes → top N kept.
+    Every Nth frame: send to Claude/OpenAI to validate which candidates
+    are real boxes. Validated frames get precise labels; in-between frames
+    use pure YOLO top-N labels.
 
     Args:
         config_path: Path to config.yaml
@@ -71,6 +193,8 @@ def collect(
         duration: Capture duration in seconds
         fps: Frames per second to capture
         conf: YOLO confidence threshold (very low to catch everything)
+        llm_every: Send every Nth frame to vision LLM for validation
+        provider: "anthropic" or "openai"
     """
     from ultralytics import YOLO
 
@@ -79,14 +203,13 @@ def collect(
     os.environ["YOLO_VERBOSE"] = "false"
     config = DemoConfig.from_yaml(config_path)
 
-    # Find the camera URL
     cam_url = None
     for cam in config.cameras:
         if cam.camera_id == camera_id:
             cam_url = cam.url
             break
     if cam_url is None:
-        print(f"Camera '{camera_id}' not found in config. Available:")
+        print(f"Camera '{camera_id}' not found. Available:")
         for cam in config.cameras:
             print(f"  {cam.camera_id}")
         sys.exit(1)
@@ -101,25 +224,24 @@ def collect(
     interval = 1.0 / fps
     total_frames = int(duration * fps)
 
-    print(f"Collecting {camera_id}: {expected_boxes} boxes")
+    print(f"Collecting {camera_id}: {expected_boxes} boxes, {provider} validation")
     print(f"  {total_frames} frames over {duration}s ({fps} fps)")
-    print(f"  YOLO conf={conf} (low — we pick top {expected_boxes} by confidence)")
+    print(f"  LLM validates every {llm_every}th frame")
+    print(f"  YOLO conf={conf}")
     print()
 
-    # Connect to camera with persistent connection
     cap = cv2.VideoCapture(cam_url)
     if not cap.isOpened():
         print(f"Cannot connect to {camera_id}")
         sys.exit(1)
-
-    # Flush stale buffer
     for _ in range(5):
         cap.read()
 
     kept = 0
+    validated = 0
     discarded = 0
     existing = len(list(IMAGES_DIR.glob("*.jpg")))
-    frame_idx = existing  # Continue numbering from previous runs
+    frame_idx = existing
 
     start = time.time()
     for i in range(total_frames):
@@ -127,7 +249,6 @@ def collect(
 
         ret, frame = cap.read()
         if not ret:
-            # Reconnect
             cap.release()
             time.sleep(0.5)
             cap = cv2.VideoCapture(cam_url)
@@ -139,7 +260,7 @@ def collect(
         h, w = frame.shape[:2]
         frame_area = h * w
 
-        # Run YOLO at very low confidence to get all candidates
+        # YOLO candidates at very low confidence
         results = model(frame, verbose=False, conf=conf, imgsz=640, iou=0.5)
         raw_dets = []
         if results and results[0].boxes is not None:
@@ -147,27 +268,37 @@ def collect(
                 x1, y1, x2, y2 = map(float, box.xyxy[0].tolist())
                 c = float(box.conf[0])
                 bbox_area = (x2 - x1) * (y2 - y1)
-                # Skip garbage: bbox covering >40% of frame
                 if bbox_area > frame_area * 0.4:
                     continue
-                # Skip tiny noise: bbox < 0.5% of frame
                 if bbox_area < frame_area * 0.005:
                     continue
                 raw_dets.append({"bbox": [x1, y1, x2, y2], "conf": c})
 
-        # Discard frame if zero detections
         if len(raw_dets) == 0:
             discarded += 1
-            if i % 50 == 0:
-                print(f"  [{i}/{total_frames}] 0 detections — skip")
             elapsed = time.time() - frame_start
             if elapsed < interval:
                 time.sleep(interval - elapsed)
             continue
 
-        # Take top N by confidence (N = expected_boxes)
         raw_dets.sort(key=lambda d: d["conf"], reverse=True)
-        dets = raw_dets[:expected_boxes]
+
+        # LLM validation on sampled frames
+        use_llm = (i % llm_every == 0) and len(raw_dets) >= expected_boxes
+        if use_llm:
+            try:
+                valid_indices = _validate_with_llm(frame, raw_dets, expected_boxes, provider)
+                dets = [raw_dets[j] for j in valid_indices if j < len(raw_dets)]
+                validated += 1
+                tag = "LLM"
+            except Exception as e:
+                # Fallback to top-N if API fails
+                dets = raw_dets[:expected_boxes]
+                tag = f"YOLO(llm-err: {e})"
+        else:
+            # Non-validated: take top N by confidence
+            dets = raw_dets[:expected_boxes]
+            tag = "YOLO"
 
         # Save image
         fname = f"{camera_id}_{frame_idx:05d}"
@@ -184,23 +315,15 @@ def collect(
             lines.append(f"0 {xc:.6f} {yc:.6f} {bw:.6f} {bh:.6f}")
         (LABELS_DIR / f"{fname}.txt").write_text("\n".join(lines))
 
-        # Save review image
+        # Review image
         review = frame.copy()
         for d in dets:
             bx1, by1, bx2, by2 = map(int, d["bbox"])
-            cv2.rectangle(review, (bx1, by1), (bx2, by2), (0, 255, 0), 2)
-            cv2.putText(
-                review,
-                f"{d['conf']:.2f}",
-                (bx1, by1 - 4),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.4,
-                (0, 255, 0),
-                1,
-            )
+            color = (0, 255, 0) if tag == "LLM" else (255, 165, 0)
+            cv2.rectangle(review, (bx1, by1), (bx2, by2), color, 2)
         cv2.putText(
             review,
-            f"{len(dets)}/{expected_boxes} boxes (frame {frame_idx})",
+            f"{len(dets)} boxes [{tag}]",
             (10, 25),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
@@ -212,10 +335,12 @@ def collect(
         kept += 1
         frame_idx += 1
 
-        if (i + 1) % 50 == 0:
-            found = len(raw_dets)
-            used = len(dets)
-            print(f"  [{i + 1}/{total_frames}] found={found} used={used} kept={kept}")
+        if (i + 1) % 25 == 0:
+            elapsed_total = int(time.time() - start)
+            print(
+                f"  [{elapsed_total}s] {i + 1}/{total_frames} "
+                f"kept={kept} validated={validated} discarded={discarded}"
+            )
 
         elapsed = time.time() - frame_start
         if elapsed < interval:
@@ -224,32 +349,10 @@ def collect(
     cap.release()
     total_time = time.time() - start
 
-    print(f"\nDone! {kept} frames kept, {discarded} discarded ({total_time:.0f}s)")
-    print(f"  Total dataset: {len(list(IMAGES_DIR.glob('*.jpg')))} images")
-    print(f"  Images → {IMAGES_DIR}/")
-    print(f"  Labels → {LABELS_DIR}/")
-    print(f"  Review → {REVIEW_DIR}/")
-
-
-def _nms_merge_simple(dets: list[dict], iou_threshold: float = 0.4) -> list[dict]:
-    """Simple NMS merge."""
-    if not dets:
-        return []
-
-    boxes = np.array([d["bbox"] for d in dets], dtype=np.float32)
-    scores = np.array([d["conf"] for d in dets], dtype=np.float32)
-
-    indices = cv2.dnn.NMSBoxes(
-        bboxes=[(int(b[0]), int(b[1]), int(b[2] - b[0]), int(b[3] - b[1])) for b in boxes],
-        scores=scores.tolist(),
-        score_threshold=0.01,
-        nms_threshold=iou_threshold,
-    )
-
-    if len(indices) == 0:
-        return []
-
-    return [dets[i] for i in indices.flatten()]
+    total_dataset = len(list(IMAGES_DIR.glob("*.jpg")))
+    print(f"\nDone! {kept} frames kept, {validated} LLM-validated, {discarded} discarded")
+    print(f"  Total dataset so far: {total_dataset} images ({total_time:.0f}s)")
+    print(f"  Review → {REVIEW_DIR}/  (green=LLM validated, orange=YOLO only)")
 
 
 def export_dataset(val_split: float = 0.2) -> None:
@@ -314,15 +417,16 @@ def main() -> None:
     """Entry point for esc-dataset command."""
     if len(sys.argv) < 2:
         print("Usage:")
-        print("  uv run esc-dataset collect config.yaml --boxes 8 [--camera cam-inside]")
-        print("  uv run esc-dataset export [--val-split 0.2]")
+        print("  uv run esc-dataset collect config.yaml --boxes 8 [options]")
+        print("  uv run esc-dataset export")
         print()
-        print("Collect workflow (repeat for 8, 7, 6, ... 1 boxes):")
-        print("  1. Set up N boxes in front of camera")
-        print("  2. uv run esc-dataset collect config.yaml --boxes N")
-        print("  3. Remove a box, repeat")
-        print("  4. uv run esc-dataset export")
-        print("  5. uv run esc-finetune dataset/yolo_dataset/data.yaml")
+        print("Options:")
+        print("  --boxes N        Expected box count (required)")
+        print("  --camera ID      Camera ID (default: cam-inside)")
+        print("  --duration S     Capture seconds (default: 120)")
+        print("  --fps N          Frames per second (default: 5)")
+        print("  --llm-every N    LLM-validate every Nth frame (default: 10)")
+        print("  --provider X     anthropic or openai (default: anthropic)")
         sys.exit(1)
 
     cmd = sys.argv[1]
@@ -336,6 +440,8 @@ def main() -> None:
             duration=_parse_arg("--duration", 120, int),
             fps=_parse_arg("--fps", 5.0, float),
             conf=_parse_arg("--conf", 0.03, float),
+            llm_every=_parse_arg("--llm-every", 10, int),
+            provider=_parse_arg("--provider", "anthropic", str),
         )
 
     elif cmd == "export":
@@ -343,7 +449,6 @@ def main() -> None:
 
     else:
         print(f"Unknown command: {cmd}")
-        print("Available: collect, export")
         sys.exit(1)
 
 
