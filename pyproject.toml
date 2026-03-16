@@ -21,6 +21,9 @@ esc-record = "expanso_security_camera.recorder:main"
 esc-server = "expanso_security_camera.server:main"
 esc-simulate = "expanso_security_camera.simulate:main"
 esc-test-cameras = "expanso_security_camera.test_cameras:main"
+esc-diagnose = "expanso_security_camera.diagnose:main"
+esc-dataset = "expanso_security_camera.dataset:main"
+esc-finetune = "expanso_security_camera.finetune:main"
 
 [build-system]
 requires = ["hatchling"]
