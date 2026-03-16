@@ -234,10 +234,34 @@ def _draw_numbered_candidates(frame, dets: list[dict]) -> np.ndarray:
     return img
 
 
+def _get_claude_auth_token() -> str | None:
+    """Read OAuth token from Claude Code's credentials file."""
+    creds_path = Path.home() / ".claude" / ".credentials.json"
+    if not creds_path.exists():
+        return None
+    try:
+        data = json.loads(creds_path.read_text())
+        return data.get("claudeAiOauth", {}).get("accessToken")
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
 def _call_anthropic(b64_image: str, prompt: str) -> list[int]:
     import anthropic
 
-    client = anthropic.Anthropic()
+    # Use Claude Code OAuth token if no API key set
+    auth_token = None
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        auth_token = _get_claude_auth_token()
+        if not auth_token:
+            raise RuntimeError(
+                "No ANTHROPIC_API_KEY and no Claude Code OAuth token found. "
+                "Run 'claude login' or set ANTHROPIC_API_KEY."
+            )
+
+    client = anthropic.Anthropic(
+        **({"auth_token": auth_token} if auth_token else {}),
+    )
     response = client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=256,
