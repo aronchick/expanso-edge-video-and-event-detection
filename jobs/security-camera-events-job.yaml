@@ -1,9 +1,10 @@
-# Job: Security Camera Box Counting Pipeline
-# Runs the versioned inference package from a git tag.
-# Expanso manages lifecycle, restarts on failure.
+# Job: Event Enrichment Pipeline (Pure Bloblang)
+# Reads detection events from the YOLO pipeline output,
+# enriches with metadata, maps classes, adds lineage,
+# routes to archive + upstream.
 #
-# Package: expanso-security-camera v0.1.0
-# Source: github.com/expanso-io/demos-security-cameras@v0.1.0
+# No subprocess, no Docker, no Python — runs entirely
+# inside Expanso Edge as native Bloblang processing.
 #
 # Deploy:
 #   expanso-cli job deploy jobs/security-camera-events-job.yaml
@@ -13,24 +14,19 @@ type: pipeline
 
 config:
   input:
-    subprocess:
-      name: /home/daaronch/.local/bin/uvx
-      args:
-        - --quiet
-        - --from
-        - "expanso-security-camera @ git+https://github.com/expanso-io/demos-security-cameras.git@v0.1.0"
-        - esc-infer
-        - /home/daaronch/security-cameras/config.yaml
+    file:
+      paths:
+        - /home/daaronch/security-cameras/detection-events.ndjson
       codec: lines
-      restart_on_exit: true
+      scanner:
+        lines: {}
 
   pipeline:
     processors:
-      # Parse JSON — silently drop non-JSON lines
-      - mapping: |
-          root = this.parse_json().catch(deleted())
+      # Parse JSON — drop non-JSON
+      - mapping: root = this.parse_json().catch(deleted())
 
-      # Schema validation — drop events without schema_version
+      # Validate schema
       - mapping: |
           root = if this.schema_version == null {
             deleted()
@@ -44,26 +40,10 @@ config:
           root.source = {
             "device_id": env("DEVICE_ID").or("recomputer-j3011-001"),
             "site_id": env("SITE_ID").or("warehouse-demo"),
-            "camera_id": this.camera_id.or("unknown"),
+            "pipeline": "security-camera-events",
             "pipeline_version": "1.0.0"
           }
           root.enriched_at = now()
-
-      # Class name mapping — normalize detection labels
-      - mapping: |
-          let raw_class = this.detection.object_class_raw.or("")
-          let mapped = match $raw_class {
-            "suitcase" => "box",
-            "backpack" => "box",
-            "handbag" => "box",
-            "cardboard box" => "box",
-            "shipping box" => "box",
-            "package" => "box",
-            "person" => "person",
-            _ => "object"
-          }
-          root = this
-          root.detection.object_class = if this.detection != null { $mapped } else { "" }
 
       # Lineage tracking
       - mapping: |
@@ -79,8 +59,7 @@ config:
       pattern: fan_out
       outputs:
         - file:
-            path: "/home/daaronch/security-cameras/enriched-events.ndjson"
+            path: /home/daaronch/security-cameras/enriched-events.ndjson
             codec: lines
-
         - stdout:
             codec: lines
