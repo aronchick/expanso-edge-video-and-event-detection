@@ -259,7 +259,20 @@
       <a href="/architecture" class="btn" style="text-decoration:none">📊 Architecture</a>
     </div>
 
-    <div class="footer">
+    <!-- Hidden manual baseline setter — triple-click to reveal -->
+    <div id="manual-override" style="display:none; margin-bottom:16px;">
+      <div style="background:var(--bg-elevated); border:1px solid var(--border-medium); border-radius:10px; padding:14px 18px;">
+        <div style="font-family:var(--font-mono); font-size:0.72rem; color:var(--text-muted); margin-bottom:8px;">MANUAL OVERRIDE</div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input id="manual-count" type="number" min="0" max="100" value="8"
+            style="width:60px; padding:6px 10px; border-radius:6px; border:1px solid var(--border-medium);
+            background:var(--bg-base); color:var(--text-primary); font-family:var(--font-mono); font-size:1rem;">
+          <button class="btn" id="manual-set-btn">Set as baseline</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer" id="footer-area">
       Powered by <span class="expanso">Expanso Edge</span>
       &middot; YOLO-World v2
       &middot; Seeed reComputer J3011
@@ -494,21 +507,37 @@
       updateInventoryBanner(0, 0);
     });
 
-    // Camera snapshots — refresh every 2 seconds
+    // Camera snapshots — refresh every second (GPU-annotated from disk)
     function refreshCameras() {
       const ts = Date.now();
       const outside = $('feed-outside');
       const inside = $('feed-inside');
-      // Annotate every 4th refresh (~8 seconds), plain snapshot otherwise
-      const doAnnotate = (refreshCount % 4 === 0);
-      const ann = doAnnotate ? '&annotate=true' : '';
-      if (outside) outside.src = '/api/snapshot/cam-outside?t=' + ts + ann;
-      if (inside) inside.src = '/api/snapshot/cam-inside?t=' + ts + ann;
-      refreshCount++;
+      if (outside) outside.src = '/api/snapshot/cam-outside?t=' + ts;
+      if (inside) inside.src = '/api/snapshot/cam-inside?t=' + ts;
     }
 
+    // Hidden override — triple-click footer to reveal
+    let footerClicks = 0;
+    $('footer-area').addEventListener('click', () => {
+      footerClicks++;
+      if (footerClicks >= 3) {
+        $('manual-override').style.display = 'block';
+        footerClicks = 0;
+      }
+      setTimeout(() => { footerClicks = 0; }, 1000);
+    });
+
+    $('manual-set-btn').addEventListener('click', () => {
+      const val = parseInt($('manual-count').value, 10);
+      if (!isNaN(val) && val > 0) {
+        baseline = val;
+        updateInventoryBanner(lastOutsideBoxes, lastInsideBoxes);
+        $('manual-override').style.display = 'none';
+      }
+    });
+
     setInterval(fetchState, 1000);
-    setInterval(refreshCameras, 2000);
+    setInterval(refreshCameras, 1000);
     setInterval(fetchDetections, 3000);
     fetchState();
     refreshCameras();

@@ -4,140 +4,308 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Architecture — Box Transfer Monitor</title>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = { theme: { extend: {
+      fontFamily: { sans: ['DM Sans', 'system-ui'], mono: ['JetBrains Mono', 'monospace'] },
+      fontSize: { base: ['16px', '1.6'] },
+    }}}
+  </script>
   <style>
-    :root {
-      --bg-deep: #06080f; --bg-base: #0a0e1a; --bg-elevated: #1e293b;
-      --border-subtle: rgba(148,163,184,0.08); --border-medium: rgba(148,163,184,0.15);
-      --text-primary: #f1f5f9; --text-secondary: #94a3b8; --text-muted: #64748b;
-      --blue: #60a5fa; --green: #34d399; --indigo: #818cf8; --cyan: #22d3ee;
-      --font-display: 'Space Grotesk', system-ui, sans-serif;
-      --font-mono: 'JetBrains Mono', monospace;
-    }
-    body { font-family: var(--font-display); background: var(--bg-deep); color: var(--text-primary); margin: 0; }
-    .container { max-width: 960px; margin: 0 auto; padding: 32px 20px; }
-    a { color: var(--indigo); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    h1 { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.03em; margin-bottom: 8px; }
-    h2 { font-size: 1.2rem; font-weight: 600; color: var(--cyan); margin-top: 32px; margin-bottom: 12px; }
-    p { color: var(--text-secondary); line-height: 1.7; margin-bottom: 16px; }
-    .back { font-size: 0.85rem; margin-bottom: 24px; display: inline-block; }
-    .diagram {
-      background: var(--bg-elevated); border: 1px solid var(--border-medium);
-      border-radius: 16px; padding: 24px; margin: 20px 0;
-      font-family: var(--font-mono); font-size: 0.78rem; line-height: 1.6;
-      white-space: pre; overflow-x: auto; color: var(--text-secondary);
-    }
-    .highlight { color: var(--cyan); font-weight: 700; }
-    .note { color: var(--indigo); }
-    .component {
-      background: var(--bg-elevated); border: 1px solid var(--border-subtle);
-      border-radius: 12px; padding: 16px 20px; margin: 12px 0;
-    }
-    .component h3 { font-size: 0.95rem; color: var(--text-primary); margin: 0 0 6px 0; }
-    .component p { font-size: 0.85rem; margin: 0; }
-    .tag {
-      display: inline-block; font-family: var(--font-mono); font-size: 0.7rem;
-      background: rgba(129,140,248,0.12); color: var(--indigo);
-      padding: 2px 8px; border-radius: 4px; margin-right: 6px;
-    }
-    .footer { text-align: center; padding: 32px; font-size: 0.75rem; color: var(--text-muted); }
-    .footer .expanso { color: var(--indigo); font-weight: 600; }
+    * { -webkit-font-smoothing: antialiased; }
+    body { background: #000; color: #fff; }
+    .ml { font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; }
+    .card { background: #111; border: 1px solid #333; border-radius: 12px; padding: 20px; }
+    .item { background: #1a1a1a; border-radius: 6px; padding: 8px 12px; color: #ccc; margin-bottom: 4px; }
+    .arrow { text-align: center; padding: 10px 0; }
+    .arrow-text { font-family: 'JetBrains Mono', monospace; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #fff; background: #333; display: inline-block; padding: 4px 14px; border-radius: 20px; }
+    .arrow svg { display: inline-block; vertical-align: middle; }
+    .term { background: #0d0d0d; border: 1px solid #333; border-radius: 12px; overflow: hidden; }
+    .term-bar { background: #1a1a1a; padding: 8px 14px; border-bottom: 1px solid #333; display: flex; align-items: center; gap: 7px; }
+    .term-dot { width: 12px; height: 12px; border-radius: 50%; }
+    .term pre { padding: 16px; margin: 0; font-size: 14px; line-height: 1.5; overflow-x: auto; color: #e0e0e0; }
+    .yk { color: #b4befe; } .ys { color: #a6e3a1; } .yc { color: #585858; } .yn { color: #f9e2af; } .yb { color: #89b4fa; }
   </style>
 </head>
-<body>
-  <div class="container">
-    <a href="/" class="back">&larr; Back to Dashboard</a>
-    <h1>System Architecture</h1>
-    <p>Everything runs through <strong>Expanso Edge</strong>. No isolated scripts, no unversioned code.</p>
+<body class="min-h-screen font-sans text-base">
 
-    <div class="diagram"><span class="highlight">Reolink Cameras (PoE)</span>
-  |
-  | RTSP H.264 streams (192.168.2.x)
-  |
-  v
-<span class="highlight">Expanso Edge Pipeline 1: Inference</span>  <span class="note">[deployed via Expanso Cloud]</span>
-  |
-  | subprocess: uv run esc-infer  <span class="note">(expanso-security-camera==0.1.0)</span>
-  | - YOLO-World open-vocabulary detection
-  | - ByteTrack multi-object tracking
-  | - Line-crossing state machine counter
-  | - Output: CrossingEvents as NDJSON (stdout)
-  |
-  | Expanso processors:
-  | - parse_json + catch(deleted())
-  | - Schema validation
-  | - Metadata enrichment (device_id, site_id)
-  | - Class name mapping (suitcase → box)
-  | - Lineage tracking (edge_node, pipeline, timestamp)
-  |
-  +--&gt; enriched-events.ndjson  <span class="note">(local NVMe archive)</span>
-  +--&gt; stdout  <span class="note">(monitoring)</span>
-  +--&gt; upstream HTTP POST  <span class="note">(Expanso Cloud / customer API)</span>
-  |
-  v
-<span class="highlight">Dashboard Web Server</span>  <span class="note">(esc-server on port 8080)</span>
-  |
-  | FastAPI serving:
-  |   GET /              Dashboard UI
-  |   GET /api/state     Pipeline state (from state.json)
-  |   GET /api/snapshot  Live camera JPEG snapshots
-  |   GET /api/detections  YOLO-World box counts per camera
-  |   POST /api/reset    Reset counting session
-  |
-  v
-<span class="highlight">Browser</span>  <span class="note">(any device on LAN → http://&lt;jetson-ip&gt;:8080)</span></div>
-
-    <h2>Components</h2>
-
-    <div class="component">
-      <h3>Expanso Edge Agent</h3>
-      <p>Native binary on Jetson. Connects to Expanso Cloud, receives pipeline deployments, manages subprocess lifecycle.</p>
-      <span class="tag">systemd</span><span class="tag">expanso user</span><span class="tag">v2.1.12</span>
+  <header class="sticky top-0 z-50 bg-black/90 backdrop-blur-md border-b border-neutral-800">
+    <div class="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <a href="/" class="text-neutral-400 hover:text-white">&larr; Dashboard</a>
+        <span class="text-neutral-700">|</span>
+        <div class="flex items-center gap-2">
+          <div class="w-7 h-7 bg-indigo-500 rounded flex items-center justify-center text-white font-bold text-sm">E</div>
+          <span class="font-medium text-white">Expanso Edge</span>
+        </div>
+      </div>
     </div>
+  </header>
 
-    <div class="component">
-      <h3>expanso-security-camera (Python package)</h3>
-      <p>Versioned pip package managed by uv. Contains inference engine, event schemas, counting logic, dashboard server.</p>
-      <span class="tag">v0.1.0</span><span class="tag">pyproject.toml</span><span class="tag">uv managed</span>
+  <section class="pt-14 pb-6 px-6">
+    <div class="max-w-6xl mx-auto">
+      <div class="ml text-indigo-400 mb-3">Edge Video Analytics Pipeline</div>
+      <h1 class="text-5xl font-bold text-white mb-4 tracking-tight">Architecture</h1>
+      <p class="text-neutral-300 text-lg max-w-2xl">Two cameras, one Jetson, zero cloud dependency. <strong class="text-white">Expanso Edge runs two pipelines</strong> — GPU detection and event enrichment.</p>
     </div>
+  </section>
 
-    <div class="component">
-      <h3>YOLO-World v2 (yolov8s-worldv2)</h3>
-      <p>Open-vocabulary object detection. Detects "cardboard box" directly without fine-tuning. Runs on Jetson GPU.</p>
-      <span class="tag">24.7MB</span><span class="tag">CLIP text encoder</span><span class="tag">open-vocabulary</span>
+  <section class="py-8 px-6">
+    <div class="max-w-6xl mx-auto">
+
+      <!-- Cameras -->
+      <div class="grid md:grid-cols-2 gap-4 mb-2">
+        <div class="card" style="border-left:4px solid #60a5fa">
+          <div class="ml text-blue-400 mb-2">Camera 1 &middot; Location A</div>
+          <h3 class="text-lg font-bold text-white mb-2">Cam-Outside</h3>
+          <div class="item">RTSP H.264 &middot; 192.168.2.10 &middot; PoE</div>
+          <div class="text-sm text-neutral-400 mt-2">Reolink RLC-810A &middot; 4K bullet camera</div>
+        </div>
+        <div class="card" style="border-left:4px solid #60a5fa">
+          <div class="ml text-blue-400 mb-2">Camera 2 &middot; Location B</div>
+          <h3 class="text-lg font-bold text-white mb-2">Cam-Inside</h3>
+          <div class="item">RTSP H.264 &middot; 192.168.2.11 &middot; PoE</div>
+          <div class="text-sm text-neutral-400 mt-2">Reolink RLC-810A &middot; 4K bullet camera</div>
+        </div>
+      </div>
+
+      <div class="arrow">
+        <div class="arrow-text">&#x25BC; RTSP streams</div>
+      </div>
+
+      <!-- EXPANSO EDGE — TWO PIPELINES -->
+      <div class="rounded-2xl border-2 border-indigo-500/60 bg-indigo-950/20 p-6 mb-2">
+        <div class="flex items-center gap-3 mb-5">
+          <div class="w-10 h-10 bg-indigo-500 rounded-xl flex items-center justify-center text-white font-bold text-lg">E</div>
+          <div>
+            <div class="ml text-indigo-400">Expanso Edge</div>
+            <div class="text-xl font-bold text-white">Two Pipelines, One Orchestrator</div>
+          </div>
+        </div>
+
+        <!-- Pipeline 1: YOLO Detector -->
+        <div class="card mb-4" style="border-left:4px solid #22c55e; background:#0a1a0a">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <div class="ml text-green-400">Pipeline 1 &middot; GPU Inference</div>
+              <h3 class="text-lg font-bold text-white">YOLO-World Detection</h3>
+            </div>
+            <div class="ml text-green-400 bg-green-500/10 px-3 py-1 rounded-full border border-green-500/30">29.6 FPS</div>
+          </div>
+          <div class="grid sm:grid-cols-2 gap-3">
+            <div>
+              <div class="item">Subprocess: Docker GPU container</div>
+              <div class="item">YOLO-World v2 open-vocabulary</div>
+              <div class="item">Detects "cardboard box" directly</div>
+            </div>
+            <div>
+              <div class="item">34ms/frame &middot; CUDA 12.6 &middot; Orin GPU</div>
+              <div class="item">Annotated JPEGs &rarr; /snapshots/</div>
+              <div class="item">detections.json &middot; box counts</div>
+            </div>
+          </div>
+          <div class="text-sm text-neutral-500 mt-3">ultralytics/ultralytics:latest-jetson-jetpack6</div>
+        </div>
+
+        <div class="arrow">
+          <div class="arrow-text">&#x25BC; CrossingEvents (NDJSON)</div>
+        </div>
+
+        <!-- Pipeline 2: Enrichment -->
+        <div class="card" style="border-left:4px solid #818cf8; background:#0a0a1a">
+          <div class="mb-3">
+            <div class="ml text-indigo-400">Pipeline 2 &middot; Enrichment</div>
+            <h3 class="text-lg font-bold text-white">Schema Validation &amp; Metadata Enrichment</h3>
+          </div>
+          <div class="grid sm:grid-cols-5 gap-2 mb-3">
+            <div class="bg-indigo-500/10 border border-indigo-500/20 rounded-lg p-3 text-center">
+              <div class="text-sm font-bold text-indigo-300">Parse</div>
+              <div class="text-xs text-neutral-400">JSON + catch</div>
+            </div>
+            <div class="bg-indigo-500/10 border border-indigo-500/20 rounded-lg p-3 text-center">
+              <div class="text-sm font-bold text-indigo-300">Validate</div>
+              <div class="text-xs text-neutral-400">Schema check</div>
+            </div>
+            <div class="bg-indigo-500/10 border border-indigo-500/20 rounded-lg p-3 text-center">
+              <div class="text-sm font-bold text-indigo-300">Enrich</div>
+              <div class="text-xs text-neutral-400">device + site</div>
+            </div>
+            <div class="bg-indigo-500/10 border border-indigo-500/20 rounded-lg p-3 text-center">
+              <div class="text-sm font-bold text-indigo-300">Map</div>
+              <div class="text-xs text-neutral-400">suitcase &rarr; box</div>
+            </div>
+            <div class="bg-indigo-500/10 border border-indigo-500/20 rounded-lg p-3 text-center">
+              <div class="text-sm font-bold text-indigo-300">Lineage</div>
+              <div class="text-xs text-neutral-400">audit trail</div>
+            </div>
+          </div>
+          <div class="text-sm text-neutral-500">Bloblang DSL &middot; Deployed via cloud.expanso.io</div>
+        </div>
+
+        <div class="flex items-center gap-3 mt-4 ml text-neutral-500">
+          <span class="bg-neutral-800 px-3 py-1 rounded">deployed via cloud.expanso.io</span>
+          <span class="bg-neutral-800 px-3 py-1 rounded">systemd service</span>
+          <span class="bg-neutral-800 px-3 py-1 rounded">v2.1.12</span>
+          <span class="bg-neutral-800 px-3 py-1 rounded">restart on failure</span>
+        </div>
+      </div>
+
+      <div class="arrow">
+        <div class="arrow-text">&#x25BC; Enriched events &middot; Fan-out</div>
+      </div>
+
+      <!-- Outputs -->
+      <div class="grid sm:grid-cols-3 gap-4">
+        <div class="card" style="border-left:4px solid #fbbf24">
+          <div class="ml text-amber-400 mb-2">Output 1</div>
+          <h3 class="text-lg font-bold text-white">Local Archive</h3>
+          <p class="text-neutral-300 mt-2">NDJSON on NVMe SSD. Every enriched event stored for audit and replay.</p>
+        </div>
+        <div class="card" style="border-left:4px solid #fbbf24">
+          <div class="ml text-amber-400 mb-2">Output 2</div>
+          <h3 class="text-lg font-bold text-white">Upstream API</h3>
+          <p class="text-neutral-300 mt-2">HTTP POST to Expanso Cloud or customer backend. Batched delivery.</p>
+        </div>
+        <div class="card" style="border-left:4px solid #a78bfa">
+          <div class="ml text-purple-400 mb-2">Output 3</div>
+          <h3 class="text-lg font-bold text-white">Dashboard</h3>
+          <p class="text-neutral-300 mt-2">Self-hosted on :8080. GPU-annotated camera frames. Inventory tracking.</p>
+        </div>
+      </div>
     </div>
+  </section>
 
-    <div class="component">
-      <h3>Reolink RLC-810A Cameras (x2)</h3>
-      <p>4K PoE bullet cameras. RTSP streaming. Isolated on 192.168.2.x subnet, DHCP from Jetson.</p>
-      <span class="tag">4K main</span><span class="tag">720p sub</span><span class="tag">PoE powered</span>
+  <!-- Why Expanso -->
+  <section class="py-10 px-6 border-y border-neutral-800 bg-neutral-950">
+    <div class="max-w-6xl mx-auto">
+      <div class="ml text-indigo-400 mb-5">Why Expanso Edge</div>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div><span class="text-white font-medium">Schema Validation</span><br><span class="text-neutral-400">Malformed events caught at the edge before leaving the device.</span></div>
+        <div><span class="text-white font-medium">Metadata Enrichment</span><br><span class="text-neutral-400">Every event gets device, site, model version, session context.</span></div>
+        <div><span class="text-white font-medium">Class Mapping</span><br><span class="text-neutral-400">"suitcase" &rarr; "box" in pipeline YAML, not application code.</span></div>
+        <div><span class="text-white font-medium">Lineage Tracking</span><br><span class="text-neutral-400">Full audit trail: which node, which pipeline, when ingested.</span></div>
+        <div><span class="text-white font-medium">Offline Buffering</span><br><span class="text-neutral-400">NVMe-backed buffer survives network outages. Zero data loss.</span></div>
+        <div><span class="text-white font-medium">Fleet Deployment</span><br><span class="text-neutral-400">cloud.expanso.io deploys to 1 or 1,000 edge nodes. One command.</span></div>
+      </div>
     </div>
+  </section>
 
-    <h2>Hardware</h2>
-    <div class="component">
-      <h3>Seeed reComputer J3011</h3>
-      <p>Jetson Orin Nano 8GB. 1024 CUDA cores, 32 Tensor Cores, 67 TOPS. 128GB NVMe SSD. JetPack R35.</p>
-      <span class="tag">$716</span><span class="tag">palm-sized</span><span class="tag">15W</span>
+  <!-- Pipeline YAMLs -->
+  <section class="py-10 px-6">
+    <div class="max-w-6xl mx-auto">
+      <div class="ml text-indigo-400 mb-3">Pipeline Configuration</div>
+      <h2 class="text-2xl font-bold text-white mb-2">Both Expanso Edge Pipelines</h2>
+      <p class="text-neutral-300 mb-6">Deploy with: <code class="ml text-indigo-300 bg-indigo-500/10 px-3 py-1 rounded-full border border-indigo-500/30">expanso-cli job deploy &lt;file&gt;.yaml</code></p>
+
+      <!-- Pipeline 1: YOLO Detector -->
+      <div class="mb-6">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-3 h-3 rounded-full bg-green-500"></div>
+          <span class="text-white font-bold">Pipeline 1 — YOLO GPU Detection</span>
+          <span class="ml text-green-400 bg-green-500/10 px-2 py-0.5 rounded border border-green-500/30">29.6 fps</span>
+        </div>
+        <div class="term">
+          <div class="term-bar">
+            <div class="term-dot" style="background:#ff5f57"></div>
+            <div class="term-dot" style="background:#febc2e"></div>
+            <div class="term-dot" style="background:#28c840"></div>
+            <span class="text-sm text-neutral-500 ml-3">yolo-detector-job.yaml</span>
+          </div>
+          <pre><code><span class="yk">name:</span> yolo-detector
+<span class="yk">type:</span> pipeline
+<span class="yk">config:</span>
+  <span class="yb">input:</span>
+    <span class="yb">subprocess:</span>
+      name: /usr/bin/docker
+      args: [run, --rm, --runtime=nvidia, --network=host,
+        -v, /home/daaronch/security-cameras/.env:/data/.env:ro,
+        -v, /home/daaronch/security-cameras/snapshots:/data/snapshots,
+        -v, /home/daaronch/security-cameras/yolov8s-worldv2.pt:/root/yolov8s-worldv2.pt:ro,
+        -v, /tmp/detect_loop.py:/root/detect_loop.py:ro,
+        -w, /root, <span class="ys">ultralytics/ultralytics:latest-jetson-jetpack6</span>,
+        bash, -c, <span class="ys">"pip install -q git+https://github.com/ultralytics/CLIP.git && python3 /root/detect_loop.py"</span>]
+      codec: lines
+      restart_on_exit: <span class="yn">true</span>
+  <span class="yk">pipeline:</span>
+    <span class="yk">processors:</span>
+      - mapping: root = this.parse_json().catch(deleted()) <span class="yc"># parse detection events</span>
+      - mapping: | <span class="yc"># enrich with device context</span>
+          root = this
+          root.source = { <span class="ys">"device_id"</span>: env(<span class="ys">"DEVICE_ID"</span>), <span class="ys">"site_id"</span>: env(<span class="ys">"SITE_ID"</span>), <span class="ys">"pipeline"</span>: <span class="ys">"yolo-detector"</span> }
+          root.detected_at = now()
+  <span class="yn">output:</span>
+    broker: { pattern: fan_out, outputs: [
+      { file: { path: detection-events.ndjson, codec: lines } },
+      { stdout: { codec: lines } }] }</code></pre>
+        </div>
+      </div>
+
+      <!-- Pipeline 2: Enrichment -->
+      <div>
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-3 h-3 rounded-full bg-indigo-500"></div>
+          <span class="text-white font-bold">Pipeline 2 — Event Enrichment &amp; Routing</span>
+          <span class="ml text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/30">bloblang</span>
+        </div>
+        <div class="term">
+          <div class="term-bar">
+            <div class="term-dot" style="background:#ff5f57"></div>
+            <div class="term-dot" style="background:#febc2e"></div>
+            <div class="term-dot" style="background:#28c840"></div>
+            <span class="text-sm text-neutral-500 ml-3">security-camera-events-job.yaml</span>
+          </div>
+          <pre><code><span class="yk">name:</span> security-camera-events
+<span class="yk">type:</span> pipeline
+<span class="yk">config:</span>
+  <span class="yb">input:</span>
+    <span class="yb">subprocess:</span>
+      name: /home/daaronch/.local/bin/uvx
+      args: [--quiet, --from, <span class="ys">"expanso-security-camera @ git+...@v0.1.0"</span>, esc-infer, config.yaml]
+      codec: lines
+      restart_on_exit: <span class="yn">true</span>
+  <span class="yk">pipeline:</span>
+    <span class="yk">processors:</span>
+      - mapping: root = this.parse_json().catch(deleted()) <span class="yc"># drop non-JSON</span>
+      - mapping: root = if this.schema_version == null { deleted() } else { this } <span class="yc"># validate schema</span>
+      - mapping: | <span class="yc"># enrich with device/site metadata</span>
+          root = this
+          root.source = { <span class="ys">"device_id"</span>: env(<span class="ys">"DEVICE_ID"</span>), <span class="ys">"site_id"</span>: env(<span class="ys">"SITE_ID"</span>), <span class="ys">"camera_id"</span>: this.camera_id }
+          root.enriched_at = now()
+      - mapping: | <span class="yc"># map COCO classes → business labels</span>
+          let mapped = match this.detection.object_class_raw.or(<span class="ys">""</span>) {
+            <span class="ys">"suitcase"</span> => <span class="ys">"box"</span>, <span class="ys">"cardboard box"</span> => <span class="ys">"box"</span>, <span class="ys">"person"</span> => <span class="ys">"person"</span>, _ => <span class="ys">"object"</span> }
+          root.detection.object_class = $mapped
+      - mapping: | <span class="yc"># lineage tracking</span>
+          root.lineage = { <span class="ys">"edge_node"</span>: env(<span class="ys">"HOSTNAME"</span>), <span class="ys">"pipeline"</span>: <span class="ys">"security-camera-events"</span>, <span class="ys">"ingested_at"</span>: now() }
+  <span class="yn">output:</span>
+    broker: { pattern: fan_out, outputs: [
+      { file: { path: enriched-events.ndjson, codec: lines } },
+      { stdout: { codec: lines } }] }</code></pre>
+        </div>
+      </div>
     </div>
+  </section>
 
-    <div class="component">
-      <h3>Total System Cost</h3>
-      <p>reComputer ($716) + 2x cameras ($110) + PoE switch ($40) = <strong>$866</strong>. No server rack, no NVR, no per-camera licensing.</p>
+  <!-- Hardware -->
+  <section class="py-10 px-6 border-t border-neutral-800">
+    <div class="max-w-6xl mx-auto">
+      <div class="ml text-indigo-400 mb-3">Hardware</div>
+      <div class="text-2xl font-bold text-white mb-6">Complete system: <span class="text-green-400">$866</span></div>
+      <div class="grid sm:grid-cols-4 gap-4">
+        <div class="card text-center"><div class="text-3xl mb-2">🖥</div><div class="font-bold text-white">reComputer J3011</div><div class="text-neutral-400 mt-1">Orin Nano 8GB &middot; CUDA 12.6</div><div class="ml text-amber-400 mt-3">$716</div></div>
+        <div class="card text-center"><div class="text-3xl mb-2">📹</div><div class="font-bold text-white">Cameras (x2)</div><div class="text-neutral-400 mt-1">RLC-810A &middot; 4K PoE</div><div class="ml text-amber-400 mt-3">$110</div></div>
+        <div class="card text-center"><div class="text-3xl mb-2">🔌</div><div class="font-bold text-white">PoE Switch</div><div class="text-neutral-400 mt-1">5-port &middot; fanless</div><div class="ml text-amber-400 mt-3">$40</div></div>
+        <div class="card text-center" style="border:2px solid #22c55e"><div class="text-3xl mb-2">💰</div><div class="font-bold text-green-400 text-xl">$866 Total</div><div class="text-neutral-400 mt-1">No NVR &middot; No cloud &middot; No licensing</div></div>
+      </div>
     </div>
+  </section>
 
-    <h2>Data Flow</h2>
-    <p>All events follow a single path: Camera &rarr; Inference (YOLO-World) &rarr; Expanso Edge enrichment &rarr; Archive + Upstream. The dashboard reads state produced by the pipeline. No data bypasses Expanso.</p>
-    <p>Events are schema-versioned (v1.0.0), self-describing, and mergeable across cameras and sites via session_id and site_id fields.</p>
-
-    <h2>Deployment</h2>
-    <p>Pipelines deploy from <strong>cloud.expanso.io</strong> to the edge node. The CLI command:</p>
-    <div class="diagram">expanso-cli job deploy jobs/security-camera-events-job.yaml</div>
-    <p>Expanso Cloud pushes the job to the Jetson. The agent starts the subprocess, monitors health, restarts on failure. Version updates are a new <code>job deploy</code>.</p>
-  </div>
-
-  <div class="footer">
-    Powered by <span class="expanso">Expanso Edge</span> &middot; Seeed reComputer J3011
-  </div>
+  <footer class="border-t border-neutral-800 py-5 px-6">
+    <div class="max-w-6xl mx-auto flex items-center justify-between text-neutral-500">
+      <a href="/" class="hover:text-white">&larr; Dashboard</a>
+      <div class="flex items-center gap-2"><div class="w-5 h-5 bg-indigo-500 rounded flex items-center justify-center text-white font-bold text-xs">E</div>Powered by Expanso Edge</div>
+    </div>
+  </footer>
 </body>
 </html>
