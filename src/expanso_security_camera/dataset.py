@@ -227,6 +227,147 @@ def _nms_merge_simple(dets: list[dict], iou_threshold: float = 0.4) -> list[dict
     return [dets[i] for i in indices.flatten()]
 
 
+def auto_label_known_count(
+    config_path: str,
+    expected_boxes: int = 8,
+    duration: int = 300,
+    interval: float = 3.0,
+    conf: float = 0.05,
+    tolerance: int = 0,
+) -> None:
+    """Auto-label by capturing frames where YOLO finds exactly N boxes.
+
+    You set up a known number of boxes, move them around over the duration,
+    and this captures frames continuously. Only frames where YOLO detects
+    exactly expected_boxes (± tolerance) are kept as training data.
+
+    No manual bounding box labeling needed — YOLO-World provides the boxes,
+    the known count validates them.
+    """
+    from ultralytics import YOLO
+
+    from expanso_security_camera.config import DemoConfig
+
+    os.environ["YOLO_VERBOSE"] = "false"
+    config = DemoConfig.from_yaml(config_path)
+
+    IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+    LABELS_DIR.mkdir(parents=True, exist_ok=True)
+    REVIEW_DIR.mkdir(parents=True, exist_ok=True)
+
+    model = YOLO("yolov8s-worldv2.pt")
+    model.set_classes(
+        [
+            "cardboard box",
+            "shipping box",
+            "package",
+            "carton",
+            "box",
+            "parcel",
+            "crate",
+            "container",
+            "brown box",
+            "sealed box",
+            "stacked boxes",
+            "rectangular object",
+            "delivery package",
+            "moving box",
+        ]
+    )
+
+    lo = expected_boxes - tolerance
+    hi = expected_boxes + tolerance
+
+    print(f"Auto-label: expecting {expected_boxes} boxes (accepting {lo}-{hi})")
+    print(f"Duration: {duration}s, interval: {interval}s, conf: {conf}")
+    print("Move boxes around while this runs!\n")
+
+    kept = 0
+    discarded = 0
+    start = time.time()
+    frame_idx = 0
+
+    while time.time() - start < duration:
+        for cam in config.cameras:
+            cap = cv2.VideoCapture(cam.url)
+            for _ in range(3):
+                cap.read()
+            ret, frame = cap.read()
+            cap.release()
+            if not ret:
+                continue
+
+            h, w = frame.shape[:2]
+
+            # Run detection at low conf to find all candidates
+            results = model(frame, verbose=False, conf=conf, imgsz=640, iou=0.5)
+            dets = []
+            if results and results[0].boxes is not None:
+                for box in results[0].boxes:
+                    x1, y1, x2, y2 = map(float, box.xyxy[0].tolist())
+                    c = float(box.conf[0])
+                    dets.append({"bbox": [x1, y1, x2, y2], "conf": c})
+
+            n = len(dets)
+            elapsed = int(time.time() - start)
+
+            if lo <= n <= hi:
+                # Good frame — save image + labels
+                fname = f"{cam.camera_id}_{frame_idx:04d}"
+                cv2.imwrite(str(IMAGES_DIR / f"{fname}.jpg"), frame)
+
+                # Write YOLO-format labels
+                lines = []
+                for d in dets:
+                    x1, y1, x2, y2 = d["bbox"]
+                    xc = (x1 + x2) / 2 / w
+                    yc = (y1 + y2) / 2 / h
+                    bw = (x2 - x1) / w
+                    bh = (y2 - y1) / h
+                    lines.append(f"0 {xc:.6f} {yc:.6f} {bw:.6f} {bh:.6f}")
+                (LABELS_DIR / f"{fname}.txt").write_text("\n".join(lines))
+
+                # Save review image
+                review = frame.copy()
+                for d in dets:
+                    bx1, by1, bx2, by2 = map(int, d["bbox"])
+                    cv2.rectangle(review, (bx1, by1), (bx2, by2), (0, 255, 0), 2)
+                cv2.putText(
+                    review,
+                    f"{n} boxes (KEPT)",
+                    (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.8,
+                    (0, 255, 0),
+                    2,
+                )
+                cv2.imwrite(str(REVIEW_DIR / f"{fname}.jpg"), review)
+
+                kept += 1
+                print(f"  [{elapsed}s] {cam.camera_id}: {n} boxes → KEPT ({kept} total)")
+            else:
+                discarded += 1
+                if discarded % 5 == 0:
+                    print(f"  [{elapsed}s] {cam.camera_id}: {n} boxes → skip (need {lo}-{hi})")
+
+            frame_idx += 1
+
+        time.sleep(interval)
+
+    print(f"\nDone! {kept} frames kept, {discarded} discarded")
+    print(f"  Images → {IMAGES_DIR}/")
+    print(f"  Labels → {LABELS_DIR}/")
+    print(f"  Review → {REVIEW_DIR}/")
+    if kept > 0:
+        print("\nNext step: uv run esc-dataset export")
+        print("Then:      uv run esc-finetune dataset/yolo_dataset/data.yaml")
+    else:
+        print("\nNo frames matched. Try:")
+        print("  - Lower --conf (currently {})".format(conf))
+        print("  - Add --tolerance 1 to accept ±1 box")
+        print("  - Better lighting")
+
+
 def export_dataset(val_split: float = 0.2) -> None:
     """Create YOLO-format dataset with train/val split."""
     images = sorted(IMAGES_DIR.glob("*.jpg"))
@@ -281,10 +422,19 @@ def export_dataset(val_split: float = 0.2) -> None:
     print(f"\nNext step: uv run esc-finetune {data_yaml}")
 
 
+def _parse_arg(flag: str, default, cast=str):
+    """Parse a --flag value from sys.argv."""
+    for i, arg in enumerate(sys.argv):
+        if arg == flag and i + 1 < len(sys.argv):
+            return cast(sys.argv[i + 1])
+    return default
+
+
 def main() -> None:
     """Entry point for esc-dataset command."""
     if len(sys.argv) < 2:
         print("Usage:")
+        print("  uv run esc-dataset auto-label config.yaml --boxes 8")
         print("  uv run esc-dataset capture config.yaml [--count 50]")
         print("  uv run esc-dataset label [--conf 0.08]")
         print("  uv run esc-dataset export [--val-split 0.2]")
@@ -292,27 +442,26 @@ def main() -> None:
 
     cmd = sys.argv[1]
 
-    if cmd == "capture":
+    if cmd == "auto-label":
         config_path = sys.argv[2] if len(sys.argv) > 2 else "config.yaml"
-        count = 50
-        for i, arg in enumerate(sys.argv):
-            if arg == "--count" and i + 1 < len(sys.argv):
-                count = int(sys.argv[i + 1])
-        capture_frames(config_path, count=count)
+        auto_label_known_count(
+            config_path=config_path,
+            expected_boxes=_parse_arg("--boxes", 8, int),
+            duration=_parse_arg("--duration", 300, int),
+            interval=_parse_arg("--interval", 3.0, float),
+            conf=_parse_arg("--conf", 0.05, float),
+            tolerance=_parse_arg("--tolerance", 0, int),
+        )
+
+    elif cmd == "capture":
+        config_path = sys.argv[2] if len(sys.argv) > 2 else "config.yaml"
+        capture_frames(config_path, count=_parse_arg("--count", 50, int))
 
     elif cmd == "label":
-        conf = 0.08
-        for i, arg in enumerate(sys.argv):
-            if arg == "--conf" and i + 1 < len(sys.argv):
-                conf = float(sys.argv[i + 1])
-        auto_label(conf=conf)
+        auto_label(conf=_parse_arg("--conf", 0.08, float))
 
     elif cmd == "export":
-        val_split = 0.2
-        for i, arg in enumerate(sys.argv):
-            if arg == "--val-split" and i + 1 < len(sys.argv):
-                val_split = float(sys.argv[i + 1])
-        export_dataset(val_split=val_split)
+        export_dataset(val_split=_parse_arg("--val-split", 0.2, float))
 
     else:
         print(f"Unknown command: {cmd}")
