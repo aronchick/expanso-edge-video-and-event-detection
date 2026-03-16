@@ -199,7 +199,7 @@ def _call_gemini_for_boxes(image_path: str, expected_boxes: int) -> list[dict]:
                     ]
                 }
             ],
-            "generationConfig": {"temperature": 0.1, "maxOutputTokens": 1024},
+            "generationConfig": {"temperature": 0.1, "maxOutputTokens": 4096},
         }
     ).encode("utf-8")
 
@@ -223,6 +223,9 @@ def _call_gemini_for_boxes(image_path: str, expected_boxes: int) -> list[dict]:
             raise
 
     text = data["candidates"][0]["content"]["parts"][0]["text"]
+
+    # Strip markdown code fences if present
+    text = text.replace("```json", "").replace("```", "").strip()
 
     # Parse JSON array of bbox objects
     start = text.find("[")
