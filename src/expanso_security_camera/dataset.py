@@ -205,7 +205,7 @@ def _call_gemini_for_boxes(image_path: str, expected_boxes: int) -> list[dict]:
 
     url = (
         f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"gemini-3.1-flash-lite-preview:generateContent?key={api_key}"
+        f"gemini-3-flash-preview:generateContent?key={api_key}"
     )
     req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
 
@@ -326,8 +326,8 @@ def label(sample_every: int = 1) -> None:
             errors += 1
             print(f"  [{idx + 1}/{len(to_label)}] {img_path.stem}: ERROR {e}")
 
-        # Gemini free tier: 10 RPM, need 6s between requests
-        time.sleep(6.0)
+        # Pace requests to avoid rate limits
+        time.sleep(2.0)
 
     print(f"\nDone! {labeled} labeled, {errors} errors")
     print(f"  Labels → {LABELS_DIR}/")
