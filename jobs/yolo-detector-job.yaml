@@ -1,0 +1,61 @@
+# Job: YOLO-World GPU Detection Pipeline
+# Runs the detection loop inside the Ultralytics Jetson Docker container
+# with GPU acceleration. Expanso manages lifecycle, restarts on failure.
+#
+# Deploy:
+#   expanso-cli job deploy jobs/yolo-detector-job.yaml
+
+name: yolo-detector
+type: pipeline
+
+config:
+  input:
+    subprocess:
+      name: /usr/bin/docker
+      args:
+        - run
+        - --rm
+        - --runtime=nvidia
+        - --network=host
+        - -v
+        - /home/daaronch/security-cameras/.env:/data/.env:ro
+        - -v
+        - /home/daaronch/security-cameras/snapshots:/data/snapshots
+        - -v
+        - /home/daaronch/security-cameras/yolov8s-worldv2.pt:/root/yolov8s-worldv2.pt:ro
+        - -v
+        - /tmp/detect_loop.py:/root/detect_loop.py:ro
+        - -w
+        - /root
+        - ultralytics/ultralytics:latest-jetson-jetpack6
+        - bash
+        - -c
+        - "pip install -q git+https://github.com/ultralytics/CLIP.git && python3 /root/detect_loop.py"
+      codec: lines
+      restart_on_exit: true
+
+  pipeline:
+    processors:
+      # Detection loop outputs JSON lines with box counts
+      - mapping: root = this.parse_json().catch(deleted())
+
+      # Enrich with device/site context
+      - mapping: |
+          root = this
+          root.source = {
+            "device_id": env("DEVICE_ID").or("recomputer-j3011-001"),
+            "site_id": env("SITE_ID").or("warehouse-demo"),
+            "pipeline": "yolo-detector",
+            "pipeline_version": "1.0.0"
+          }
+          root.detected_at = now()
+
+  output:
+    broker:
+      pattern: fan_out
+      outputs:
+        - file:
+            path: "/home/daaronch/security-cameras/detection-events.ndjson"
+            codec: lines
+        - stdout:
+            codec: lines

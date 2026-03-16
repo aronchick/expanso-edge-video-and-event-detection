@@ -28,3 +28,12 @@ config.yaml
 .ruff_cache/
 uv.lock
 .credentials
+
+# Detection model weights
+*.pt
+!requirements*.txt
+
+# Dataset and training artifacts
+dataset/
+diagnostics/
+runs/
