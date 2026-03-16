@@ -111,21 +111,29 @@ def _enhance_low_light(frame):
     return cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
 
 
-# COCO classes that could be a box in a warehouse setting
-BOX_COCO_CLASSES = {
-    24: "backpack",
-    25: "umbrella",
-    26: "handbag",
-    27: "tie",
-    28: "suitcase",
-    39: "bottle",
-    56: "chair",
-    57: "couch",
-    60: "dining table",
-    62: "tv",
-    63: "laptop",
-    73: "book",
-    75: "vase",
+# In dark scenes with numbered labels, YOLO sees the bright labels and
+# classifies them as traffic lights, TVs, books, clocks, etc.
+# All of these are valid "box" detections in our warehouse context.
+# Only exclude classes that are clearly NOT boxes.
+NON_BOX_COCO_CLASSES = {
+    0,   # person
+    1,   # bicycle
+    2,   # car
+    3,   # motorcycle
+    4,   # airplane
+    5,   # bus
+    6,   # train
+    7,   # truck
+    14,  # bird
+    15,  # cat
+    16,  # dog
+    17,  # horse
+    18,  # sheep
+    19,  # cow
+    20,  # elephant
+    21,  # bear
+    22,  # zebra
+    23,  # giraffe
 }
 
 
@@ -148,13 +156,13 @@ def _detect_boxes(frame) -> list[dict]:
         for box in preds[0].boxes:
             cls_id = int(box.cls[0])
             c = float(box.conf[0])
-            raw_name = model.names[cls_id]
             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-            # Accept all detections — let the dashboard show what YOLO sees
-            display_name = "box" if (cls_id in BOX_COCO_CLASSES or is_finetuned) else raw_name
+            # Skip animals/vehicles — everything else could be a box label
+            if not is_finetuned and cls_id in NON_BOX_COCO_CLASSES:
+                continue
             dets.append(
                 {
-                    "class": display_name,
+                    "class": "box",
                     "confidence": round(c, 2),
                     "bbox": [x1, y1, x2, y2],
                 }
