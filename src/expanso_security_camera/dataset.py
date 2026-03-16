@@ -217,7 +217,7 @@ def _call_gemini_for_boxes(image_path: str, expected_boxes: int) -> list[dict]:
             break
         except urllib.error.HTTPError as e:
             if e.code == 429 and attempt < 4:
-                wait = 2 ** attempt  # 1, 2, 4, 8s
+                wait = 2**attempt  # 1, 2, 4, 8s
                 time.sleep(wait)
                 continue
             raise
@@ -316,28 +316,41 @@ def label(sample_every: int = 1, workers: int = 10) -> None:
     for d in (LABELS_DIR, REVIEW_DIR):
         d.mkdir(parents=True, exist_ok=True)
 
-    print(f"Labeling {len(to_label)} images via Gemini Flash ({workers} parallel workers)")
+    # Start conservative, ramp up if no 429s
+    print(f"Labeling {len(to_label)} images via Gemini Flash")
 
     labeled = 0
     errors = 0
     start = time.time()
 
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {pool.submit(_label_one, img): img for img in to_label}
-        for i, future in enumerate(as_completed(futures)):
-            stem, n_boxes, err = future.result()
-            if err:
-                errors += 1
-                if errors <= 5 or errors % 20 == 0:
-                    print(f"  ERROR {stem}: {err}")
-            else:
-                labeled += 1
+    # Process in batches to control rate
+    batch_size = min(workers, 5)
+    for batch_start in range(0, len(to_label), batch_size):
+        batch = to_label[batch_start : batch_start + batch_size]
 
-            done = labeled + errors
-            if done % 10 == 0 or done == len(to_label):
-                elapsed = time.time() - start
-                rate = done / elapsed if elapsed > 0 else 0
-                print(f"  [{done}/{len(to_label)}] {labeled} ok, {errors} err ({rate:.1f}/s)")
+        with ThreadPoolExecutor(max_workers=batch_size) as pool:
+            futures = {pool.submit(_label_one, img): img for img in batch}
+            for future in as_completed(futures):
+                stem, n_boxes, err = future.result()
+                if err:
+                    errors += 1
+                    if "429" in str(err):
+                        # Back off on rate limit
+                        batch_size = max(1, batch_size - 1)
+                        time.sleep(5)
+                    elif errors <= 5 or errors % 20 == 0:
+                        print(f"  ERROR {stem}: {err}")
+                else:
+                    labeled += 1
+
+        done = labeled + errors
+        if done % 10 == 0 or done == len(to_label):
+            elapsed = time.time() - start
+            rate = labeled / elapsed if elapsed > 0 else 0
+            print(f"  [{done}/{len(to_label)}] {labeled} ok, {errors} err ({rate:.1f}/s)")
+
+        # Small pause between batches
+        time.sleep(0.5)
 
     elapsed = time.time() - start
     print(f"\nDone! {labeled} labeled, {errors} errors ({elapsed:.0f}s)")
