@@ -94,10 +94,16 @@ def _enhance_low_light(frame):
     contrast without blowing out bright areas. This makes dark objects
     visible to YOLO without washing out the image.
     """
+    # Aggressive enhancement for very dark nighttime security cameras
     lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
     l_channel, a_channel, b_channel = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    # First pass: strong CLAHE
+    clahe = cv2.createCLAHE(clipLimit=6.0, tileGridSize=(4, 4))
     l_channel = clahe.apply(l_channel)
+    # Second pass: stretch histogram to full range
+    l_min, l_max = l_channel.min(), l_channel.max()
+    if l_max > l_min:
+        l_channel = ((l_channel - l_min) / (l_max - l_min) * 255).astype(np.uint8)
     enhanced = cv2.merge([l_channel, a_channel, b_channel])
     return cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
 
