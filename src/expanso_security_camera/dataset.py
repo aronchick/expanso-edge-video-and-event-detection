@@ -1,14 +1,22 @@
 """Dataset builder for fine-tuning YOLO on your actual camera images.
 
 Three-step workflow:
-    1. COLLECT: Capture frames + YOLO candidate labels (fast, on Jetson)
-    2. VALIDATE: Send sampled frames to Claude/OpenAI to fix labels (offline)
+    1. CAPTURE: Raw frames only — fast, no YOLO (on Jetson)
+    2. LABEL:   Batch YOLO labeling + optional Claude validation (offline)
     3. EXPORT + FINETUNE
 
-    uv run esc-dataset collect config.yaml --boxes 8
-    uv run esc-dataset collect config.yaml --boxes 7
-    # ... down to 1 ...
-    uv run esc-dataset validate            # offline, calls Claude/OpenAI
+    # Capture (fast — just grabs frames, no inference)
+    uv run esc-dataset capture config.yaml --boxes 1 --camera cam-inside --countdown 10 &
+    uv run esc-dataset capture config.yaml --boxes 2 --camera cam-outside --countdown 10 &
+    wait
+
+    # Label all frames in batch (runs YOLO once on everything)
+    uv run esc-dataset label
+
+    # Optional: validate with Claude CLI
+    uv run esc-dataset validate
+
+    # Export + fine-tune
     uv run esc-dataset export
     uv run esc-finetune dataset/yolo_dataset/data.yaml
 """
@@ -30,50 +38,36 @@ DATASET_DIR = Path("dataset")
 IMAGES_DIR = DATASET_DIR / "images"
 LABELS_DIR = DATASET_DIR / "labels"
 REVIEW_DIR = DATASET_DIR / "review"
-META_DIR = DATASET_DIR / "meta"  # Per-image metadata (expected count, etc.)
+META_DIR = DATASET_DIR / "meta"
 
 CLASS_NAMES = ["box"]
 
 BOX_CLASSES = [
-    "cardboard box",
-    "shipping box",
-    "package",
-    "carton",
-    "box",
-    "parcel",
-    "crate",
-    "container",
-    "brown box",
-    "sealed box",
-    "stacked boxes",
-    "rectangular object",
-    "delivery package",
-    "moving box",
+    "cardboard box", "shipping box", "package", "carton",
+    "box", "parcel", "crate", "container", "brown box",
+    "sealed box", "stacked boxes", "rectangular object",
+    "delivery package", "moving box",
 ]
 
 
-# ── Step 1: Collect ─────────────────────────────────────────────────────
+# ── Step 1: Capture (raw frames only, no YOLO) ─────────────────────────
 
 
-def collect(
+def capture(
     config_path: str,
     expected_boxes: int,
     camera_id: str = "cam-inside",
     duration: int = 30,
     fps: float = 5.0,
-    conf: float = 0.03,
     countdown: int = 0,
 ) -> None:
-    """Capture frames and auto-label with YOLO top-N candidates.
+    """Capture raw frames from camera. No YOLO — just fast frame grabs.
 
-    Fast — runs entirely on Jetson, no API calls. Labels use top N
-    detections by confidence. Validation pass fixes them later.
+    Saves frames as JPEGs and a manifest with expected box count per frame.
+    Labeling happens in a separate offline batch step.
     """
-    from ultralytics import YOLO
-
     from expanso_security_camera.config import DemoConfig
 
-    os.environ["YOLO_VERBOSE"] = "false"
     config = DemoConfig.from_yaml(config_path)
 
     cam_url = None
@@ -87,27 +81,22 @@ def collect(
             print(f"  {cam.camera_id}")
         sys.exit(1)
 
-    for d in (IMAGES_DIR, LABELS_DIR, REVIEW_DIR, META_DIR):
+    for d in (IMAGES_DIR, META_DIR):
         d.mkdir(parents=True, exist_ok=True)
-
-    model = YOLO("yolov8s-worldv2.pt")
-    model.set_classes(BOX_CLASSES)
 
     interval = 1.0 / fps
     total_frames = int(duration * fps)
-    existing = len(list(IMAGES_DIR.glob("*.jpg")))
-    frame_idx = existing
+    frame_idx = len(list(IMAGES_DIR.glob("*.jpg")))
 
-    print(f"Collecting {camera_id}: {expected_boxes} boxes")
+    print(f"Capturing {camera_id}: {expected_boxes} boxes expected")
     print(f"  {total_frames} frames over {duration}s ({fps} fps)")
-    print(f"  YOLO conf={conf}, taking top {expected_boxes} per frame")
 
     if countdown > 0:
         for sec in range(countdown, 0, -1):
             print(f"  Starting in {sec}...", flush=True)
             time.sleep(1)
 
-    print()
+    print("  GO!", flush=True)
 
     cap = cv2.VideoCapture(cam_url)
     if not cap.isOpened():
@@ -117,7 +106,6 @@ def collect(
         cap.read()
 
     kept = 0
-    discarded = 0
     start = time.time()
 
     for i in range(total_frames):
@@ -133,9 +121,84 @@ def collect(
                 break
             continue
 
+        fname = f"{camera_id}_{frame_idx:05d}"
+        cv2.imwrite(str(IMAGES_DIR / f"{fname}.jpg"), frame)
+
+        # Save expected box count for this frame (used by label step)
+        meta = {"expected_boxes": expected_boxes, "camera_id": camera_id}
+        (META_DIR / f"{fname}.json").write_text(json.dumps(meta))
+
+        kept += 1
+        frame_idx += 1
+
+        if (i + 1) % 50 == 0:
+            elapsed = int(time.time() - start)
+            print(f"  [{elapsed}s] {i + 1}/{total_frames} captured")
+
+        elapsed = time.time() - frame_start
+        if elapsed < interval:
+            time.sleep(interval - elapsed)
+
+    cap.release()
+    total_time = time.time() - start
+    total_dataset = len(list(IMAGES_DIR.glob("*.jpg")))
+
+    print(f"\nDone! {kept} frames captured ({total_time:.0f}s)")
+    print(f"  Total dataset: {total_dataset} images")
+
+
+# ── Step 2: Label (batch YOLO on all captured frames) ──────────────────
+
+
+def label(conf: float = 0.03) -> None:
+    """Batch-label all captured frames with YOLO-World.
+
+    Reads expected_boxes from metadata, runs YOLO at low conf,
+    keeps top N detections per frame. Fast batch processing.
+    """
+    from ultralytics import YOLO
+
+    os.environ["YOLO_VERBOSE"] = "false"
+
+    images = sorted(IMAGES_DIR.glob("*.jpg"))
+    if not images:
+        print("No images found. Run 'capture' first.")
+        return
+
+    # Only label images that don't have labels yet
+    existing_labels = {p.stem for p in LABELS_DIR.glob("*.txt")}
+    to_label = [img for img in images if img.stem not in existing_labels]
+
+    if not to_label:
+        print(f"All {len(images)} images already labeled. Nothing to do.")
+        return
+
+    for d in (LABELS_DIR, REVIEW_DIR):
+        d.mkdir(parents=True, exist_ok=True)
+
+    print(f"Labeling {len(to_label)} images (skipping {len(existing_labels)} already done)")
+    print(f"  YOLO-World conf={conf}")
+
+    model = YOLO("yolov8s-worldv2.pt")
+    model.set_classes(BOX_CLASSES)
+
+    labeled = 0
+    for idx, img_path in enumerate(to_label):
+        frame = cv2.imread(str(img_path))
+        if frame is None:
+            continue
+
         h, w = frame.shape[:2]
         frame_area = h * w
 
+        # Read expected boxes from metadata
+        meta_path = META_DIR / f"{img_path.stem}.json"
+        expected = 8  # default
+        if meta_path.exists():
+            meta = json.loads(meta_path.read_text())
+            expected = meta.get("expected_boxes", 8)
+
+        # Run YOLO
         results = model(frame, verbose=False, conf=conf, imgsz=640, iou=0.5)
         raw_dets = []
         if results and results[0].boxes is not None:
@@ -149,22 +212,10 @@ def collect(
                     continue
                 raw_dets.append({"bbox": [x1, y1, x2, y2], "conf": c})
 
-        if len(raw_dets) == 0:
-            discarded += 1
-            elapsed = time.time() - frame_start
-            if elapsed < interval:
-                time.sleep(interval - elapsed)
-            continue
-
         raw_dets.sort(key=lambda d: d["conf"], reverse=True)
-        dets = raw_dets[:expected_boxes]
+        dets = raw_dets[:expected]
 
-        fname = f"{camera_id}_{frame_idx:05d}"
-
-        # Save image
-        cv2.imwrite(str(IMAGES_DIR / f"{fname}.jpg"), frame)
-
-        # Save YOLO labels
+        # Write YOLO-format labels
         lines = []
         for d in dets:
             x1, y1, x2, y2 = d["bbox"]
@@ -173,16 +224,17 @@ def collect(
             bw = (x2 - x1) / w
             bh = (y2 - y1) / h
             lines.append(f"0 {xc:.6f} {yc:.6f} {bw:.6f} {bh:.6f}")
-        (LABELS_DIR / f"{fname}.txt").write_text("\n".join(lines))
+        (LABELS_DIR / f"{img_path.stem}.txt").write_text("\n".join(lines))
 
-        # Save metadata (for validation pass)
-        meta = {
-            "expected_boxes": expected_boxes,
-            "yolo_candidates": len(raw_dets),
-            "yolo_used": len(dets),
-            "all_candidates": [{"bbox": d["bbox"], "conf": d["conf"]} for d in raw_dets],
-        }
-        (META_DIR / f"{fname}.json").write_text(json.dumps(meta))
+        # Update metadata with candidates
+        if meta_path.exists():
+            meta = json.loads(meta_path.read_text())
+        else:
+            meta = {"expected_boxes": expected}
+        meta["yolo_candidates"] = len(raw_dets)
+        meta["yolo_used"] = len(dets)
+        meta["all_candidates"] = [{"bbox": d["bbox"], "conf": d["conf"]} for d in raw_dets]
+        meta_path.write_text(json.dumps(meta))
 
         # Review image
         review = frame.copy()
@@ -191,41 +243,25 @@ def collect(
             cv2.rectangle(review, (bx1, by1), (bx2, by2), (255, 165, 0), 2)
         cv2.putText(
             review,
-            f"{len(dets)}/{expected_boxes} boxes [YOLO]",
+            f"{len(dets)}/{expected} boxes [YOLO]",
             (10, 25),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
             (0, 255, 255),
             2,
         )
-        cv2.imwrite(str(REVIEW_DIR / f"{fname}.jpg"), review)
+        cv2.imwrite(str(REVIEW_DIR / f"{img_path.stem}.jpg"), review)
 
-        kept += 1
-        frame_idx += 1
+        labeled += 1
+        if (idx + 1) % 50 == 0:
+            print(f"  {idx + 1}/{len(to_label)} labeled")
 
-        if (i + 1) % 50 == 0:
-            elapsed_total = int(time.time() - start)
-            print(f"  [{elapsed_total}s] {i + 1}/{total_frames} kept={kept}")
-
-        elapsed = time.time() - frame_start
-        if elapsed < interval:
-            time.sleep(interval - elapsed)
-
-    cap.release()
-    total_time = time.time() - start
-    total_dataset = len(list(IMAGES_DIR.glob("*.jpg")))
-
-    print(f"\nDone! {kept} frames kept, {discarded} discarded ({total_time:.0f}s)")
-    print(f"  Total dataset: {total_dataset} images")
-    print(f"  Review → {REVIEW_DIR}/  (orange = YOLO labels, not yet validated)")
+    print(f"\nDone! {labeled} frames labeled")
+    print(f"  Labels → {LABELS_DIR}/")
+    print(f"  Review → {REVIEW_DIR}/")
 
 
-# ── Step 2: Validate ────────────────────────────────────────────────────
-
-
-def _encode_frame_jpeg(frame, quality: int = 70) -> bytes:
-    _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
-    return buf.tobytes()
+# ── Step 3: Validate (optional, Claude CLI) ─────────────────────────────
 
 
 def _draw_numbered_candidates(frame, dets: list[dict]) -> np.ndarray:
@@ -235,8 +271,10 @@ def _draw_numbered_candidates(frame, dets: list[dict]) -> np.ndarray:
         color = (0, 255, 0)
         cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
         label = f"#{i + 1}"
-        cv2.putText(img, label, (x1 + 2, y1 + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 3)
-        cv2.putText(img, label, (x1 + 2, y1 + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+        cv2.putText(img, label, (x1 + 2, y1 + 18),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 3)
+        cv2.putText(img, label, (x1 + 2, y1 + 18),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
     return img
 
 
@@ -270,13 +308,11 @@ def _parse_indices(text: str) -> list[int]:
         return []
 
 
-def validate(
-    sample_every: int = 10,
-) -> None:
+def validate(sample_every: int = 10) -> None:
     """Offline validation: send sampled frames to Claude CLI.
 
     For every Nth image, draws all YOLO candidates on the frame,
-    sends to `claude -p` (uses OAuth login), asks which are real boxes.
+    sends to `claude -p`, asks which are real boxes.
     Rewrites the label file with the validated detections.
     """
     import tempfile
@@ -285,7 +321,7 @@ def validate(
     metas = sorted(META_DIR.glob("*.json"))
 
     if not images:
-        print("No images found. Run 'collect' first.")
+        print("No images found. Run 'capture' then 'label' first.")
         return
 
     meta_stems = {m.stem for m in metas}
@@ -301,7 +337,7 @@ def validate(
     for idx, (img_path, meta_path) in enumerate(to_validate):
         meta = json.loads(meta_path.read_text())
         expected = meta["expected_boxes"]
-        all_candidates = meta["all_candidates"]
+        all_candidates = meta.get("all_candidates", [])
 
         if not all_candidates:
             continue
@@ -312,10 +348,8 @@ def validate(
 
         h, w = frame.shape[:2]
 
-        # Draw all candidates numbered
         annotated = _draw_numbered_candidates(frame, all_candidates)
 
-        # Write to temp file for claude CLI
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
             tmp_path = f.name
             cv2.imwrite(tmp_path, annotated, [cv2.IMWRITE_JPEG_QUALITY, 80])
@@ -333,7 +367,6 @@ def validate(
             valid_indices = _call_claude_cli(tmp_path, prompt)
             dets = [all_candidates[j] for j in valid_indices if j < len(all_candidates)]
 
-            # Rewrite label file
             lines = []
             for d in dets:
                 x1, y1, x2, y2 = d["bbox"]
@@ -344,7 +377,6 @@ def validate(
                 lines.append(f"0 {xc:.6f} {yc:.6f} {bw:.6f} {bh:.6f}")
             (LABELS_DIR / f"{img_path.stem}.txt").write_text("\n".join(lines))
 
-            # Update review image
             review = frame.copy()
             for d in dets:
                 bx1, by1, bx2, by2 = map(int, d["bbox"])
@@ -373,11 +405,9 @@ def validate(
             os.unlink(tmp_path)
 
     print(f"\nDone! {validated} validated, {errors} errors")
-    print(f"  Green boxes in {REVIEW_DIR}/ = Claude-validated")
-    print("  Orange boxes = YOLO-only (not sampled)")
 
 
-# ── Step 3: Export ──────────────────────────────────────────────────────
+# ── Step 4: Export ──────────────────────────────────────────────────────
 
 
 def export_dataset(val_split: float = 0.2) -> None:
@@ -386,14 +416,14 @@ def export_dataset(val_split: float = 0.2) -> None:
     labels = sorted(LABELS_DIR.glob("*.txt"))
 
     if not images:
-        print("No images found. Run 'collect' first.")
+        print("No images found. Run 'capture' then 'label' first.")
         return
 
     label_stems = {lbl.stem for lbl in labels}
     paired = [(img, LABELS_DIR / f"{img.stem}.txt") for img in images if img.stem in label_stems]
 
     if not paired:
-        print("No matched image/label pairs found.")
+        print("No matched image/label pairs. Run 'label' first.")
         return
 
     print(f"Found {len(paired)} image/label pairs")
@@ -442,40 +472,37 @@ def _parse_arg(flag: str, default, cast=str):
 def main() -> None:
     if len(sys.argv) < 2:
         print("Usage:")
-        print("  esc-dataset collect config.yaml --boxes 8   # capture + YOLO label")
-        print("  esc-dataset validate                        # offline LLM validation")
-        print("  esc-dataset export                          # train/val split")
+        print("  esc-dataset capture config.yaml --boxes 4 --camera cam-inside")
+        print("  esc-dataset label              # batch YOLO labeling")
+        print("  esc-dataset validate            # optional Claude validation")
+        print("  esc-dataset export              # train/val split")
         print()
-        print("Collect options:")
+        print("Capture options:")
         print("  --boxes N      Expected box count (required)")
         print("  --camera ID    Camera (default: cam-inside)")
         print("  --duration S   Seconds (default: 30)")
         print("  --fps N        Frames/sec (default: 5)")
         print("  --countdown S  Countdown before starting (default: 0)")
-        print()
-        print("Validate options:")
-        print("  --sample-every N   Validate every Nth frame (default: 10)")
-        print("  --sample-every N   Validate every Nth frame (default: 10)")
         sys.exit(1)
 
     cmd = sys.argv[1]
 
-    if cmd == "collect":
+    if cmd == "capture":
         config_path = sys.argv[2] if len(sys.argv) > 2 else "config.yaml"
-        collect(
+        capture(
             config_path=config_path,
             expected_boxes=_parse_arg("--boxes", 8, int),
             camera_id=_parse_arg("--camera", "cam-inside", str),
-            duration=_parse_arg("--duration", 120, int),
+            duration=_parse_arg("--duration", 30, int),
             fps=_parse_arg("--fps", 5.0, float),
-            conf=_parse_arg("--conf", 0.03, float),
             countdown=_parse_arg("--countdown", 0, int),
         )
 
+    elif cmd == "label":
+        label(conf=_parse_arg("--conf", 0.03, float))
+
     elif cmd == "validate":
-        validate(
-            sample_every=_parse_arg("--sample-every", 10, int),
-        )
+        validate(sample_every=_parse_arg("--sample-every", 10, int))
 
     elif cmd == "export":
         export_dataset(val_split=_parse_arg("--val-split", 0.2, float))
