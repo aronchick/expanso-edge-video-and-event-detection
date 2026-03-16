@@ -138,7 +138,7 @@ def _detect_boxes(frame) -> list[dict]:
     """
     model = _load_detection_model()
     is_finetuned = Path("box-detector-finetuned.pt").exists()
-    conf = 0.15 if is_finetuned else 0.10
+    conf = 0.15 if is_finetuned else 0.05
 
     # Enhance dark frames before detection
     enhanced = _enhance_low_light(frame)
@@ -150,16 +150,15 @@ def _detect_boxes(frame) -> list[dict]:
             c = float(box.conf[0])
             raw_name = model.names[cls_id]
             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-            # For standard YOLO: map box-like COCO classes to "box"
-            # For fine-tuned: class 0 is already "box"
-            if is_finetuned or cls_id in BOX_COCO_CLASSES:
-                dets.append(
-                    {
-                        "class": "box" if not is_finetuned else raw_name,
-                        "confidence": round(c, 2),
-                        "bbox": [x1, y1, x2, y2],
-                    }
-                )
+            # Accept all detections — let the dashboard show what YOLO sees
+            display_name = "box" if (cls_id in BOX_COCO_CLASSES or is_finetuned) else raw_name
+            dets.append(
+                {
+                    "class": display_name,
+                    "confidence": round(c, 2),
+                    "bbox": [x1, y1, x2, y2],
+                }
+            )
     return dets
 
 
