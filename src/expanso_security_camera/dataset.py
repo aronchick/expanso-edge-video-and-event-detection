@@ -62,6 +62,7 @@ def collect(
     duration: int = 30,
     fps: float = 5.0,
     conf: float = 0.03,
+    countdown: int = 0,
 ) -> None:
     """Capture frames and auto-label with YOLO top-N candidates.
 
@@ -100,6 +101,12 @@ def collect(
     print(f"Collecting {camera_id}: {expected_boxes} boxes")
     print(f"  {total_frames} frames over {duration}s ({fps} fps)")
     print(f"  YOLO conf={conf}, taking top {expected_boxes} per frame")
+
+    if countdown > 0:
+        for sec in range(countdown, 0, -1):
+            print(f"  Starting in {sec}...", flush=True)
+            time.sleep(1)
+
     print()
 
     cap = cv2.VideoCapture(cam_url)
@@ -444,6 +451,7 @@ def main() -> None:
         print("  --camera ID    Camera (default: cam-inside)")
         print("  --duration S   Seconds (default: 30)")
         print("  --fps N        Frames/sec (default: 5)")
+        print("  --countdown S  Countdown before starting (default: 0)")
         print()
         print("Validate options:")
         print("  --sample-every N   Validate every Nth frame (default: 10)")
@@ -461,6 +469,7 @@ def main() -> None:
             duration=_parse_arg("--duration", 120, int),
             fps=_parse_arg("--fps", 5.0, float),
             conf=_parse_arg("--conf", 0.03, float),
+            countdown=_parse_arg("--countdown", 0, int),
         )
 
     elif cmd == "validate":
