@@ -87,18 +87,34 @@ def _load_camera_urls() -> dict[str, str]:
     return _camera_urls
 
 
+def _enhance_low_light(frame):
+    """Apply CLAHE contrast enhancement for low-light/nighttime frames.
+
+    CLAHE (Contrast Limited Adaptive Histogram Equalization) boosts local
+    contrast without blowing out bright areas. This makes dark objects
+    visible to YOLO without washing out the image.
+    """
+    lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+    l_channel, a_channel, b_channel = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    l_channel = clahe.apply(l_channel)
+    enhanced = cv2.merge([l_channel, a_channel, b_channel])
+    return cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
+
+
 def _detect_boxes(frame) -> list[dict]:
     """Run single-pass detection optimized for Jetson real-time use.
 
-    Uses one inference pass at 640px — fast enough for live dashboard
-    on Jetson Orin Nano (~30ms/frame). The expanded 14-class vocabulary
-    handles recall; multi-scale is in esc-diagnose for offline analysis.
+    Applies CLAHE low-light enhancement before detection to handle
+    nighttime/IR camera footage. Uses one inference pass at 640px.
     """
     model = _load_detection_model()
     is_finetuned = Path("box-detector-finetuned.pt").exists()
     conf = 0.15 if is_finetuned else 0.08
 
-    preds = model(frame, verbose=False, conf=conf, imgsz=640, iou=0.3)
+    # Enhance dark frames before detection
+    enhanced = _enhance_low_light(frame)
+    preds = model(enhanced, verbose=False, conf=conf, imgsz=640, iou=0.3)
     dets: list[dict] = []
     if preds and preds[0].boxes is not None:
         for box in preds[0].boxes:
@@ -178,6 +194,8 @@ async def get_snapshot(camera_id: str, annotate: str = "false") -> StreamingResp
         arr = np.frombuffer(jpg_bytes, dtype=np.uint8)
         frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
         dets = _detect_boxes(frame)
+        # Show enhanced frame so dark scenes are actually visible
+        frame = _enhance_low_light(frame)
         # Draw detections on frame
         for d in dets:
             x1, y1, x2, y2 = d["bbox"]
