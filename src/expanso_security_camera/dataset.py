@@ -59,7 +59,7 @@ def collect(
     config_path: str,
     expected_boxes: int,
     camera_id: str = "cam-inside",
-    duration: int = 120,
+    duration: int = 30,
     fps: float = 5.0,
     conf: float = 0.03,
 ) -> None:
@@ -442,7 +442,7 @@ def main() -> None:
         print("Collect options:")
         print("  --boxes N      Expected box count (required)")
         print("  --camera ID    Camera (default: cam-inside)")
-        print("  --duration S   Seconds (default: 120)")
+        print("  --duration S   Seconds (default: 30)")
         print("  --fps N        Frames/sec (default: 5)")
         print()
         print("Validate options:")
