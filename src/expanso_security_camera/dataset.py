@@ -43,10 +43,20 @@ META_DIR = DATASET_DIR / "meta"
 CLASS_NAMES = ["box"]
 
 BOX_CLASSES = [
-    "cardboard box", "shipping box", "package", "carton",
-    "box", "parcel", "crate", "container", "brown box",
-    "sealed box", "stacked boxes", "rectangular object",
-    "delivery package", "moving box",
+    "cardboard box",
+    "shipping box",
+    "package",
+    "carton",
+    "box",
+    "parcel",
+    "crate",
+    "container",
+    "brown box",
+    "sealed box",
+    "stacked boxes",
+    "rectangular object",
+    "delivery package",
+    "moving box",
 ]
 
 
@@ -147,25 +157,66 @@ def capture(
     print(f"  Total dataset: {total_dataset} images")
 
 
-# ── Step 2: Label (batch YOLO on all captured frames) ──────────────────
+# ── Step 2: Label (batch Claude vision on all captured frames) ──────────
 
 
-def label(conf: float = 0.03) -> None:
-    """Batch-label all captured frames with YOLO-World.
+def _call_claude_for_boxes(image_path: str, expected_boxes: int) -> list[dict]:
+    """Ask Claude to identify bounding boxes around cardboard boxes.
 
-    Reads expected_boxes from metadata, runs YOLO at low conf,
-    keeps top N detections per frame. Fast batch processing.
+    Returns list of {"bbox": [x1, y1, x2, y2]} dicts in pixel coords.
     """
-    from ultralytics import YOLO
+    import shutil
+    import subprocess
 
-    os.environ["YOLO_VERBOSE"] = "false"
+    claude_bin = shutil.which("claude") or str(Path.home() / ".local" / "bin" / "claude")
+    prompt = (
+        f"This security camera image contains exactly {expected_boxes} cardboard "
+        f"box(es). For each box, return its bounding box coordinates as pixel values. "
+        f"Return ONLY a JSON array of objects with x1, y1, x2, y2 keys. "
+        f"Example: [{{'x1':10,'y1':20,'x2':100,'y2':200}}]. No explanation."
+    )
 
+    result = subprocess.run(
+        [claude_bin, "-p", prompt, image_path, "--output-format", "text"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"claude CLI failed: {result.stderr.strip()}")
+
+    # Parse JSON array of bbox objects
+    text = result.stdout.strip()
+    start = text.find("[")
+    end = text.rfind("]")
+    if start == -1 or end == -1:
+        return []
+    try:
+        boxes = json.loads(text[start : end + 1])
+        return [
+            {"bbox": [b["x1"], b["y1"], b["x2"], b["y2"]]}
+            for b in boxes
+            if all(k in b for k in ("x1", "y1", "x2", "y2"))
+        ]
+    except (json.JSONDecodeError, TypeError, KeyError):
+        return []
+
+
+def label(sample_every: int = 1) -> None:
+    """Batch-label captured frames using Claude vision.
+
+    Sends every Nth frame to Claude CLI, asks it to identify bounding
+    boxes around the expected number of cardboard boxes. Skips already-
+    labeled frames. Uses OAuth login — no API key needed.
+
+    Args:
+        sample_every: Label every Nth frame (1 = all, 5 = every 5th)
+    """
     images = sorted(IMAGES_DIR.glob("*.jpg"))
     if not images:
         print("No images found. Run 'capture' first.")
         return
 
-    # Only label images that don't have labels yet
     existing_labels = {p.stem for p in LABELS_DIR.glob("*.txt")}
     to_label = [img for img in images if img.stem not in existing_labels]
 
@@ -173,90 +224,68 @@ def label(conf: float = 0.03) -> None:
         print(f"All {len(images)} images already labeled. Nothing to do.")
         return
 
+    # Sample if requested
+    to_label = to_label[::sample_every]
+
     for d in (LABELS_DIR, REVIEW_DIR):
         d.mkdir(parents=True, exist_ok=True)
 
-    print(f"Labeling {len(to_label)} images (skipping {len(existing_labels)} already done)")
-    print(f"  YOLO-World conf={conf}")
-
-    model = YOLO("yolov8s-worldv2.pt")
-    model.set_classes(BOX_CLASSES)
+    print(f"Labeling {len(to_label)} images via Claude vision")
 
     labeled = 0
+    errors = 0
     for idx, img_path in enumerate(to_label):
         frame = cv2.imread(str(img_path))
         if frame is None:
             continue
 
         h, w = frame.shape[:2]
-        frame_area = h * w
 
-        # Read expected boxes from metadata
         meta_path = META_DIR / f"{img_path.stem}.json"
-        expected = 8  # default
+        expected = 8
         if meta_path.exists():
             meta = json.loads(meta_path.read_text())
             expected = meta.get("expected_boxes", 8)
 
-        # Run YOLO
-        results = model(frame, verbose=False, conf=conf, imgsz=640, iou=0.5)
-        raw_dets = []
-        if results and results[0].boxes is not None:
-            for box in results[0].boxes:
-                x1, y1, x2, y2 = map(float, box.xyxy[0].tolist())
-                c = float(box.conf[0])
-                bbox_area = (x2 - x1) * (y2 - y1)
-                if bbox_area > frame_area * 0.4:
-                    continue
-                if bbox_area < frame_area * 0.005:
-                    continue
-                raw_dets.append({"bbox": [x1, y1, x2, y2], "conf": c})
+        try:
+            dets = _call_claude_for_boxes(str(img_path), expected)
 
-        raw_dets.sort(key=lambda d: d["conf"], reverse=True)
-        dets = raw_dets[:expected]
+            # Write YOLO-format labels
+            lines = []
+            for d in dets:
+                x1, y1, x2, y2 = d["bbox"]
+                xc = (x1 + x2) / 2 / w
+                yc = (y1 + y2) / 2 / h
+                bw = (x2 - x1) / w
+                bh = (y2 - y1) / h
+                lines.append(f"0 {xc:.6f} {yc:.6f} {bw:.6f} {bh:.6f}")
+            (LABELS_DIR / f"{img_path.stem}.txt").write_text("\n".join(lines))
 
-        # Write YOLO-format labels
-        lines = []
-        for d in dets:
-            x1, y1, x2, y2 = d["bbox"]
-            xc = (x1 + x2) / 2 / w
-            yc = (y1 + y2) / 2 / h
-            bw = (x2 - x1) / w
-            bh = (y2 - y1) / h
-            lines.append(f"0 {xc:.6f} {yc:.6f} {bw:.6f} {bh:.6f}")
-        (LABELS_DIR / f"{img_path.stem}.txt").write_text("\n".join(lines))
+            # Review image
+            review = frame.copy()
+            for d in dets:
+                bx1, by1, bx2, by2 = map(int, d["bbox"])
+                cv2.rectangle(review, (bx1, by1), (bx2, by2), (0, 255, 0), 2)
+            cv2.putText(
+                review,
+                f"{len(dets)}/{expected} boxes [Claude]",
+                (10, 25),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 255, 0),
+                2,
+            )
+            cv2.imwrite(str(REVIEW_DIR / f"{img_path.stem}.jpg"), review)
 
-        # Update metadata with candidates
-        if meta_path.exists():
-            meta = json.loads(meta_path.read_text())
-        else:
-            meta = {"expected_boxes": expected}
-        meta["yolo_candidates"] = len(raw_dets)
-        meta["yolo_used"] = len(dets)
-        meta["all_candidates"] = [{"bbox": d["bbox"], "conf": d["conf"]} for d in raw_dets]
-        meta_path.write_text(json.dumps(meta))
+            labeled += 1
+            if (idx + 1) % 10 == 0 or idx == 0:
+                print(f"  [{idx + 1}/{len(to_label)}] {img_path.stem}: {len(dets)} boxes")
 
-        # Review image
-        review = frame.copy()
-        for d in dets:
-            bx1, by1, bx2, by2 = map(int, d["bbox"])
-            cv2.rectangle(review, (bx1, by1), (bx2, by2), (255, 165, 0), 2)
-        cv2.putText(
-            review,
-            f"{len(dets)}/{expected} boxes [YOLO]",
-            (10, 25),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (0, 255, 255),
-            2,
-        )
-        cv2.imwrite(str(REVIEW_DIR / f"{img_path.stem}.jpg"), review)
+        except Exception as e:
+            errors += 1
+            print(f"  [{idx + 1}/{len(to_label)}] {img_path.stem}: ERROR {e}")
 
-        labeled += 1
-        if (idx + 1) % 50 == 0:
-            print(f"  {idx + 1}/{len(to_label)} labeled")
-
-    print(f"\nDone! {labeled} frames labeled")
+    print(f"\nDone! {labeled} labeled, {errors} errors")
     print(f"  Labels → {LABELS_DIR}/")
     print(f"  Review → {REVIEW_DIR}/")
 
@@ -271,10 +300,8 @@ def _draw_numbered_candidates(frame, dets: list[dict]) -> np.ndarray:
         color = (0, 255, 0)
         cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
         label = f"#{i + 1}"
-        cv2.putText(img, label, (x1 + 2, y1 + 18),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 3)
-        cv2.putText(img, label, (x1 + 2, y1 + 18),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+        cv2.putText(img, label, (x1 + 2, y1 + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 3)
+        cv2.putText(img, label, (x1 + 2, y1 + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
     return img
 
 
@@ -473,8 +500,8 @@ def main() -> None:
     if len(sys.argv) < 2:
         print("Usage:")
         print("  esc-dataset capture config.yaml --boxes 4 --camera cam-inside")
-        print("  esc-dataset label              # batch YOLO labeling")
-        print("  esc-dataset validate            # optional Claude validation")
+        print("  esc-dataset label              # batch Claude vision labeling")
+        print("  esc-dataset label --sample-every 5   # every 5th frame")
         print("  esc-dataset export              # train/val split")
         print()
         print("Capture options:")
@@ -499,7 +526,7 @@ def main() -> None:
         )
 
     elif cmd == "label":
-        label(conf=_parse_arg("--conf", 0.03, float))
+        label(sample_every=_parse_arg("--sample-every", 1, int))
 
     elif cmd == "validate":
         validate(sample_every=_parse_arg("--sample-every", 10, int))
