@@ -553,6 +553,22 @@ def main() -> None:
             countdown=_parse_arg("--countdown", 0, int),
         )
 
+    elif cmd == "models":
+        import urllib.request
+
+        api_key = os.environ.get("GOOGLE_API_KEY", "")
+        if not api_key:
+            print("Set GOOGLE_API_KEY first")
+            sys.exit(1)
+        url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        for m in data.get("models", []):
+            name = m["name"].replace("models/", "")
+            methods = ", ".join(m.get("supportedGenerationMethods", []))
+            if "generateContent" in methods:
+                print(f"  {name}")
+
     elif cmd == "label":
         label(sample_every=_parse_arg("--sample-every", 1, int))
 
