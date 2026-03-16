@@ -88,57 +88,32 @@ def _load_camera_urls() -> dict[str, str]:
 
 
 def _detect_boxes(frame) -> list[dict]:
-    """Run multi-scale detection with NMS merging for maximum box recall.
+    """Run single-pass detection optimized for Jetson real-time use.
 
-    Runs the model at multiple image sizes and merges results via NMS.
-    This catches boxes that are too small at one scale but visible at another.
+    Uses one inference pass at 640px — fast enough for live dashboard
+    on Jetson Orin Nano (~30ms/frame). The expanded 14-class vocabulary
+    handles recall; multi-scale is in esc-diagnose for offline analysis.
     """
     model = _load_detection_model()
     is_finetuned = Path("box-detector-finetuned.pt").exists()
+    conf = 0.15 if is_finetuned else 0.08
 
-    # Fine-tuned models are more reliable — single scale is enough
-    if is_finetuned:
-        scales = (640,)
-        conf = 0.15
-    else:
-        scales = (480, 640, 960)
-        conf = 0.08
-
-    all_dets: list[dict] = []
-    for imgsz in scales:
-        preds = model(frame, verbose=False, conf=conf, imgsz=imgsz, iou=0.3)
-        if preds and preds[0].boxes is not None:
-            for box in preds[0].boxes:
-                cls_id = int(box.cls[0])
-                c = float(box.conf[0])
-                name = model.names[cls_id]
-                x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-                all_dets.append(
-                    {
-                        "class": name,
-                        "confidence": round(c, 2),
-                        "bbox": [x1, y1, x2, y2],
-                    }
-                )
-
-    # NMS merge across scales
-    if len(all_dets) <= 1:
-        return all_dets
-
-    boxes_arr = np.array([d["bbox"] for d in all_dets], dtype=np.float32)
-    scores = np.array([d["confidence"] for d in all_dets], dtype=np.float32)
-
-    indices = cv2.dnn.NMSBoxes(
-        bboxes=[(int(b[0]), int(b[1]), int(b[2] - b[0]), int(b[3] - b[1])) for b in boxes_arr],
-        scores=scores.tolist(),
-        score_threshold=0.01,
-        nms_threshold=0.4,
-    )
-
-    if len(indices) == 0:
-        return []
-
-    return [all_dets[i] for i in indices.flatten()]
+    preds = model(frame, verbose=False, conf=conf, imgsz=640, iou=0.3)
+    dets: list[dict] = []
+    if preds and preds[0].boxes is not None:
+        for box in preds[0].boxes:
+            cls_id = int(box.cls[0])
+            c = float(box.conf[0])
+            name = model.names[cls_id]
+            x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+            dets.append(
+                {
+                    "class": name,
+                    "confidence": round(c, 2),
+                    "bbox": [x1, y1, x2, y2],
+                }
+            )
+    return dets
 
 
 def _grab_frame(url: str) -> bytes | None:
