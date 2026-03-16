@@ -160,33 +160,61 @@ def capture(
 # ── Step 2: Label (batch Claude vision on all captured frames) ──────────
 
 
-def _call_claude_for_boxes(image_path: str, expected_boxes: int) -> list[dict]:
-    """Ask Claude to identify bounding boxes around cardboard boxes.
+def _call_gemini_for_boxes(image_path: str, expected_boxes: int) -> list[dict]:
+    """Ask Gemini Flash to identify bounding boxes around cardboard boxes.
 
     Returns list of {"bbox": [x1, y1, x2, y2]} dicts in pixel coords.
+    Uses the REST API directly — no SDK needed.
     """
-    import shutil
-    import subprocess
+    import base64
+    import urllib.request
 
-    claude_bin = shutil.which("claude") or str(Path.home() / ".local" / "bin" / "claude")
+    api_key = os.environ.get("GOOGLE_API_KEY", "")
+    if not api_key:
+        raise RuntimeError("GOOGLE_API_KEY not set")
+
+    # Read and encode image
+    with open(image_path, "rb") as f:
+        img_b64 = base64.b64encode(f.read()).decode("utf-8")
+
+    # Get image dimensions for the response
+    frame = cv2.imread(image_path)
+    h, w = frame.shape[:2]
+
     prompt = (
-        f"This security camera image contains exactly {expected_boxes} cardboard "
-        f"box(es). For each box, return its bounding box coordinates as pixel values. "
-        f"Return ONLY a JSON array of objects with x1, y1, x2, y2 keys. "
-        f"Example: [{{'x1':10,'y1':20,'x2':100,'y2':200}}]. No explanation."
+        f"This security camera image ({w}x{h} pixels) contains exactly "
+        f"{expected_boxes} cardboard box(es). For each box, return its "
+        f"bounding box as pixel coordinates. Return ONLY a JSON array of "
+        f"objects with x1, y1, x2, y2 integer keys (pixel values). "
+        f'Example: [{{"x1":10,"y1":20,"x2":100,"y2":200}}]. No explanation.'
     )
 
-    result = subprocess.run(
-        [claude_bin, "-p", prompt, image_path, "--output-format", "text"],
-        capture_output=True,
-        text=True,
-        timeout=60,
+    payload = json.dumps(
+        {
+            "contents": [
+                {
+                    "parts": [
+                        {"inline_data": {"mime_type": "image/jpeg", "data": img_b64}},
+                        {"text": prompt},
+                    ]
+                }
+            ],
+            "generationConfig": {"temperature": 0.1, "maxOutputTokens": 1024},
+        }
+    ).encode("utf-8")
+
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/"
+        f"gemini-2.5-flash:generateContent?key={api_key}"
     )
-    if result.returncode != 0:
-        raise RuntimeError(f"claude CLI failed: {result.stderr.strip()}")
+    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+
+    text = data["candidates"][0]["content"]["parts"][0]["text"]
 
     # Parse JSON array of bbox objects
-    text = result.stdout.strip()
     start = text.find("[")
     end = text.rfind("]")
     if start == -1 or end == -1:
@@ -194,7 +222,7 @@ def _call_claude_for_boxes(image_path: str, expected_boxes: int) -> list[dict]:
     try:
         boxes = json.loads(text[start : end + 1])
         return [
-            {"bbox": [b["x1"], b["y1"], b["x2"], b["y2"]]}
+            {"bbox": [int(b["x1"]), int(b["y1"]), int(b["x2"]), int(b["y2"])]}
             for b in boxes
             if all(k in b for k in ("x1", "y1", "x2", "y2"))
         ]
@@ -230,7 +258,7 @@ def label(sample_every: int = 1) -> None:
     for d in (LABELS_DIR, REVIEW_DIR):
         d.mkdir(parents=True, exist_ok=True)
 
-    print(f"Labeling {len(to_label)} images via Claude vision")
+    print(f"Labeling {len(to_label)} images via Gemini Flash")
 
     labeled = 0
     errors = 0
@@ -248,7 +276,7 @@ def label(sample_every: int = 1) -> None:
             expected = meta.get("expected_boxes", 8)
 
         try:
-            dets = _call_claude_for_boxes(str(img_path), expected)
+            dets = _call_gemini_for_boxes(str(img_path), expected)
 
             # Write YOLO-format labels
             lines = []
@@ -268,7 +296,7 @@ def label(sample_every: int = 1) -> None:
                 cv2.rectangle(review, (bx1, by1), (bx2, by2), (0, 255, 0), 2)
             cv2.putText(
                 review,
-                f"{len(dets)}/{expected} boxes [Claude]",
+                f"{len(dets)}/{expected} boxes [Gemini]",
                 (10, 25),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.7,
@@ -410,7 +438,7 @@ def validate(sample_every: int = 10) -> None:
                 cv2.rectangle(review, (bx1, by1), (bx2, by2), (0, 255, 0), 2)
             cv2.putText(
                 review,
-                f"{len(dets)}/{expected} boxes [Claude]",
+                f"{len(dets)}/{expected} boxes [Gemini]",
                 (10, 25),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.7,
