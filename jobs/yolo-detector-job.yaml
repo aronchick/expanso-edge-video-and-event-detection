@@ -24,7 +24,7 @@ config:
         - -v
         - /home/daaronch/security-cameras/yolov8s-worldv2.pt:/root/yolov8s-worldv2.pt:ro
         - -v
-        - /tmp/detect_loop.py:/root/detect_loop.py:ro
+        - /home/daaronch/security-cameras/scripts/detect_loop.py:/root/detect_loop.py:ro
         - -w
         - /root
         - ultralytics/ultralytics:latest-jetson-jetpack6
