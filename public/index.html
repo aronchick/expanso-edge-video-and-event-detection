@@ -507,7 +507,8 @@
       updateInventoryBanner(0, 0);
     });
 
-    // Camera snapshots — refresh every second (GPU-annotated from disk)
+    // Camera snapshots — GPU container writes annotated JPEGs to disk,
+    // server just reads them. Fast enough for 1s refresh.
     function refreshCameras() {
       const ts = Date.now();
       const outside = $('feed-outside');
@@ -538,7 +539,7 @@
 
     setInterval(fetchState, 1000);
     setInterval(refreshCameras, 1000);
-    setInterval(fetchDetections, 3000);
+    setInterval(fetchDetections, 2000);
     fetchState();
     refreshCameras();
     fetchDetections();

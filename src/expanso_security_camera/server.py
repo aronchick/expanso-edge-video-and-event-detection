@@ -3,6 +3,10 @@
 Runs on the Jetson alongside the Expanso pipeline. Serves the dashboard
 UI, a JSON state API, and live camera snapshot endpoints.
 
+Camera snapshots and detection counts are written to disk by the GPU
+inference container (detect_loop.py) — this server just serves them.
+No RTSP connections or YOLO inference needed here.
+
 Run with:
     uv run esc-server
 
@@ -13,100 +17,18 @@ from __future__ import annotations
 
 import io
 import json
-import os
 import sys
 from pathlib import Path
 
-import cv2
-import numpy as np
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from expanso_security_camera.config import DemoConfig
-
 STATE_PATH = Path("state.json")
-CONFIG_PATH = Path("config.yaml")
 PUBLIC_DIR = Path(__file__).parent.parent.parent / "public"
+SNAPSHOTS_DIR = Path("snapshots")
 
 app = FastAPI(title="Box Transfer Monitor", docs_url=None, redoc_url=None)
-
-# Cache camera URLs and YOLO model (loaded once at startup)
-_camera_urls: dict[str, str] = {}
-_detection_model = None
-
-BOX_CLASSES = [
-    "cardboard box",
-    "shipping box",
-    "package",
-    "carton",
-    "box",
-    "parcel",
-    "crate",
-    "container",
-    "brown box",
-    "sealed box",
-    "stacked boxes",
-    "rectangular object",
-    "delivery package",
-    "moving box",
-]
-
-
-def _load_detection_model():
-    """Load YOLO model once, cache globally.
-
-    Prefers a fine-tuned model if available, falls back to YOLO-World.
-    """
-    global _detection_model
-    if _detection_model is None:
-        from ultralytics import YOLO
-
-        os.environ["YOLO_VERBOSE"] = "false"
-
-        finetuned = Path("box-detector-finetuned.pt")
-        if finetuned.exists():
-            _detection_model = YOLO(str(finetuned))
-        else:
-            _detection_model = YOLO("yolov8s-worldv2.pt")
-            _detection_model.set_classes(BOX_CLASSES)
-    return _detection_model
-
-
-def _load_camera_urls() -> dict[str, str]:
-    """Load camera URLs from config (cached)."""
-    global _camera_urls
-    if not _camera_urls and CONFIG_PATH.exists():
-        try:
-            config = DemoConfig.from_yaml(str(CONFIG_PATH))
-            _camera_urls = {c.camera_id: c.url for c in config.cameras}
-        except Exception:
-            pass
-    return _camera_urls
-
-
-def _enhance_frame(frame):
-    """Light CLAHE enhancement for low-light frames. Fast (<5ms)."""
-    lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
-    l_channel, a_channel, b_channel = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-    l_channel = clahe.apply(l_channel)
-    return cv2.cvtColor(cv2.merge([l_channel, a_channel, b_channel]), cv2.COLOR_LAB2BGR)
-
-
-def _grab_frame(url: str) -> bytes | None:
-    """Grab a single fresh frame from an RTSP stream, return as JPEG bytes."""
-    cap = cv2.VideoCapture(url)
-    if not cap.isOpened():
-        return None
-    for _ in range(3):
-        cap.read()
-    ret, frame = cap.read()
-    cap.release()
-    if not ret:
-        return None
-    _, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
-    return jpg.tobytes()
 
 
 @app.get("/api/state")
@@ -137,29 +59,19 @@ async def get_state() -> JSONResponse:
 
 @app.get("/api/snapshot/{camera_id}")
 async def get_snapshot(camera_id: str, annotate: str = "false") -> StreamingResponse:
-    """Return a live JPEG snapshot from a camera.
+    """Return the latest JPEG snapshot from a camera.
 
-    Pass ?annotate=true to overlay bounding boxes.
+    Snapshots are written to disk by the GPU inference container with
+    bounding boxes already drawn — no server-side YOLO needed.
     """
-    urls = _load_camera_urls()
-    url = urls.get(camera_id)
-    if not url:
-        return JSONResponse({"error": f"Unknown camera: {camera_id}"}, status_code=404)
+    snap_path = SNAPSHOTS_DIR / f"{camera_id}.jpg"
+    if not snap_path.exists():
+        return JSONResponse({"error": f"No snapshot for {camera_id}"}, status_code=404)
 
-    jpg_bytes = _grab_frame(url)
-    if jpg_bytes is None:
-        return JSONResponse({"error": f"Cannot read from {camera_id}"}, status_code=503)
-
-    if annotate.lower() == "true":
-        arr = np.frombuffer(jpg_bytes, dtype=np.uint8)
-        frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-        model = _load_detection_model()
-        # Enhance + detect
-        enhanced = _enhance_frame(frame)
-        results = model(enhanced, verbose=False, conf=0.10)
-        frame = results[0].plot()
-        _, jpg_bytes = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
-        jpg_bytes = jpg_bytes.tobytes()
+    try:
+        jpg_bytes = snap_path.read_bytes()
+    except OSError:
+        return JSONResponse({"error": f"Cannot read snapshot for {camera_id}"}, status_code=503)
 
     return StreamingResponse(
         io.BytesIO(jpg_bytes),
@@ -170,42 +82,19 @@ async def get_snapshot(camera_id: str, annotate: str = "false") -> StreamingResp
 
 @app.get("/api/detections")
 async def get_detections() -> JSONResponse:
-    """Run YOLO on both cameras and return box counts + detections."""
-    urls = _load_camera_urls()
-    if not urls:
-        return JSONResponse({"error": "No cameras configured"}, status_code=503)
+    """Return box counts from the GPU inference container.
+
+    Reads detections.json written by detect_loop.py — instant, no inference.
+    """
+    det_path = SNAPSHOTS_DIR / "detections.json"
+    if not det_path.exists():
+        return JSONResponse({"error": "No detection data available"}, status_code=503)
 
     try:
-        model = _load_detection_model()
-    except Exception as e:
-        return JSONResponse({"error": f"Model load failed: {e}"}, status_code=503)
-
-    results = {}
-    for cam_id, url in urls.items():
-        frame_bytes = _grab_frame(url)
-        if frame_bytes is None:
-            results[cam_id] = {"status": "offline", "boxes": 0, "people": 0, "detections": []}
-            continue
-
-        arr = np.frombuffer(frame_bytes, dtype=np.uint8)
-        frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-        enhanced = _enhance_frame(frame)
-
-        preds = model(enhanced, verbose=False, conf=0.10)
-        dets = []
-        boxes = 0
-        if preds and preds[0].boxes is not None:
-            for box in preds[0].boxes:
-                cls_id = int(box.cls[0])
-                conf = float(box.conf[0])
-                name = model.names[cls_id]
-                x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-                boxes += 1
-                dets.append({"class": name, "confidence": round(conf, 2), "bbox": [x1, y1, x2, y2]})
-
-        results[cam_id] = {"status": "online", "boxes": boxes, "people": 0, "detections": dets}
-
-    return JSONResponse(results)
+        data = json.loads(det_path.read_text())
+        return JSONResponse(data)
+    except (json.JSONDecodeError, OSError):
+        return JSONResponse({"error": "Cannot read detection data"}, status_code=503)
 
 
 @app.post("/api/reset")
@@ -238,16 +127,6 @@ if PUBLIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(PUBLIC_DIR)), name="static")
 
 
-@app.on_event("startup")
-async def startup():
-    """Preload YOLO model and camera config at startup."""
-    _load_camera_urls()
-    try:
-        _load_detection_model()
-    except Exception:
-        pass
-
-
 def main() -> None:
     """Entry point for esc-server command."""
     import uvicorn
@@ -258,6 +137,9 @@ def main() -> None:
             port = int(sys.argv[1])
         except ValueError:
             pass
+
+    # Ensure snapshots dir exists
+    SNAPSHOTS_DIR.mkdir(exist_ok=True)
 
     uvicorn.run(app, host="0.0.0.0", port=port, log_level="warning")
 
