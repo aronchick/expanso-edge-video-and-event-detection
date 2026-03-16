@@ -35,7 +35,6 @@ app = FastAPI(title="Box Transfer Monitor", docs_url=None, redoc_url=None)
 _camera_urls: dict[str, str] = {}
 _detection_model = None
 
-
 BOX_CLASSES = [
     "cardboard box",
     "shipping box",
@@ -57,10 +56,7 @@ BOX_CLASSES = [
 def _load_detection_model():
     """Load YOLO model once, cache globally.
 
-    Prefers fine-tuned > standard YOLOv8s. YOLO-World is NOT used for
-    live detection — it fails completely on dark/nighttime footage because
-    CLIP text-image matching was trained on well-lit photos.
-    Standard YOLOv8s handles low-light better via its COCO training data.
+    Prefers a fine-tuned model if available, falls back to YOLO-World.
     """
     global _detection_model
     if _detection_model is None:
@@ -68,13 +64,12 @@ def _load_detection_model():
 
         os.environ["YOLO_VERBOSE"] = "false"
 
-        # Prefer fine-tuned model if it exists
         finetuned = Path("box-detector-finetuned.pt")
         if finetuned.exists():
             _detection_model = YOLO(str(finetuned))
         else:
-            # Standard YOLOv8s — works in low light unlike YOLO-World
-            _detection_model = YOLO("yolov8s.pt")
+            _detection_model = YOLO("yolov8s-worldv2.pt")
+            _detection_model.set_classes(BOX_CLASSES)
     return _detection_model
 
 
@@ -90,84 +85,13 @@ def _load_camera_urls() -> dict[str, str]:
     return _camera_urls
 
 
-def _enhance_low_light(frame):
-    """Apply CLAHE contrast enhancement for low-light/nighttime frames.
-
-    CLAHE (Contrast Limited Adaptive Histogram Equalization) boosts local
-    contrast without blowing out bright areas. This makes dark objects
-    visible to YOLO without washing out the image.
-    """
-    # Aggressive enhancement for very dark nighttime security cameras
+def _enhance_frame(frame):
+    """Light CLAHE enhancement for low-light frames. Fast (<5ms)."""
     lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
     l_channel, a_channel, b_channel = cv2.split(lab)
-    # First pass: strong CLAHE
-    clahe = cv2.createCLAHE(clipLimit=6.0, tileGridSize=(4, 4))
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
     l_channel = clahe.apply(l_channel)
-    # Second pass: stretch histogram to full range
-    l_min, l_max = l_channel.min(), l_channel.max()
-    if l_max > l_min:
-        l_channel = ((l_channel - l_min) / (l_max - l_min) * 255).astype(np.uint8)
-    enhanced = cv2.merge([l_channel, a_channel, b_channel])
-    return cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
-
-
-# In dark scenes with numbered labels, YOLO sees the bright labels and
-# classifies them as traffic lights, TVs, books, clocks, etc.
-# All of these are valid "box" detections in our warehouse context.
-# Only exclude classes that are clearly NOT boxes.
-NON_BOX_COCO_CLASSES = {
-    0,   # person
-    1,   # bicycle
-    2,   # car
-    3,   # motorcycle
-    4,   # airplane
-    5,   # bus
-    6,   # train
-    7,   # truck
-    14,  # bird
-    15,  # cat
-    16,  # dog
-    17,  # horse
-    18,  # sheep
-    19,  # cow
-    20,  # elephant
-    21,  # bear
-    22,  # zebra
-    23,  # giraffe
-}
-
-
-def _detect_boxes(frame) -> list[dict]:
-    """Run single-pass detection optimized for Jetson real-time use.
-
-    Applies CLAHE low-light enhancement before detection to handle
-    nighttime/IR camera footage. Uses standard YOLOv8s (not World)
-    because YOLO-World's CLIP fails completely in low light.
-    """
-    model = _load_detection_model()
-    is_finetuned = Path("box-detector-finetuned.pt").exists()
-    conf = 0.15 if is_finetuned else 0.05
-
-    # Enhance dark frames before detection
-    enhanced = _enhance_low_light(frame)
-    preds = model(enhanced, verbose=False, conf=conf, imgsz=640, iou=0.3)
-    dets: list[dict] = []
-    if preds and preds[0].boxes is not None:
-        for box in preds[0].boxes:
-            cls_id = int(box.cls[0])
-            c = float(box.conf[0])
-            x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-            # Skip animals/vehicles — everything else could be a box label
-            if not is_finetuned and cls_id in NON_BOX_COCO_CLASSES:
-                continue
-            dets.append(
-                {
-                    "class": "box",
-                    "confidence": round(c, 2),
-                    "bbox": [x1, y1, x2, y2],
-                }
-            )
-    return dets
+    return cv2.cvtColor(cv2.merge([l_channel, a_channel, b_channel]), cv2.COLOR_LAB2BGR)
 
 
 def _grab_frame(url: str) -> bytes | None:
@@ -175,7 +99,6 @@ def _grab_frame(url: str) -> bytes | None:
     cap = cv2.VideoCapture(url)
     if not cap.isOpened():
         return None
-    # Flush buffer
     for _ in range(3):
         cap.read()
     ret, frame = cap.read()
@@ -216,7 +139,7 @@ async def get_state() -> JSONResponse:
 async def get_snapshot(camera_id: str, annotate: str = "false") -> StreamingResponse:
     """Return a live JPEG snapshot from a camera.
 
-    Pass ?annotate=true to overlay YOLO-World bounding boxes.
+    Pass ?annotate=true to overlay bounding boxes.
     """
     urls = _load_camera_urls()
     url = urls.get(camera_id)
@@ -227,25 +150,14 @@ async def get_snapshot(camera_id: str, annotate: str = "false") -> StreamingResp
     if jpg_bytes is None:
         return JSONResponse({"error": f"Cannot read from {camera_id}"}, status_code=503)
 
-    # If annotate requested, run YOLO and draw boxes
     if annotate.lower() == "true":
         arr = np.frombuffer(jpg_bytes, dtype=np.uint8)
         frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-        dets = _detect_boxes(frame)
-        # Show enhanced frame so dark scenes are actually visible
-        frame = _enhance_low_light(frame)
-        # Draw detections on frame
-        for d in dets:
-            x1, y1, x2, y2 = d["bbox"]
-            label = f"{d['class']} {d['confidence']:.0%}"
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-            cv2.rectangle(frame, (x1, y1 - th - 6), (x1 + tw, y1), (0, 255, 0), -1)
-            cv2.putText(frame, label, (x1, y1 - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-        # Box count overlay
-        cv2.putText(
-            frame, f"{len(dets)} boxes", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 255), 2
-        )
+        model = _load_detection_model()
+        # Enhance + detect
+        enhanced = _enhance_frame(frame)
+        results = model(enhanced, verbose=False, conf=0.10)
+        frame = results[0].plot()
         _, jpg_bytes = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
         jpg_bytes = jpg_bytes.tobytes()
 
@@ -258,13 +170,15 @@ async def get_snapshot(camera_id: str, annotate: str = "false") -> StreamingResp
 
 @app.get("/api/detections")
 async def get_detections() -> JSONResponse:
-    """Run detection on both cameras and return box counts + detections.
-
-    Uses multi-scale detection with NMS merging for maximum recall.
-    """
+    """Run YOLO on both cameras and return box counts + detections."""
     urls = _load_camera_urls()
     if not urls:
         return JSONResponse({"error": "No cameras configured"}, status_code=503)
+
+    try:
+        model = _load_detection_model()
+    except Exception as e:
+        return JSONResponse({"error": f"Model load failed: {e}"}, status_code=503)
 
     results = {}
     for cam_id, url in urls.items():
@@ -273,18 +187,23 @@ async def get_detections() -> JSONResponse:
             results[cam_id] = {"status": "offline", "boxes": 0, "people": 0, "detections": []}
             continue
 
-        import numpy as np
-
         arr = np.frombuffer(frame_bytes, dtype=np.uint8)
         frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        enhanced = _enhance_frame(frame)
 
-        dets = _detect_boxes(frame)
-        results[cam_id] = {
-            "status": "online",
-            "boxes": len(dets),
-            "people": 0,
-            "detections": dets,
-        }
+        preds = model(enhanced, verbose=False, conf=0.10)
+        dets = []
+        boxes = 0
+        if preds and preds[0].boxes is not None:
+            for box in preds[0].boxes:
+                cls_id = int(box.cls[0])
+                conf = float(box.conf[0])
+                name = model.names[cls_id]
+                x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+                boxes += 1
+                dets.append({"class": name, "confidence": round(conf, 2), "bbox": [x1, y1, x2, y2]})
+
+        results[cam_id] = {"status": "online", "boxes": boxes, "people": 0, "detections": dets}
 
     return JSONResponse(results)
 
@@ -315,8 +234,6 @@ async def architecture() -> HTMLResponse:
     return HTMLResponse("<h1>Architecture page not found</h1>", status_code=404)
 
 
-# Serve static assets (JS, CSS, images) at /static/
-# NOT at / which would intercept API routes
 if PUBLIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(PUBLIC_DIR)), name="static")
 
@@ -328,7 +245,7 @@ async def startup():
     try:
         _load_detection_model()
     except Exception:
-        pass  # Model will load on first request if startup fails
+        pass
 
 
 def main() -> None:
