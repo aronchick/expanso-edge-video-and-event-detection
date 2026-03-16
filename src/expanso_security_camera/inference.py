@@ -219,11 +219,24 @@ class CameraThread:
 
 
 def map_class_name(raw_class: str, class_map: dict[str, str], mode: str) -> str:
-    """Map a raw COCO class name to a display name."""
+    """Map a raw class name to a display name.
+
+    Handles both COCO class names (suitcase → box) and YOLO-World names
+    (cardboard box → box).
+    """
     if raw_class in class_map:
         return class_map[raw_class]
     if mode == "person":
-        return "person"
+        return "person" if raw_class == "person" else "box"
+    # YOLO-World classes like "cardboard box" already describe boxes
+    if "box" in raw_class.lower() or raw_class.lower() in (
+        "package",
+        "parcel",
+        "carton",
+        "crate",
+        "container",
+    ):
+        return "box"
     return "box"
 
 
@@ -267,12 +280,33 @@ def run_pipeline(config: DemoConfig) -> None:
 
     log(f"Starting pipeline: device={config.device_id} mode={config.detect_mode}")
 
-    # Load YOLO model
-    model = YOLO(f"{config.model_name}.pt")
+    # Load YOLO model — prefer fine-tuned if available
+    finetuned = Path("box-detector-finetuned.pt")
+    if finetuned.exists() and config.detect_mode == "box":
+        log(f"Using fine-tuned model: {finetuned}")
+        model = YOLO(str(finetuned))
+    else:
+        model = YOLO(f"{config.model_name}.pt")
 
     # If using YOLO-World (open-vocabulary), set custom classes
-    if "world" in config.model_name.lower():
-        world_classes = ["cardboard box", "shipping box", "package", "person"]
+    if "world" in config.model_name.lower() and not finetuned.exists():
+        world_classes = [
+            "cardboard box",
+            "shipping box",
+            "package",
+            "carton",
+            "box",
+            "parcel",
+            "crate",
+            "container",
+            "brown box",
+            "sealed box",
+            "stacked boxes",
+            "rectangular object",
+            "delivery package",
+            "moving box",
+            "person",
+        ]
         model.set_classes(world_classes)
 
     # Set up camera threads
@@ -361,6 +395,8 @@ def run_pipeline(config: DemoConfig) -> None:
                 inference_ms = (time.time() - inference_start) * 1000
 
                 # Extract detections
+                # Use model.names for class lookup (works for both COCO and YOLO-World)
+                model_names = model.names if hasattr(model, "names") else COCO_NAMES
                 detections = []
                 if results and results[0].boxes is not None:
                     for box in results[0].boxes:
@@ -370,7 +406,7 @@ def run_pipeline(config: DemoConfig) -> None:
                         cls_id = int(box.cls[0])
                         conf = float(box.conf[0])
                         track_id = int(box.id[0]) if box.id is not None else -1
-                        raw_class = COCO_NAMES.get(cls_id, f"class_{cls_id}")
+                        raw_class = model_names.get(cls_id, f"class_{cls_id}")
 
                         detections.append(
                             {

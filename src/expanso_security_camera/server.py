@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 import cv2
+import numpy as np
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -35,15 +36,42 @@ _camera_urls: dict[str, str] = {}
 _detection_model = None
 
 
+BOX_CLASSES = [
+    "cardboard box",
+    "shipping box",
+    "package",
+    "carton",
+    "box",
+    "parcel",
+    "crate",
+    "container",
+    "brown box",
+    "sealed box",
+    "stacked boxes",
+    "rectangular object",
+    "delivery package",
+    "moving box",
+]
+
+
 def _load_detection_model():
-    """Load YOLO-World model once, cache globally."""
+    """Load YOLO model once, cache globally.
+
+    Prefers a fine-tuned model if available, falls back to YOLO-World.
+    """
     global _detection_model
     if _detection_model is None:
         from ultralytics import YOLO
 
         os.environ["YOLO_VERBOSE"] = "false"
-        _detection_model = YOLO("yolov8s-worldv2.pt")
-        _detection_model.set_classes(["cardboard box", "shipping box", "package", "carton"])
+
+        # Prefer fine-tuned model if it exists
+        finetuned = Path("box-detector-finetuned.pt")
+        if finetuned.exists():
+            _detection_model = YOLO(str(finetuned))
+        else:
+            _detection_model = YOLO("yolov8s-worldv2.pt")
+            _detection_model.set_classes(BOX_CLASSES)
     return _detection_model
 
 
@@ -57,6 +85,60 @@ def _load_camera_urls() -> dict[str, str]:
         except Exception:
             pass
     return _camera_urls
+
+
+def _detect_boxes(frame) -> list[dict]:
+    """Run multi-scale detection with NMS merging for maximum box recall.
+
+    Runs the model at multiple image sizes and merges results via NMS.
+    This catches boxes that are too small at one scale but visible at another.
+    """
+    model = _load_detection_model()
+    is_finetuned = Path("box-detector-finetuned.pt").exists()
+
+    # Fine-tuned models are more reliable — single scale is enough
+    if is_finetuned:
+        scales = (640,)
+        conf = 0.15
+    else:
+        scales = (480, 640, 960)
+        conf = 0.08
+
+    all_dets: list[dict] = []
+    for imgsz in scales:
+        preds = model(frame, verbose=False, conf=conf, imgsz=imgsz, iou=0.3)
+        if preds and preds[0].boxes is not None:
+            for box in preds[0].boxes:
+                cls_id = int(box.cls[0])
+                c = float(box.conf[0])
+                name = model.names[cls_id]
+                x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+                all_dets.append(
+                    {
+                        "class": name,
+                        "confidence": round(c, 2),
+                        "bbox": [x1, y1, x2, y2],
+                    }
+                )
+
+    # NMS merge across scales
+    if len(all_dets) <= 1:
+        return all_dets
+
+    boxes_arr = np.array([d["bbox"] for d in all_dets], dtype=np.float32)
+    scores = np.array([d["confidence"] for d in all_dets], dtype=np.float32)
+
+    indices = cv2.dnn.NMSBoxes(
+        bboxes=[(int(b[0]), int(b[1]), int(b[2] - b[0]), int(b[3] - b[1])) for b in boxes_arr],
+        scores=scores.tolist(),
+        score_threshold=0.01,
+        nms_threshold=0.4,
+    )
+
+    if len(indices) == 0:
+        return []
+
+    return [all_dets[i] for i in indices.flatten()]
 
 
 def _grab_frame(url: str) -> bytes | None:
@@ -118,13 +200,21 @@ async def get_snapshot(camera_id: str, annotate: str = "false") -> StreamingResp
 
     # If annotate requested, run YOLO and draw boxes
     if annotate.lower() == "true":
-        import numpy as np
-
         arr = np.frombuffer(jpg_bytes, dtype=np.uint8)
         frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-        model = _load_detection_model()
-        results = model(frame, verbose=False, conf=0.10)
-        frame = results[0].plot()
+        dets = _detect_boxes(frame)
+        # Draw detections on frame
+        for d in dets:
+            x1, y1, x2, y2 = d["bbox"]
+            label = f"{d['class']} {d['confidence']:.0%}"
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+            cv2.rectangle(frame, (x1, y1 - th - 6), (x1 + tw, y1), (0, 255, 0), -1)
+            cv2.putText(frame, label, (x1, y1 - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+        # Box count overlay
+        cv2.putText(
+            frame, f"{len(dets)} boxes", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 255), 2
+        )
         _, jpg_bytes = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
         jpg_bytes = jpg_bytes.tobytes()
 
@@ -137,19 +227,13 @@ async def get_snapshot(camera_id: str, annotate: str = "false") -> StreamingResp
 
 @app.get("/api/detections")
 async def get_detections() -> JSONResponse:
-    """Run YOLO-World on both cameras and return box counts + detections.
+    """Run detection on both cameras and return box counts + detections.
 
-    This gives a real-time snapshot of what each camera sees right now,
-    independent of the counting/crossing logic.
+    Uses multi-scale detection with NMS merging for maximum recall.
     """
     urls = _load_camera_urls()
     if not urls:
         return JSONResponse({"error": "No cameras configured"}, status_code=503)
-
-    try:
-        model = _load_detection_model()
-    except Exception as e:
-        return JSONResponse({"error": f"Model load failed: {e}"}, status_code=503)
 
     results = {}
     for cam_id, url in urls.items():
@@ -163,21 +247,13 @@ async def get_detections() -> JSONResponse:
         arr = np.frombuffer(frame_bytes, dtype=np.uint8)
         frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
 
-        preds = model(frame, verbose=False, conf=0.10)
-        dets = []
-        boxes = 0
-        people = 0
-        if preds and preds[0].boxes is not None:
-            for box in preds[0].boxes:
-                cls_id = int(box.cls[0])
-                conf = float(box.conf[0])
-                name = model.names[cls_id]
-                x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-                # All classes are box variants now (no person class)
-                boxes += 1
-                dets.append({"class": name, "confidence": round(conf, 2), "bbox": [x1, y1, x2, y2]})
-
-        results[cam_id] = {"status": "online", "boxes": boxes, "people": people, "detections": dets}
+        dets = _detect_boxes(frame)
+        results[cam_id] = {
+            "status": "online",
+            "boxes": len(dets),
+            "people": 0,
+            "detections": dets,
+        }
 
     return JSONResponse(results)
 
