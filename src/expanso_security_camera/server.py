@@ -57,7 +57,10 @@ BOX_CLASSES = [
 def _load_detection_model():
     """Load YOLO model once, cache globally.
 
-    Prefers a fine-tuned model if available, falls back to YOLO-World.
+    Prefers fine-tuned > standard YOLOv8s. YOLO-World is NOT used for
+    live detection — it fails completely on dark/nighttime footage because
+    CLIP text-image matching was trained on well-lit photos.
+    Standard YOLOv8s handles low-light better via its COCO training data.
     """
     global _detection_model
     if _detection_model is None:
@@ -70,8 +73,8 @@ def _load_detection_model():
         if finetuned.exists():
             _detection_model = YOLO(str(finetuned))
         else:
-            _detection_model = YOLO("yolov8s-worldv2.pt")
-            _detection_model.set_classes(BOX_CLASSES)
+            # Standard YOLOv8s — works in low light unlike YOLO-World
+            _detection_model = YOLO("yolov8s.pt")
     return _detection_model
 
 
@@ -108,15 +111,34 @@ def _enhance_low_light(frame):
     return cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
 
 
+# COCO classes that could be a box in a warehouse setting
+BOX_COCO_CLASSES = {
+    24: "backpack",
+    25: "umbrella",
+    26: "handbag",
+    27: "tie",
+    28: "suitcase",
+    39: "bottle",
+    56: "chair",
+    57: "couch",
+    60: "dining table",
+    62: "tv",
+    63: "laptop",
+    73: "book",
+    75: "vase",
+}
+
+
 def _detect_boxes(frame) -> list[dict]:
     """Run single-pass detection optimized for Jetson real-time use.
 
     Applies CLAHE low-light enhancement before detection to handle
-    nighttime/IR camera footage. Uses one inference pass at 640px.
+    nighttime/IR camera footage. Uses standard YOLOv8s (not World)
+    because YOLO-World's CLIP fails completely in low light.
     """
     model = _load_detection_model()
     is_finetuned = Path("box-detector-finetuned.pt").exists()
-    conf = 0.15 if is_finetuned else 0.02
+    conf = 0.15 if is_finetuned else 0.10
 
     # Enhance dark frames before detection
     enhanced = _enhance_low_light(frame)
@@ -126,15 +148,18 @@ def _detect_boxes(frame) -> list[dict]:
         for box in preds[0].boxes:
             cls_id = int(box.cls[0])
             c = float(box.conf[0])
-            name = model.names[cls_id]
+            raw_name = model.names[cls_id]
             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-            dets.append(
-                {
-                    "class": name,
-                    "confidence": round(c, 2),
-                    "bbox": [x1, y1, x2, y2],
-                }
-            )
+            # For standard YOLO: map box-like COCO classes to "box"
+            # For fine-tuned: class 0 is already "box"
+            if is_finetuned or cls_id in BOX_COCO_CLASSES:
+                dets.append(
+                    {
+                        "class": "box" if not is_finetuned else raw_name,
+                        "confidence": round(c, 2),
+                        "bbox": [x1, y1, x2, y2],
+                    }
+                )
     return dets
 
 
