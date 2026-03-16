@@ -1,6 +1,7 @@
-# Job: YOLO-World GPU Detection Pipeline
+# Job: GPU Box Detection Pipeline
 # Runs the detection loop inside the Ultralytics Jetson Docker container
 # with GPU acceleration. Expanso manages lifecycle, restarts on failure.
+# Auto-detects fine-tuned model (6MB, 60fps) or falls back to YOLO-World.
 #
 # Deploy:
 #   expanso-cli job deploy jobs/yolo-detector-job.yaml
@@ -18,19 +19,15 @@ config:
         - --runtime=nvidia
         - --network=host
         - -v
-        - /home/daaronch/security-cameras/.env:/data/.env:ro
-        - -v
-        - /home/daaronch/security-cameras/snapshots:/data/snapshots
+        - /home/daaronch/security-cameras:/data
         - -v
         - /home/daaronch/security-cameras/yolov8s-worldv2.pt:/root/yolov8s-worldv2.pt:ro
-        - -v
-        - /home/daaronch/security-cameras/scripts/detect_loop.py:/root/detect_loop.py:ro
         - -w
         - /root
         - ultralytics/ultralytics:latest-jetson-jetpack6
         - bash
         - -c
-        - "pip install -q git+https://github.com/ultralytics/CLIP.git && python3 /root/detect_loop.py"
+        - "pip install -q git+https://github.com/ultralytics/CLIP.git && python3 /data/scripts/detect_loop.py"
       codec: lines
       restart_on_exit: true
 

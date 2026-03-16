@@ -39,7 +39,7 @@ def finetune(
 
     Args:
         data_yaml: Path to data.yaml from esc-dataset export
-        base_model: Base model to fine-tune from (yolov8s.pt recommended)
+        base_model: Base model to fine-tune from (yolov8n.pt for speed)
         epochs: Number of training epochs
         imgsz: Training image size
         batch: Batch size (reduce to 4 for Jetson, 16+ for big GPU)
@@ -156,7 +156,7 @@ def main() -> None:
         print("Options:")
         print("  --epochs N       Training epochs (default: 50)")
         print("  --batch N        Batch size (default: 8)")
-        print("  --base MODEL     Base model (default: yolov8s.pt)")
+        print("  --base MODEL     Base model (default: yolov8n.pt)")
         print("  --freeze N       Layers to freeze (default: 10)")
         print("  --device DEV     CUDA device (default: 0)")
         print("  --validate       Run validation only (needs trained model)")
@@ -167,7 +167,7 @@ def main() -> None:
     # Parse args
     epochs = 50
     batch = 8
-    base_model = "yolov8s.pt"
+    base_model = "yolov8n.pt"
     freeze = 10
     device = "0"
     validate_only = False

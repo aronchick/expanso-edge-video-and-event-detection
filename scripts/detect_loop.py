@@ -1,7 +1,11 @@
 """GPU detection loop — runs inside the Ultralytics Jetson Docker container.
 
-Grabs frames from RTSP cameras, runs YOLO-World detection, writes
-annotated snapshots + detections.json for the dashboard server to serve.
+Grabs frames from RTSP cameras, runs YOLO detection, writes annotated
+snapshots + detections.json for the dashboard server to serve.
+
+Prefers a fine-tuned model (box-detector-finetuned.pt) if available —
+6MB YOLOv8n loads in <2s and runs at 60+ FPS vs YOLO-World's 1.2GB
+and 60s cold start. Falls back to YOLO-World for zero-shot detection.
 
 Mounted into the container at /root/detect_loop.py via the Expanso job spec.
 """
@@ -24,26 +28,34 @@ with open("/data/.env") as f:
             k, v = line.strip().split("=", 1)
             env[k] = v
 
-# YOLO-World with expanded box vocabulary (14 synonyms)
-model = YOLO("yolov8s-worldv2.pt")
-model.set_classes(
-    [
-        "cardboard box",
-        "shipping box",
-        "package",
-        "carton",
-        "box",
-        "parcel",
-        "crate",
-        "container",
-        "brown box",
-        "sealed box",
-        "stacked boxes",
-        "rectangular object",
-        "delivery package",
-        "moving box",
-    ]
-)
+# Prefer fine-tuned model (tiny, fast) over YOLO-World (huge, slow)
+FINETUNED_PATH = "/data/box-detector-finetuned.pt"
+if os.path.exists(FINETUNED_PATH):
+    print(f"Using fine-tuned model: {FINETUNED_PATH}", flush=True)
+    model = YOLO(FINETUNED_PATH)
+    CONF = 0.25  # Fine-tuned models are confident — higher threshold
+else:
+    print("No fine-tuned model found, using YOLO-World (slow)", flush=True)
+    model = YOLO("yolov8s-worldv2.pt")
+    model.set_classes(
+        [
+            "cardboard box",
+            "shipping box",
+            "package",
+            "carton",
+            "box",
+            "parcel",
+            "crate",
+            "container",
+            "brown box",
+            "sealed box",
+            "stacked boxes",
+            "rectangular object",
+            "delivery package",
+            "moving box",
+        ]
+    )
+    CONF = 0.08  # YOLO-World needs low conf
 
 cameras = {
     "cam-outside": "rtsp://{}:{}@{}:554/h264Preview_01_sub".format(
@@ -68,9 +80,7 @@ while True:
             detections[cam_id] = {"boxes": 0, "status": "offline"}
             continue
 
-        # conf=0.08: catches most boxes without false positives
-        # iou=0.5: merges overlapping detections from synonym classes
-        results = model(frame, verbose=False, conf=0.08, iou=0.5)
+        results = model(frame, verbose=False, conf=CONF, iou=0.5)
         annotated = results[0].plot()
         cv2.imwrite(
             "/data/snapshots/{}.jpg".format(cam_id),
