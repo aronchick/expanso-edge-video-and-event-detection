@@ -193,11 +193,11 @@
           <span class="arch-group__title">SENSOR FIELD</span>
         </header>
         <div class="arch-group__body">
-          <div class="arch-tile">
+          <div class="arch-tile" id="arch-tile-cam-north">
             <div class="arch-tile__label">Camera · north</div>
             <div class="arch-tile__sub">EO/IR · RTSP</div>
           </div>
-          <div class="arch-tile">
+          <div class="arch-tile" id="arch-tile-cam-south">
             <div class="arch-tile__label">Camera · south</div>
             <div class="arch-tile__sub">EO/IR · RTSP</div>
           </div>
@@ -206,32 +206,33 @@
       </section>
     </div>
 
-    <!-- Camera → Jetson curves. Two SVG cubic Beziers converge at the SVG's
-         right-middle, which visually lands at the Expanso Edge box's left edge.
-         Animated <circle>s travel along each <path> via <animateMotion>, so the
-         viewer SEES the data flowing per-stream. The aggregate ev/min meta
-         chip floats centered between the two curves. -->
+    <!-- Camera → Jetson curves. Two SVG cubic Beziers, both terminating at
+         the EXACT vertical middle of the EXPANSO EDGE box. The path `d`
+         attribute is rewritten on layout (load/resize/tab-change) by
+         updateCameraCurves() in ws_client.js using getBoundingClientRect()
+         — that's the only way to anchor the convergence point to the Edge
+         box no matter where the layout positions it. The SVG uses pixel
+         coordinates (no viewBox), so JS can write screen-space values
+         directly into the path. -->
     <div class="arch-col arch-col--cam-arrow">
-      <svg class="arch-cam-curves" viewBox="0 0 120 200" aria-hidden="true">
+      <svg class="arch-cam-curves" aria-hidden="true">
         <defs>
           <marker id="cam-arrowhead" viewBox="0 0 10 10"
-                  refX="9" refY="5" markerWidth="5" markerHeight="5"
+                  refX="9" refY="5" markerWidth="6" markerHeight="6"
                   orient="auto-start-reverse">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="#3ddc84"/>
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#10b981"/>
           </marker>
-          <path id="cam-curve-north" d="M 0 35 C 70 35, 50 100, 118 100" fill="none"/>
-          <path id="cam-curve-south" d="M 0 165 C 70 165, 50 100, 118 100" fill="none"/>
         </defs>
-        <use href="#cam-curve-north" class="arch-cam-curve__path"
-             marker-end="url(#cam-arrowhead)"/>
-        <use href="#cam-curve-south" class="arch-cam-curve__path"
-             marker-end="url(#cam-arrowhead)"/>
-        <circle r="4" class="arch-cam-curve__dot">
+        <path id="cam-curve-north" class="arch-cam-curve__path"
+              d="M 0 0 L 0 0" fill="none" marker-end="url(#cam-arrowhead)"/>
+        <path id="cam-curve-south" class="arch-cam-curve__path"
+              d="M 0 0 L 0 0" fill="none" marker-end="url(#cam-arrowhead)"/>
+        <circle r="5" class="arch-cam-curve__dot">
           <animateMotion dur="2s" repeatCount="indefinite" rotate="auto">
             <mpath href="#cam-curve-north"/>
           </animateMotion>
         </circle>
-        <circle r="4" class="arch-cam-curve__dot">
+        <circle r="5" class="arch-cam-curve__dot">
           <animateMotion dur="2s" repeatCount="indefinite" begin="1s" rotate="auto">
             <mpath href="#cam-curve-south"/>
           </animateMotion>
@@ -242,6 +243,10 @@
         <span class="arch-arrow-label">stream</span>
       </div>
     </div>
+
+    <!-- Anchor refs for the camera-curve positioning code. Putting IDs on the
+         camera tiles is the cleanest way for JS to find their midpoints. -->
+    <!-- (The camera tiles inside .arch-group__body get IDs in HTML below.) -->
 
     <!-- Column 2: Cloud + vertical arrow + Jetson stacked. The vertical arrow
          visually terminates AT the top edge of the Jetson box (no gap). -->
