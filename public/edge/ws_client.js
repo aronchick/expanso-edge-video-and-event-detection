@@ -401,17 +401,26 @@ function renderJobs(list) {
 
 function renderMetrics(m) {
   if (!m) return;
-  document.getElementById('metric-epm').textContent = Math.round(m.events_per_minute || 0);
+  const epm = Math.round(m.events_per_minute || 0);
+  document.getElementById('metric-epm').textContent = epm;
   document.getElementById('metric-fused').textContent = String(m.fused_alerts || 0);
   document.getElementById('footer-events').textContent = String(m.total_events || 0);
   document.getElementById('footer-signed').textContent = String(m.signed_events || 0);
   document.getElementById('footer-fused').textContent = String(m.fused_alerts || 0);
   // Mirror to ARCH view counters — Camera → Jetson stem shows the input rate.
-  setText('arch-counter-rtsp', `${Math.round(m.events_per_minute || 0)} ev/min`);
+  setText('arch-counter-rtsp', `${epm} ev/min`);
+  setFlowRate('arch-flow-rtsp', epm);
   // Local Decision branch shows the rate of fused-class outputs (proxy: total fused).
   // We don't have a fused/min metric, so derive a 60s rolling rate client-side.
   fusedRollingPush(m.fused_alerts || 0);
-  setText('arch-counter-local', `${fusedPerMinute()} fused/min`);
+  const fpm = fusedPerMinute();
+  setText('arch-counter-local', `${fpm} fused/min`);
+  setFlowRate('arch-flow-local', fpm);
+  // Live-stat block on the Jetson box: real numbers describing the node.
+  setText('arch-jet-epm', String(epm));
+  setText('arch-jet-fps', archFpsString());
+  setText('arch-jet-age', archLastFrameAgeString());
+  setText('arch-jet-queued', String(m.queued_offline || 0));
 }
 
 // Rolling 60s window to derive fused/min from the cumulative metric.
@@ -436,6 +445,94 @@ function fusedPerMinute() {
 function setText(id, value) {
   const el = document.getElementById(id);
   if (el) el.textContent = value;
+}
+
+// ── ARCH particle-flow speed control ─────────────────────────────────
+// Map a per-minute rate to an animation-duration so faster rates → faster
+// dots. Capped so the dots are always visible (not too slow, not so fast
+// they smear). 0 → 6s (very slow standby), >=120/min → 0.4s (firehose).
+function rateToDurationSec(perMin) {
+  const r = Math.max(0, Number(perMin) || 0);
+  if (r <= 0) return 6.0;
+  // Linear-ish map between 1/min (3s) and 120/min (0.4s).
+  const minDur = 0.4, maxDur = 3.0, peak = 120;
+  const t = Math.min(1, r / peak);
+  return Math.max(minDur, maxDur - (maxDur - minDur) * t);
+}
+function setFlowRate(elementId, perMin) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  const dur = rateToDurationSec(perMin).toFixed(2);
+  el.style.animationDuration = `${dur}s`;
+}
+
+// Rolling window for the cloud-control-plane particle: jobs-running count
+// changes are rare, so we treat absolute changes as activity.
+const jobsHistory = []; // { t: ms, running: number }
+let jobsLastRunning = -1;
+let jobsChangeStamps = []; // ms timestamps of state changes in the last 60s
+function jobsRollingPush(running) {
+  const now = Date.now();
+  if (jobsLastRunning !== -1 && jobsLastRunning !== running) {
+    jobsChangeStamps.push(now);
+  }
+  jobsLastRunning = running;
+  jobsChangeStamps = jobsChangeStamps.filter((t) => now - t < 60000);
+  jobsHistory.push({ t: now, running });
+  while (jobsHistory.length > 1 && now - jobsHistory[0].t > 65000) {
+    jobsHistory.shift();
+  }
+}
+function jobsChangePerMinute() {
+  // Floor at 6/min so the cloud→jetson dot always has a visible heartbeat,
+  // since job state usually sits steady at 4/4.
+  return Math.max(6, jobsChangeStamps.length);
+}
+
+// Rolling window for the S3 particle: derive object-count delta per minute.
+const s3History = []; // { t: ms, count: number }
+function s3RollingPush(count) {
+  const now = Date.now();
+  s3History.push({ t: now, count });
+  while (s3History.length > 1 && now - s3History[0].t > 65000) {
+    s3History.shift();
+  }
+}
+function s3DeltaPerMinute() {
+  if (s3History.length < 2) return 0;
+  const a = s3History[0];
+  const b = s3History[s3History.length - 1];
+  const dt = (b.t - a.t) / 1000;
+  if (dt <= 0) return 0;
+  return Math.max(0, Math.round((b.count - a.count) * (60 / dt)));
+}
+
+// ── ARCH Jetson live-stat helpers ────────────────────────────────────
+// frames/sec: count MJPEG frame transitions on the two camera feeds in
+// the last 5s. The <img src="/stream/..."> elements emit `load` each time
+// a fresh JPEG arrives, so we tally those and divide.
+const _archFrameStamps = []; // ms timestamps
+function _onMjpegFrame() { _archFrameStamps.push(Date.now()); }
+for (const id of ['feed-sensor-north', 'feed-sensor-south']) {
+  const img = document.getElementById(id);
+  if (img) img.addEventListener('load', _onMjpegFrame);
+}
+function archFpsString() {
+  const now = Date.now();
+  while (_archFrameStamps.length && now - _archFrameStamps[0] > 5000) {
+    _archFrameStamps.shift();
+  }
+  const fps = _archFrameStamps.length / 5;
+  if (fps <= 0) return '—';
+  return fps.toFixed(1);
+}
+function archLastFrameAgeString() {
+  if (!_archFrameStamps.length) return '—';
+  const last = _archFrameStamps[_archFrameStamps.length - 1];
+  const ageS = (Date.now() - last) / 1000;
+  if (ageS < 1) return '<1s';
+  if (ageS < 60) return `${Math.round(ageS)}s`;
+  return `${Math.round(ageS / 60)}m`;
 }
 
 // Poll metrics + jobs + S3 every 2s
@@ -504,12 +601,17 @@ function renderS3(state) {
     stateEl.className = 'egress-state offline';
     bucketEl.textContent = state.last_error || 'add bucket via .env or expanso job';
     setText('arch-counter-s3-flow', 'standby');
+    setFlowRate('arch-flow-s3', 0);
     return;
   }
 
   bucketEl.textContent = `bucket: ${state.bucket}`;
   countEl.textContent = String(state.object_count);
   setText('arch-counter-s3-flow', `${state.object_count} obj`);
+  // S3 particle-flow rate: derive object-delta/min from a rolling window of
+  // /s3 polls so the dot speeds up when archive throughput climbs.
+  s3RollingPush(state.object_count);
+  setFlowRate('arch-flow-s3', s3DeltaPerMinute());
 
   // Pulse the count when new objects arrive — the literal "data is moving" tell.
   if (state.object_count > s3LastCount && countWrap) {
