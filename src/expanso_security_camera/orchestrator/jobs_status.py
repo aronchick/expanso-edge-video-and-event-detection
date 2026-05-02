@@ -78,6 +78,12 @@ class JobsStatus:
         cloud_jobs = self._fetch_cloud_jobs()
         for item in cloud_jobs:
             name = item["name"]
+            if name in PGREP_PATTERNS:
+                # Process-backed job: pgrep is authoritative. The local nohup
+                # process IS what serves the demo; a stopped Expanso-job
+                # entry doesn't mean the process is dead. Skip the cloud
+                # state to avoid overwriting "running" with stale "stopped".
+                continue
             if name in by_name:
                 by_name[name]["status"] = item["status"]
             else:
