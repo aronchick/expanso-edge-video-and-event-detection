@@ -15,13 +15,11 @@ import urllib.error
 import urllib.request
 
 DEFAULT_TRIGGERS = [
-    # Trimmed — aerial contacts (airplane, drone) intentionally excluded,
-    # added live mid-demo per HACKATHON_SCRIPT.md §13 Beat 3.
+    # Demo trigger set — see orchestrator/triggers.py for rationale.
+    # "airplane" matches COCO; UI aliases to "drone".
     "person",
     "backpack",
-    "knife",
-    "car",
-    "truck",
+    "airplane",
 ]
 POLL_INTERVAL_SEC = 1.0
 

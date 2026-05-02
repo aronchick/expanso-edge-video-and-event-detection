@@ -130,7 +130,7 @@ function renderEvent(e) {
   const yolo = document.createElement('span');
   yolo.className = 'yolo';
   const labels = (e.yolo_hits || [])
-    .map((h) => `${h.label} ${(h.confidence * 100).toFixed(0)}%`)
+    .map((h) => `${displayLabel(h.label)} ${(h.confidence * 100).toFixed(0)}%`)
     .join(' · ') || '(none)';
   yolo.textContent = labels;
   row1.appendChild(yolo);
@@ -166,7 +166,7 @@ function updateOverlay(sector, e) {
   const labelEl = document.getElementById(`overlay-${sector === 'sensor-north' ? 'north' : 'south'}-label`);
   const tsEl = document.getElementById(`overlay-${sector === 'sensor-north' ? 'north' : 'south'}-ts`);
   if (!labelEl || !tsEl) return;
-  const labels = (e.yolo_hits || []).map((h) => h.label).join(', ');
+  const labels = (e.yolo_hits || []).map((h) => displayLabel(h.label)).join(", ");
   labelEl.textContent = labels || 'awaiting motion';
   tsEl.textContent = new Date(e.ts * 1000).toLocaleTimeString();
   lastEventLabel[sector] = labels;
@@ -297,10 +297,18 @@ function renderTriggers(list) {
     if (!firstTriggerLoad && !previous.has(t)) {
       chip.classList.add('added');
     }
-    chip.textContent = t;
+    chip.textContent = displayLabel(t);
     container.appendChild(chip);
   }
   firstTriggerLoad = false;
+}
+
+// COCO doesn't have a "drone" class — YOLO classifies drones as "airplane".
+// Alias the display so the demo narrative reads correctly without needing
+// custom YOLO weights. Backend still uses "airplane" for matching.
+const _LABEL_ALIASES = { airplane: 'drone' };
+function displayLabel(label) {
+  return _LABEL_ALIASES[String(label).toLowerCase()] || label;
 }
 
 // ── Cloud state ─────────────────────────────────────────────────────

@@ -17,15 +17,12 @@ from pathlib import Path
 import yaml
 
 DEFAULT_TRIGGERS: list[str] = [
-    # Trimmed demo "before" state — only what the ISR narrative needs.
-    # Aerial contacts (airplane, drone) intentionally excluded; the operator
-    # adds them mid-demo per HACKATHON_SCRIPT.md §13 Beat 3 to show live
-    # trigger updates.
+    # Demo trigger set — only what's actually visible/relevant in the demo
+    # space. "airplane" is COCO's class for any aerial vehicle (drones map
+    # here); the dashboard aliases it to "drone" in the UI.
     "person",
     "backpack",
-    "knife",
-    "car",
-    "truck",
+    "airplane",
 ]
 
 
