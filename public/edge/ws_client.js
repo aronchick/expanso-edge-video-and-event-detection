@@ -775,60 +775,103 @@ function applyTabFromHash() {
     a.classList.toggle('is-active', isActive);
     a.setAttribute('aria-selected', isActive ? 'true' : 'false');
   }
-  // ARCH view's camera curves need to retarget the Edge box's vertical
-  // middle whenever it becomes visible (display went from none → grid).
-  if (target === 'arch') requestAnimationFrame(updateCameraCurves);
+  // ARCH view curves need to retarget when the view becomes visible
+  // (display: none → grid hides their geometry until tab-arch is set).
+  if (target === 'arch') {
+    requestAnimationFrame(() => {
+      updateCameraCurves();
+      updateEdgeOutCurves();
+    });
+  }
 }
 
 window.addEventListener('hashchange', applyTabFromHash);
 applyTabFromHash();
 
-// ── ARCH view: anchor camera curves to Edge box middle ────────────────
+// ── ARCH view: anchor SVG curves to live element geometry ─────────────
 // SVG paths can't follow elements declaratively. Read the live geometry
-// of the camera tiles + Edge box, write fresh `d` attributes. Re-runs on
-// load, resize, tab-switch — anything that could change layout. The SVG
-// uses pixel coordinates (no viewBox), so we compute everything in the
-// SVG's local screen-space.
+// of source + destination boxes via getBoundingClientRect(), write fresh
+// `d` attributes. The SVGs use pixel coordinates (no viewBox), so all
+// math happens in SVG-local screen-space. Re-runs on load, resize,
+// tab-switch, and arch-view ResizeObserver — anything that could shift
+// the layout.
+
+// Build a cubic Bezier path string with control points biased toward a
+// horizontal flow first, then bending to the destination. This produces
+// the merging-streams / fan-out look rather than a plain diagonal.
+function buildCurve(sx, sy, ex, ey) {
+  const cpx = sx + (ex - sx) * 0.55;
+  return `M ${sx} ${sy} C ${cpx} ${sy}, ${cpx} ${ey}, ${ex} ${ey}`;
+}
+
+// Cameras (left) → Edge box left-middle (CONVERGE). 2 curves.
 function updateCameraCurves() {
-  const svg = document.querySelector('.arch-cam-curves');
-  const camN = document.getElementById('arch-tile-cam-north');
-  const camS = document.getElementById('arch-tile-cam-south');
-  const edge = document.querySelector('.arch-box--jetson');
+  const svg   = document.querySelector('.arch-cam-curves');
+  const camN  = document.getElementById('arch-tile-cam-north');
+  const camS  = document.getElementById('arch-tile-cam-south');
+  const edge  = document.querySelector('.arch-box--jetson');
   const pathN = document.getElementById('cam-curve-north');
   const pathS = document.getElementById('cam-curve-south');
   if (!svg || !camN || !camS || !edge || !pathN || !pathS) return;
   const sR = svg.getBoundingClientRect();
-  if (!sR.width || !sR.height) return; // not visible yet (SVGElement has no offsetWidth)
+  if (!sR.width || !sR.height) return;
 
   const nR = camN.getBoundingClientRect();
   const sR2 = camS.getBoundingClientRect();
   const eR = edge.getBoundingClientRect();
-
-  // Translate viewport coords into SVG-local pixel coords
-  const toX = (x) => x - sR.left;
-  const toY = (y) => y - sR.top;
-
-  // Start: right edge of camera tile, vertical center
-  const sxN = toX(nR.right), syN = toY(nR.top + nR.height / 2);
-  const sxS = toX(sR2.right), syS = toY(sR2.top + sR2.height / 2);
-  // End: left edge of Edge box, vertical center — THE convergence point
+  const toX = (x) => x - sR.left, toY = (y) => y - sR.top;
   const ex = toX(eR.left), ey = toY(eR.top + eR.height / 2);
-
-  // Cubic Bezier control points biased to make the curve flow horizontally
-  // first then bend to the convergence — gives the merging-streams look.
-  const cpx = sxN + (ex - sxN) * 0.55;
-  const dN = `M ${sxN} ${syN} C ${cpx} ${syN}, ${cpx} ${ey}, ${ex} ${ey}`;
-  const dS = `M ${sxS} ${syS} C ${cpx} ${syS}, ${cpx} ${ey}, ${ex} ${ey}`;
-  pathN.setAttribute('d', dN);
-  pathS.setAttribute('d', dS);
+  pathN.setAttribute('d', buildCurve(toX(nR.right), toY(nR.top + nR.height / 2), ex, ey));
+  pathS.setAttribute('d', buildCurve(toX(sR2.right), toY(sR2.top + sR2.height / 2), ex, ey));
 }
 
-window.addEventListener('resize', () => requestAnimationFrame(updateCameraCurves));
-// Run after fonts/images settle (layout can shift)
-window.addEventListener('load', () => setTimeout(updateCameraCurves, 100));
-// Watch for any size change in the arch-view (e.g., font load shifts box)
+// Edge box right-middle → 3 destinations (DIVERGE). 3 curves with
+// independent particles. Each meta chip is positioned at the midpoint of
+// its curve so it labels the branch without overlapping the endpoints.
+function updateEdgeOutCurves() {
+  const svg   = document.querySelector('.arch-edge-out-curves');
+  const edge  = document.querySelector('.arch-box--jetson');
+  const dL    = document.getElementById('arch-box-dest-local');
+  const dG    = document.getElementById('arch-box-dest-gemini');
+  const dS    = document.getElementById('arch-box-dest-s3');
+  const pL    = document.getElementById('edge-curve-local');
+  const pG    = document.getElementById('edge-curve-gemini');
+  const pS    = document.getElementById('edge-curve-s3');
+  const mL    = document.getElementById('arch-meta-local');
+  const mG    = document.getElementById('arch-meta-gemini');
+  const mS    = document.getElementById('arch-meta-s3');
+  if (!svg || !edge || !dL || !dG || !dS || !pL || !pG || !pS) return;
+  const sR = svg.getBoundingClientRect();
+  if (!sR.width || !sR.height) return;
+
+  const eR = edge.getBoundingClientRect();
+  const toX = (x) => x - sR.left, toY = (y) => y - sR.top;
+  // Origin: right edge of EXPANSO EDGE box, vertical center
+  const ox = toX(eR.right), oy = toY(eR.top + eR.height / 2);
+
+  for (const [destEl, pathEl, metaEl] of [[dL, pL, mL], [dG, pG, mG], [dS, pS, mS]]) {
+    const dR = destEl.getBoundingClientRect();
+    const ex = toX(dR.left), ey = toY(dR.top + dR.height / 2);
+    pathEl.setAttribute('d', buildCurve(ox, oy, ex, ey));
+    if (metaEl) {
+      // Place meta chip at curve midpoint (approximated as path bbox center).
+      const mx = (ox + ex) / 2;
+      const my = (oy + ey) / 2;
+      metaEl.style.left = `${mx}px`;
+      metaEl.style.top  = `${my}px`;
+    }
+  }
+}
+
+function updateAllArchCurves() {
+  updateCameraCurves();
+  updateEdgeOutCurves();
+}
+
+window.addEventListener('resize', () => requestAnimationFrame(updateAllArchCurves));
+window.addEventListener('load',   () => setTimeout(updateAllArchCurves, 100));
 if (window.ResizeObserver) {
-  const ro = new ResizeObserver(() => requestAnimationFrame(updateCameraCurves));
+  const ro = new ResizeObserver(() => requestAnimationFrame(updateAllArchCurves));
   const av = document.querySelector('.arch-view');
   if (av) ro.observe(av);
 }

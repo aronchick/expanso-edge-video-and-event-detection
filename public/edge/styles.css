@@ -1180,7 +1180,7 @@ body.show-topology .topology { display: block; }
      content width; arrows span the visible gap because their stems are
      sized in rem (see .arch-arrow-stem). Vertical: `align-content: center`
      so the whole assembly sits in the middle of the available height. */
-  grid-template-columns: auto auto auto auto;
+  grid-template-columns: auto auto auto auto auto;   /* sensors / cam-arrow / center / edge-out / destinations */
   grid-template-rows: auto auto auto;   /* row 1: diagram, row 2: legend, row 3: footer tagline */
   column-gap: 0;
   row-gap: 0.6rem;
@@ -1211,7 +1211,23 @@ body.show-topology .topology { display: block; }
   justify-content: center;
 }
 .arch-col--center    { grid-column: 3; grid-row: 1; gap: 0; align-self: center; }
-.arch-col--fanout    { grid-column: 4; grid-row: 1; gap: 1rem; align-self: center; }
+.arch-col--edge-out  {
+  grid-column: 4; grid-row: 1;
+  align-self: stretch;        /* SVG needs full row height for fan-out from Edge middle */
+  position: relative;
+  width: 11rem;
+  display: block;             /* SVG + absolutely-positioned meta chips */
+}
+.arch-col--destinations {
+  grid-column: 5; grid-row: 1;
+  align-self: stretch;        /* match Edge stack height so curves can converge cleanly */
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  justify-content: center;
+}
+/* Legacy fanout column (kept for backward compat if any markup leaks) */
+.arch-col--fanout    { grid-column: 5; grid-row: 1; gap: 1rem; align-self: center; }
 .arch-view > .arch-legend { grid-column: 1 / -1; grid-row: 2; align-self: end; }
 .arch-view > .arch-footer { grid-column: 1 / -1; grid-row: 3; }
 
@@ -1744,6 +1760,116 @@ body.show-topology .topology { display: block; }
   transform: translateX(-1.2rem);
 }
 
+/* ── Edge → Destinations diverging curves (SVG) ──────────────────── */
+/* Same pattern as cam curves but in reverse: 3 cubic Beziers all originate at
+   the EXPANSO EDGE box's right-middle and fan out to each destination box's
+   left-middle. JS in updateEdgeOutCurves() writes the path d attributes. */
+.arch-edge-out-curves {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+.arch-edge-curve__path {
+  stroke: rgba(61, 220, 132, 0.55);
+  stroke-width: 2;
+  fill: none;
+}
+.arch-edge-curve__dot {
+  fill: var(--ok);
+  filter: drop-shadow(0 0 0.35em var(--ok));
+}
+
+/* Floating meta chips that label each branch — JS positions them along the
+   curve midpoint after layout. Same look as other arch-arrow-meta chips. */
+.arch-arrow-meta--out {
+  position: absolute;
+  z-index: 2;
+  transform: translate(-50%, -50%);   /* center on the (x,y) JS sets */
+  background: rgba(11, 13, 16, 0.6);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.2em 0.55em;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: var(--t-caption);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.1;
+  /* Default position pre-JS (off-screen) */
+  left: -9999px;
+  top: -9999px;
+}
+.arch-arrow-meta--out .arch-arrow-counter { color: var(--text); font-weight: 600; white-space: nowrap; }
+.arch-arrow-meta--out .arch-arrow-label   { color: var(--text-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.7em; white-space: nowrap; }
+
+/* ── Standalone destination boxes (no group container) ─────────────── */
+/* Each destination is a first-class card with its own tag header, mirroring
+   the visual weight of EXPANSO CLOUD and EXPANSO EDGE. */
+.arch-box--dest {
+  min-width: 16rem;
+  max-width: 18rem;
+  padding: 0.55rem 0.85rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  position: relative;
+}
+/* Top-edge accent stripe per destination type, matching the tag color */
+.arch-box--dest:has(.arch-box__tag--local)  { border-top: 2px solid var(--ok); }
+.arch-box--dest:has(.arch-box__tag--gemini) { border-top: 2px solid var(--alert); }
+.arch-box--dest:has(.arch-box__tag--s3)     { border-top: 2px solid var(--expanso); }
+
+/* Destination tag header gradients — same gradient pattern as Cloud/Edge */
+.arch-box__tag--local {
+  background: linear-gradient(90deg, rgba(61,220,132,0.18), rgba(61,220,132,0.04));
+  color: var(--ok);
+  border-bottom-color: rgba(61,220,132,0.3);
+}
+.arch-box__tag--gemini {
+  background: linear-gradient(90deg, rgba(255,167,38,0.18), rgba(255,167,38,0.04));
+  color: var(--alert);
+  border-bottom-color: rgba(255,167,38,0.3);
+}
+.arch-box__tag--s3 {
+  background: linear-gradient(90deg, rgba(127,184,220,0.18), rgba(127,184,220,0.04));
+  color: var(--expanso);
+  border-bottom-color: rgba(127,184,220,0.3);
+}
+
+/* Per-destination list color tints */
+.arch-box__list--local li  { background: rgba(61,220,132,0.06); border-color: rgba(61,220,132,0.20); }
+.arch-box__list--gemini li { background: rgba(255,167,38,0.06); border-color: rgba(255,167,38,0.20); }
+.arch-box__list--s3 li     { background: rgba(127,184,220,0.06); border-color: rgba(127,184,220,0.20); }
+
+/* ── Control plane static label (no animated dot) ─────────────────── */
+/* Replaces the floating arch-arrow-meta--control chip. This sits as a small
+   inline label NEXT to the dashed line, not as a separate floating block. */
+.arch-control-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: var(--t-caption);
+  letter-spacing: 0.04em;
+  background: rgba(127,184,220,0.08);
+  border: 1px solid rgba(127,184,220,0.45);
+  border-radius: 3px;
+  padding: 0.2em 0.55em;
+  color: var(--expanso);
+  white-space: nowrap;
+  grid-column: 3;
+  justify-self: start;
+  margin-left: 0.6rem;
+}
+.arch-control-label .arch-arrow-counter { color: var(--expanso); font-weight: 600; }
+.arch-control-label .arch-arrow-label   { color: var(--text-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.7em; }
+
 /* Boost data-plane flow dot visibility — the reference diagram has chunky,
    eye-catching dots. Our 6px nubs were forgettable. Keep the gradient stem
    subtle so the dot does the visual work. */
@@ -2202,13 +2328,67 @@ body.tab-arch .arch-arrow-stem--vertical {
 }
 
 /* SVG converging camera curves — stroke needs more opacity on light bg */
-body.tab-arch .arch-cam-curve__path {
+body.tab-arch .arch-cam-curve__path,
+body.tab-arch .arch-edge-curve__path {
   stroke: rgba(16, 185, 129, 0.75);
 }
-body.tab-arch .arch-cam-curve__dot {
+body.tab-arch .arch-cam-curve__dot,
+body.tab-arch .arch-edge-curve__dot {
   fill: var(--ok);
   filter: drop-shadow(0 0 0.35em rgba(16,185,129,0.8));
 }
+
+/* Standalone destination boxes on light bg — match cloud/edge box treatment */
+body.tab-arch .arch-box--dest {
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: 0 1px 3px rgba(15,23,42,0.05);
+}
+body.tab-arch .arch-box__tag--local {
+  background: linear-gradient(90deg, rgba(16,185,129,0.18), rgba(16,185,129,0.04));
+  color: var(--ok);
+  border-bottom-color: rgba(16,185,129,0.28);
+}
+body.tab-arch .arch-box__tag--gemini {
+  background: linear-gradient(90deg, rgba(217,119,6,0.18), rgba(217,119,6,0.04));
+  color: var(--alert);
+  border-bottom-color: rgba(217,119,6,0.28);
+}
+body.tab-arch .arch-box__tag--s3 {
+  background: linear-gradient(90deg, rgba(37,99,235,0.18), rgba(37,99,235,0.04));
+  color: var(--expanso);
+  border-bottom-color: rgba(37,99,235,0.28);
+}
+body.tab-arch .arch-box__list--local li  { background: rgba(16,185,129,0.07); border-color: rgba(16,185,129,0.22); }
+body.tab-arch .arch-box__list--gemini li { background: rgba(217,119,6,0.07);  border-color: rgba(217,119,6,0.22); }
+body.tab-arch .arch-box__list--s3 li     { background: rgba(37,99,235,0.07);  border-color: rgba(37,99,235,0.22); }
+
+/* Floating edge-out meta chips on light bg */
+body.tab-arch .arch-arrow-meta--out {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 4px rgba(15,23,42,0.08);
+  border-radius: 3px;
+  padding: 0.2em 0.55em;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: var(--t-caption);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  line-height: 1.1;
+}
+body.tab-arch .arch-arrow-meta--out .arch-arrow-counter { color: var(--text); font-weight: 600; }
+body.tab-arch .arch-arrow-meta--out .arch-arrow-label   { color: var(--text-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.7em; }
+
+/* Control-plane label on light bg */
+body.tab-arch .arch-control-label {
+  background: rgba(37,99,235,0.08);
+  border-color: rgba(37,99,235,0.45);
+  color: var(--expanso);
+}
+body.tab-arch .arch-control-label .arch-arrow-counter { color: var(--expanso); }
+body.tab-arch .arch-control-label .arch-arrow-label   { color: var(--text-mono); }
 
 /* Legend strip on light bg */
 body.tab-arch .arch-legend { color: var(--text-dim); border-top-color: var(--border); }

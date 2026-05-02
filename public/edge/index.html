@@ -266,9 +266,12 @@
       </div>
       <div class="arch-control-arrow">
         <div class="arch-arrow-stem arch-arrow-stem--vertical arch-arrow-stem--control">
-          <span class="arch-arrow-flow arch-arrow-flow--vertical arch-arrow-flow--control" id="arch-flow-jobs"></span>
+          <!-- Static dashed line — no animated particle. Control plane is
+               configuration, not a flowing data path. Periodic deploys are
+               not the same kind of "stream" as the data lines, so animating
+               this misled the eye. -->
         </div>
-        <div class="arch-arrow-meta arch-arrow-meta--control">
+        <div class="arch-control-label">
           <span class="arch-arrow-counter" id="arch-counter-jobs">— jobs</span>
           <span class="arch-arrow-label">control plane</span>
         </div>
@@ -304,62 +307,94 @@
       </div>
     </div>
 
-    <!-- Column 3: 3-way fan-out wrapped in a DESTINATIONS group, mirroring
-         the SENSOR FIELD container on the left. Each branch row = arrow + tile. -->
-    <div class="arch-col arch-col--fanout">
-      <section class="arch-group arch-group--destinations">
-        <header class="arch-group__head">
-          <span class="arch-group__icon" aria-hidden="true">⤳</span>
-          <span class="arch-group__title">DESTINATIONS</span>
+    <!-- Edge → destinations curves. Mirrors the cam-arrow SVG, but instead of
+         converging it DIVERGES: 3 cubic Beziers from the EXPANSO EDGE box's
+         right-middle, fanning out to each destination box's left-middle.
+         JS in ws_client.js (updateEdgeOutCurves) anchors the paths
+         dynamically so the convergence point is always Edge's right-middle. -->
+    <div class="arch-col arch-col--edge-out">
+      <svg class="arch-edge-out-curves" aria-hidden="true">
+        <defs>
+          <marker id="dest-arrowhead" viewBox="0 0 10 10"
+                  refX="9" refY="5" markerWidth="6" markerHeight="6"
+                  orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#10b981"/>
+          </marker>
+        </defs>
+        <path id="edge-curve-local"  class="arch-edge-curve__path" d="M 0 0 L 0 0" fill="none" marker-end="url(#dest-arrowhead)"/>
+        <path id="edge-curve-gemini" class="arch-edge-curve__path" d="M 0 0 L 0 0" fill="none" marker-end="url(#dest-arrowhead)"/>
+        <path id="edge-curve-s3"     class="arch-edge-curve__path" d="M 0 0 L 0 0" fill="none" marker-end="url(#dest-arrowhead)"/>
+        <!-- Each particle has its own velocity so the three branches feel
+             like distinct destinations, not a synchronized triplet. -->
+        <circle r="5" class="arch-edge-curve__dot">
+          <animateMotion dur="1.4s" repeatCount="indefinite" rotate="auto">
+            <mpath href="#edge-curve-local"/>
+          </animateMotion>
+        </circle>
+        <circle r="5" class="arch-edge-curve__dot">
+          <animateMotion dur="2.1s" repeatCount="indefinite" begin="0.4s" rotate="auto">
+            <mpath href="#edge-curve-gemini"/>
+          </animateMotion>
+        </circle>
+        <circle r="5" class="arch-edge-curve__dot">
+          <animateMotion dur="2.8s" repeatCount="indefinite" begin="0.9s" rotate="auto">
+            <mpath href="#edge-curve-s3"/>
+          </animateMotion>
+        </circle>
+      </svg>
+      <!-- Meta chips floating along each curve. Vertical position is set in JS
+           once curve geometry is known, so each label sits at the midpoint of
+           its branch. -->
+      <div class="arch-arrow-meta arch-arrow-meta--out" id="arch-meta-local">
+        <span class="arch-arrow-counter" id="arch-counter-local">— /min</span>
+        <span class="arch-arrow-label">fused</span>
+      </div>
+      <div class="arch-arrow-meta arch-arrow-meta--out" id="arch-meta-gemini">
+        <span class="arch-arrow-counter" id="arch-counter-gemini-flow">— /min</span>
+        <span class="arch-arrow-label">reachback</span>
+      </div>
+      <div class="arch-arrow-meta arch-arrow-meta--out" id="arch-meta-s3">
+        <span class="arch-arrow-counter" id="arch-counter-s3-flow">— obj</span>
+        <span class="arch-arrow-label">archive</span>
+      </div>
+    </div>
+
+    <!-- Three standalone destination boxes, each with its own tag-header card
+         styling so they read as first-class entities like Cloud and Edge. -->
+    <div class="arch-col arch-col--destinations">
+      <div class="arch-box arch-box--dest" id="arch-box-dest-local">
+        <header class="arch-box__tag arch-box__tag--local">
+          <span class="arch-box__tag-icon" aria-hidden="true">●</span>
+          <span class="arch-box__tag-text">LOCAL DECISION</span>
         </header>
-        <div class="arch-group__body arch-group__body--rows">
-          <div class="arch-fanout-row">
-            <div class="arch-arrow arch-arrow--horizontal arch-arrow--branch">
-              <div class="arch-arrow-stem">
-                <span class="arch-arrow-flow" id="arch-flow-local"></span>
-              </div>
-              <div class="arch-arrow-meta">
-                <span class="arch-arrow-counter" id="arch-counter-local">— /min</span>
-                <span class="arch-arrow-label">fused</span>
-              </div>
-            </div>
-            <div class="arch-tile arch-tile--dest">
-              <div class="arch-tile__label">Local Decision</div>
-              <div class="arch-tile__sub">correlator · 5s window · 8s cooldown</div>
-            </div>
-          </div>
-          <div class="arch-fanout-row">
-            <div class="arch-arrow arch-arrow--horizontal arch-arrow--branch">
-              <div class="arch-arrow-stem">
-                <span class="arch-arrow-flow" id="arch-flow-gemini"></span>
-              </div>
-              <div class="arch-arrow-meta">
-                <span class="arch-arrow-counter" id="arch-counter-gemini-flow">— /min</span>
-                <span class="arch-arrow-label">reachback</span>
-              </div>
-            </div>
-            <div class="arch-tile arch-tile--dest">
-              <div class="arch-tile__label">Gemini · cloud analyst</div>
-              <div class="arch-tile__sub">per-event descriptions on demand</div>
-            </div>
-          </div>
-          <div class="arch-fanout-row">
-            <div class="arch-arrow arch-arrow--horizontal arch-arrow--branch">
-              <div class="arch-arrow-stem">
-                <span class="arch-arrow-flow" id="arch-flow-s3"></span>
-              </div>
-              <div class="arch-arrow-meta">
-                <span class="arch-arrow-counter" id="arch-counter-s3-flow">— obj</span>
-                <span class="arch-arrow-label">archive</span>
-              </div>
-            </div>
-            <div class="arch-tile arch-tile--dest">
-              <div class="arch-tile__label">S3 Archive</div>
-              <div class="arch-tile__sub">store-and-forward · bloblang fan-out</div>
-            </div>
-          </div>
-        </div>
-      </section>
+        <div class="arch-box__sub arch-box__sub--lead">Stays on edge — fused alerts fire here</div>
+        <ul class="arch-box__list arch-box__list--local">
+          <li>correlator · 5s window</li>
+          <li>fused alerts · 8s cooldown</li>
+        </ul>
+      </div>
+      <div class="arch-box arch-box--dest" id="arch-box-dest-gemini">
+        <header class="arch-box__tag arch-box__tag--gemini">
+          <span class="arch-box__tag-icon" aria-hidden="true">◆</span>
+          <span class="arch-box__tag-text">GEMINI · CLOUD ANALYST</span>
+        </header>
+        <div class="arch-box__sub arch-box__sub--lead">Per-event natural-language descriptions</div>
+        <ul class="arch-box__list arch-box__list--gemini">
+          <li>on-demand reachback</li>
+          <li>retries through offline queue</li>
+        </ul>
+      </div>
+      <div class="arch-box arch-box--dest" id="arch-box-dest-s3">
+        <header class="arch-box__tag arch-box__tag--s3">
+          <span class="arch-box__tag-icon" aria-hidden="true">▦</span>
+          <span class="arch-box__tag-text">S3 ARCHIVE</span>
+        </header>
+        <div class="arch-box__sub arch-box__sub--lead">Long-term cold storage, store-and-forward</div>
+        <ul class="arch-box__list arch-box__list--s3">
+          <li>bloblang fan-out</li>
+          <li>survives WAN drops</li>
+        </ul>
+      </div>
     </div>
 
     <!-- Legend strip — explains the two line languages used in the diagram.
