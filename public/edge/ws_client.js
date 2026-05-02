@@ -283,14 +283,16 @@ function renderJobs(list) {
   const container = document.getElementById('platform-jobs');
   container.replaceChildren();
   let running = 0, total = 0, failed = 0;
+  let anySensorRunning = false;
   for (const j of (list || [])) {
     total += 1;
-    // Case-insensitive status match — the orchestrator's WS payload sometimes
+    // Case-insensitive status match — the fusion-node's WS payload sometimes
     // sends mixed-case status strings ("Running" vs "running") depending on
     // whether it came from the synthetic fallback or `expanso-cli job list`.
     const status = String(j.status || '').toLowerCase();
     if (status === 'running') running += 1;
     if (status === 'failed') failed += 1;
+    if (status === 'running' && /^sensor-/.test(j.name)) anySensorRunning = true;
 
     const pill = document.createElement('div');
     pill.className = 'job-pill ' + (j.status || 'pending');
@@ -308,6 +310,11 @@ function renderJobs(list) {
   document.getElementById('footer-jobs').textContent = `${running}/${total}` + (failed ? ` (${failed} failed)` : '');
   // Mirror to ARCH control-plane counter
   setText('arch-counter-jobs', `${running}/${total} jobs`);
+
+  // Tier strip: dim EDGE when no sensor-* job is in 'running' state.
+  // (FUSION dimming is implicit — if the fusion node is down, this whole
+  //  page isn't rendering. CLOUD dimming is driven by F1 / cloud-down.)
+  document.body.classList.toggle('tier-edge-down', !anySensorRunning);
 }
 
 // ── Metrics ─────────────────────────────────────────────────────────
