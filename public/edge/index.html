@@ -206,14 +206,39 @@
       </section>
     </div>
 
-    <!-- Camera → Jetson stem (single arrow, since both cameras feed the same
-         Jetson; counter is the aggregate events/min). -->
-    <div class="arch-arrow arch-arrow--horizontal arch-col arch-col--cam-arrow">
-      <div class="arch-arrow-stem">
-        <span class="arch-arrow-flow" id="arch-flow-rtsp"></span>
-      </div>
-      <div class="arch-arrow-meta">
-        <span class="arch-arrow-counter" id="arch-counter-rtsp">RTSP</span>
+    <!-- Camera → Jetson curves. Two SVG cubic Beziers converge at the SVG's
+         right-middle, which visually lands at the Expanso Edge box's left edge.
+         Animated <circle>s travel along each <path> via <animateMotion>, so the
+         viewer SEES the data flowing per-stream. The aggregate ev/min meta
+         chip floats centered between the two curves. -->
+    <div class="arch-col arch-col--cam-arrow">
+      <svg class="arch-cam-curves" viewBox="0 0 120 200" aria-hidden="true">
+        <defs>
+          <marker id="cam-arrowhead" viewBox="0 0 10 10"
+                  refX="9" refY="5" markerWidth="5" markerHeight="5"
+                  orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#3ddc84"/>
+          </marker>
+          <path id="cam-curve-north" d="M 0 35 C 70 35, 50 100, 118 100" fill="none"/>
+          <path id="cam-curve-south" d="M 0 165 C 70 165, 50 100, 118 100" fill="none"/>
+        </defs>
+        <use href="#cam-curve-north" class="arch-cam-curve__path"
+             marker-end="url(#cam-arrowhead)"/>
+        <use href="#cam-curve-south" class="arch-cam-curve__path"
+             marker-end="url(#cam-arrowhead)"/>
+        <circle r="4" class="arch-cam-curve__dot">
+          <animateMotion dur="2s" repeatCount="indefinite" rotate="auto">
+            <mpath href="#cam-curve-north"/>
+          </animateMotion>
+        </circle>
+        <circle r="4" class="arch-cam-curve__dot">
+          <animateMotion dur="2s" repeatCount="indefinite" begin="1s" rotate="auto">
+            <mpath href="#cam-curve-south"/>
+          </animateMotion>
+        </circle>
+      </svg>
+      <div class="arch-arrow-meta arch-arrow-meta--cam">
+        <span class="arch-arrow-counter" id="arch-counter-rtsp">— ev/min</span>
         <span class="arch-arrow-label">stream</span>
       </div>
     </div>
