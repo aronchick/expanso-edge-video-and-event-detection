@@ -515,19 +515,19 @@ body.tier-edge-down #tier-edge {
 .sector-status.connecting { color: var(--text-dim); border-color: var(--border); background: var(--surface-2); }
 
 .sector-feed {
-  flex: 1;
+  /* Native 16:9 (matches sub-stream 640×360). NOT `flex: 1` — flex sizing
+     would force the child to fill the parent's remaining height and
+     override aspect-ratio, producing the squashed 718×320 (2.24:1) tile
+     we had before. Instead let aspect-ratio drive height; max-height
+     keeps it from spilling out of a short row, and margin: auto centers
+     vertically when the row is taller than the tile needs. */
   position: relative;
   overflow: hidden;
   background: #000;
-  /* Keep the camera area at native 16:9 (matches sub-stream 640×360). The
-     parent .sector fills the row; this child stays 16:9 and centers within
-     whatever vertical space remains after .sector-head. Black bars appear
-     above/below if the row is taller than 16:9 of width allows — that's
-     correct behavior, since otherwise object-fit:cover crops the video. */
   aspect-ratio: 16 / 9;
-  margin: auto;
   width: 100%;
   max-height: 100%;
+  margin: auto;
 }
 /* WebRTC layered camera tile: video on top, canvas overlay above for
    bbox overlays, fallback img underneath for when WebRTC fails. */
