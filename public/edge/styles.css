@@ -106,7 +106,9 @@ body {
     minmax(0, 1fr)          /* 4: south sector + south events */
     auto                    /* 5: platform-strip (with tier dots inline) */
     auto;                   /* 6: footer */
-  grid-template-columns: minmax(0, 28rem) minmax(0, 1fr);
+  /* Cameras get more horizontal weight — they're the visual hero. Events
+     column is dense single-line rows so it doesn't need 70% of width. */
+  grid-template-columns: minmax(0, 42rem) minmax(0, 1fr);
   height: 100vh;
   width: 100vw;
   gap: var(--gap);
@@ -1523,11 +1525,13 @@ body.show-topology .topology { display: block; }
   gap: 0.4em;
 }
 .platform-strip .tier-dot {
-  width: 0.55em;
-  height: 0.55em;
-  border-radius: 50%;
+  /* Bigger, more visible — the tier strip is the architectural claim of the demo,
+     not an afterthought. Square LED matches the design vocab. */
+  width: 0.7em;
+  height: 0.7em;
+  border-radius: 2px;
   background: var(--ok);
-  box-shadow: 0 0 0.4em var(--ok);
+  box-shadow: 0 0 0.5em var(--ok);
   transition: background var(--m-base), box-shadow var(--m-base);
 }
 .platform-strip .tier-sep { color: var(--text-mono); }

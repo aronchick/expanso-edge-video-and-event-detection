@@ -159,7 +159,8 @@ function renderEvent(e) {
   }
 
   container.insertBefore(root, container.firstChild);
-  while (container.children.length > 2) container.lastChild.remove();
+  // Show up to 8 single-line events per panel — fills the column instead of leaving 70% empty.
+  while (container.children.length > 8) container.lastChild.remove();
 }
 
 function updateOverlay(sector, e) {
