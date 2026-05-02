@@ -80,8 +80,9 @@ function refreshGeminiPill(flash = false) {
   }
   const valueEl = document.getElementById('metric-gemini');
   if (valueEl) valueEl.textContent = String(geminiCallTimestamps.length);
-  // Mirror to ARCH Gemini branch counter
+  // Mirror to ARCH Gemini branch counter + particle-flow rate
   setText('arch-counter-gemini-flow', `${geminiCallTimestamps.length} /min`);
+  setFlowRate('arch-flow-gemini', geminiCallTimestamps.length);
   if (flash) {
     const pill = document.getElementById('metric-gemini-pill');
     if (pill) {
@@ -373,8 +374,12 @@ function renderJobs(list) {
     container.appendChild(item);
   }
   document.getElementById('footer-jobs').textContent = `${running}/${total}` + (failed ? ` (${failed} failed)` : '');
-  // Mirror to ARCH control-plane counter
+  // Mirror to ARCH control-plane counter + particle-flow rate. Job-state
+  // changes are rare (often 4/4 steady), so derive the rate from the running
+  // count itself: more running jobs → control-plane is more "active".
   setText('arch-counter-jobs', `${running}/${total} jobs`);
+  jobsRollingPush(running);
+  setFlowRate('arch-flow-jobs', jobsChangePerMinute());
 
   // Tier strip: dim EDGE when no sensor-* job is in 'running' state.
   // (FUSION dimming is implicit — if the fusion node is down, this whole

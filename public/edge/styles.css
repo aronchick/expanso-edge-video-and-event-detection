@@ -1129,14 +1129,17 @@ body.show-topology .topology { display: block; }
    Animated dots travel along arrow stems to make data flow visible. */
 
 .arch-view {
-  /* Replaces all OPS rows when active. Internal layout is its own grid.
-     Row 1 = control plane (Cloud + vertical-arrow region, with breathing room).
-     Row 2 = data plane (centered, the visual heart).
-     Row 3 = footer tagline. */
-  grid-template-rows: auto 1fr auto;
-  grid-template-columns: 1fr;
-  gap: 1.5rem;
-  padding: 1.2rem 0.8rem 0.5rem;
+  /* Replaces all OPS rows when active. Internal layout is a 4-column grid:
+     col 1 = cameras (stacked north + south),
+     col 2 = camera→jetson arrow,
+     col 3 = cloud + vertical arrow + jetson stacked (the "spine"),
+     col 4 = 3-way fan-out (local / gemini / s3) stacked.
+     The footer spans all 4 columns. */
+  grid-template-columns: auto auto 1fr auto;
+  grid-template-rows: 1fr auto;
+  column-gap: 0.4rem;
+  row-gap: 0.6rem;
+  padding: 1.2rem 1rem 0.6rem;
   background:
     radial-gradient(ellipse 70% 50% at 50% 0%, rgba(127,184,220,0.05), transparent 60%),
     var(--surface);
@@ -1146,6 +1149,17 @@ body.show-topology .topology { display: block; }
   align-items: center;
   justify-items: center;
 }
+.arch-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.arch-col--cameras   { grid-column: 1; grid-row: 1; gap: 0.6rem; }
+.arch-col--cam-arrow { grid-column: 2; grid-row: 1; }
+.arch-col--center    { grid-column: 3; grid-row: 1; gap: 0; align-self: center; }
+.arch-col--fanout    { grid-column: 4; grid-row: 1; gap: 0.6rem; }
+.arch-view > .arch-footer { grid-column: 1 / -1; grid-row: 2; }
 
 /* ── Boxes (display-rectangle primitive) ──────────────────────────── */
 .arch-box {
@@ -1179,12 +1193,58 @@ body.show-topology .topology { display: block; }
 }
 
 /* Box variants — subtle accent on top edge to differentiate roles */
-.arch-box--cloud   { border-top: 2px solid var(--expanso); }
+.arch-box--cloud   { border-top: 2px solid var(--expanso); min-width: 16rem; }
 .arch-box--camera  { border-top: 2px solid var(--text-mono); }
-.arch-box--jetson  { border-top: 2px solid var(--ok); min-width: 14rem; }
+.arch-box--cam-mini {
+  border-top: 2px solid var(--text-mono);
+  min-width: 10rem;
+  max-width: 11rem;
+  padding: 0.45rem 0.7rem;
+}
+.arch-box--jetson  { border-top: 2px solid var(--ok); min-width: 16rem; max-width: 22rem; }
+/* Jetson sits directly under the cloud arrow with no visual gap so the arrow
+   appears to terminate AT the box's top edge. */
+.arch-col--center .arch-box--jetson { margin-top: -1px; }
 .arch-box--local   { border-top: 2px solid var(--ok); }
 .arch-box--gemini  { border-top: 2px solid var(--alert); }
 .arch-box--s3      { border-top: 2px solid var(--expanso); }
+
+/* Square-ish fan-out boxes — wider and taller to hit ~5:4 aspect; pills wrap. */
+.arch-box--square {
+  min-width: 9rem;
+  width: 9.5rem;
+  min-height: 7.5rem;
+  padding: 0.7rem 0.75rem;
+  justify-content: flex-start;
+}
+.arch-box--square .arch-pills { flex-wrap: wrap; }
+
+/* Live stat block inside Jetson box. Tabular numerals, mono font, dim divider. */
+.arch-livestat {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.15rem 0.6rem;
+  margin-top: 0.45rem;
+  padding-top: 0.4rem;
+  border-top: 1px dashed var(--border);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.7rem;
+}
+.arch-livestat-row {
+  display: contents;
+}
+.arch-livestat-label {
+  color: var(--text-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.arch-livestat-val {
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  text-align: right;
+}
 
 /* ── Pills (bracket-label primitive — keeps with the operational vocab) ── */
 .arch-pills {
@@ -1244,7 +1304,7 @@ body.show-topology .topology { display: block; }
 }
 .arch-arrow-stem--vertical {
   width: 2px;
-  height: 6rem;
+  height: 3.4rem;
 }
 .arch-arrow-stem--vertical::after {
   /* Arrowhead at the bottom */
@@ -1316,59 +1376,43 @@ body.show-topology .topology { display: block; }
   font-size: 0.65rem;
 }
 
-/* ── Control plane (top: Expanso Cloud + perpendicular arrow down) ── */
-.arch-control-plane {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0;
-}
+/* ── Cloud → Jetson arrow (centered column, vertical stem with the meta
+       label floated to the right so the stem itself stays on the centerline
+       between the Cloud box and the Jetson box, ensuring the arrow visually
+       terminates AT the Jetson's top edge). ── */
 .arch-control-arrow {
-  display: flex;
-  flex-direction: row;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  gap: 0.6rem;
-  margin-top: 0.3rem;
+  width: 100%;
+  margin: 0;
+}
+.arch-control-arrow .arch-arrow-stem--vertical {
+  grid-column: 2;
+  justify-self: center;
 }
 .arch-control-arrow .arch-arrow-meta {
+  grid-column: 3;
   flex-direction: row;
-  gap: 0.5rem;
+  gap: 0.4rem;
+  justify-self: start;
+  padding-left: 0.6rem;
 }
 
-/* ── Data plane (Camera → Jetson → 3-way fan-out) ──────────────────── */
-/* Restructured: Camera+Jetson are wrapped in `.arch-data-trunk` which flows
-   horizontally; the trunk and the 3-row fan-out are siblings inside the data
-   plane and vertically centered, so the fan-out's MIDDLE row (Gemini) sits
-   level with the Jetson. */
-.arch-data-plane {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  gap: 0.6rem;
-  flex-wrap: nowrap;
-  min-width: 0;
-}
-.arch-data-trunk {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 0.6rem;
-  flex-shrink: 0;
-}
-.arch-fanout {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-  flex-shrink: 0;
-  /* Each fan-out row is the same height as the Jetson box, so 3 rows is
-     ~3× the Jetson height. Vertically center the trunk against this. */
-}
+/* ── Fan-out rows (each: arrow stem + box, horizontal). Used in column 4. ── */
 .arch-fanout-row {
   display: flex;
   flex-direction: row;
   align-items: center;
   gap: 0.4rem;
+}
+
+/* ── Cameras column (two stacked sub-tiles for north + south). ── */
+.arch-cameras {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  align-items: stretch;
 }
 
 /* ── Footer line of arch view ──────────────────────────────────────── */
