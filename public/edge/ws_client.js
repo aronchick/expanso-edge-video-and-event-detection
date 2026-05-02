@@ -775,10 +775,63 @@ function applyTabFromHash() {
     a.classList.toggle('is-active', isActive);
     a.setAttribute('aria-selected', isActive ? 'true' : 'false');
   }
+  // ARCH view's camera curves need to retarget the Edge box's vertical
+  // middle whenever it becomes visible (display went from none → grid).
+  if (target === 'arch') requestAnimationFrame(updateCameraCurves);
 }
 
 window.addEventListener('hashchange', applyTabFromHash);
 applyTabFromHash();
+
+// ── ARCH view: anchor camera curves to Edge box middle ────────────────
+// SVG paths can't follow elements declaratively. Read the live geometry
+// of the camera tiles + Edge box, write fresh `d` attributes. Re-runs on
+// load, resize, tab-switch — anything that could change layout. The SVG
+// uses pixel coordinates (no viewBox), so we compute everything in the
+// SVG's local screen-space.
+function updateCameraCurves() {
+  const svg = document.querySelector('.arch-cam-curves');
+  const camN = document.getElementById('arch-tile-cam-north');
+  const camS = document.getElementById('arch-tile-cam-south');
+  const edge = document.querySelector('.arch-box--jetson');
+  const pathN = document.getElementById('cam-curve-north');
+  const pathS = document.getElementById('cam-curve-south');
+  if (!svg || !camN || !camS || !edge || !pathN || !pathS) return;
+  if (!svg.offsetWidth) return; // not visible yet
+
+  const sR = svg.getBoundingClientRect();
+  const nR = camN.getBoundingClientRect();
+  const sR2 = camS.getBoundingClientRect();
+  const eR = edge.getBoundingClientRect();
+
+  // Translate viewport coords into SVG-local pixel coords
+  const toX = (x) => x - sR.left;
+  const toY = (y) => y - sR.top;
+
+  // Start: right edge of camera tile, vertical center
+  const sxN = toX(nR.right), syN = toY(nR.top + nR.height / 2);
+  const sxS = toX(sR2.right), syS = toY(sR2.top + sR2.height / 2);
+  // End: left edge of Edge box, vertical center — THE convergence point
+  const ex = toX(eR.left), ey = toY(eR.top + eR.height / 2);
+
+  // Cubic Bezier control points biased to make the curve flow horizontally
+  // first then bend to the convergence — gives the merging-streams look.
+  const cpx = sxN + (ex - sxN) * 0.55;
+  const dN = `M ${sxN} ${syN} C ${cpx} ${syN}, ${cpx} ${ey}, ${ex} ${ey}`;
+  const dS = `M ${sxS} ${syS} C ${cpx} ${syS}, ${cpx} ${ey}, ${ex} ${ey}`;
+  pathN.setAttribute('d', dN);
+  pathS.setAttribute('d', dS);
+}
+
+window.addEventListener('resize', () => requestAnimationFrame(updateCameraCurves));
+// Run after fonts/images settle (layout can shift)
+window.addEventListener('load', () => setTimeout(updateCameraCurves, 100));
+// Watch for any size change in the arch-view (e.g., font load shifts box)
+if (window.ResizeObserver) {
+  const ro = new ResizeObserver(() => requestAnimationFrame(updateCameraCurves));
+  const av = document.querySelector('.arch-view');
+  if (av) ro.observe(av);
+}
 
 // ── Operator keyboard shortcuts ─────────────────────────────────────
 
@@ -880,15 +933,16 @@ function drawBboxOverlay(sector, hits) {
   ctx.clearRect(0, 0, cw, ch);
   if (!hits || !hits.length) return;
 
-  // Replicate the video element's `object-fit: cover` transform so bbox
+  // Replicate the video element's `object-fit: contain` transform so bbox
   // coords (in source frame space — whatever resolution YOLO inferred on)
-  // project onto the visible canvas. Read source dims from the live video
-  // so we work whether sensor reads sub-stream (640×360), main (1280×720),
-  // or 4K — the only thing that matters is that source matches what YOLO saw.
+  // project onto the visible canvas. With `contain`, the video is scaled
+  // by min(cw/sw, ch/sh) and centered, leaving letterbox bars on whichever
+  // axis has slack. Use Math.min (not max — that would be cover semantics
+  // and put boxes outside the video onto the letterbox bars).
   const video = document.getElementById(`video-${sector}`);
   const sw = (video && video.videoWidth) || SECTOR_SOURCE_W_FALLBACK;
   const sh = (video && video.videoHeight) || SECTOR_SOURCE_H_FALLBACK;
-  const scale = Math.max(cw / sw, ch / sh);
+  const scale = Math.min(cw / sw, ch / sh);
   const renderedW = sw * scale;
   const renderedH = sh * scale;
   const offsetX = (cw - renderedW) / 2;
