@@ -14,10 +14,13 @@
 #   ./scripts/demo_reset.sh --local   # clear local state only
 #
 # What gets touched (default mode):
-#   - expanso-cli job stop  : orchestrator, sensor-{north,south},
+#   - expanso-cli job stop  : sensor-north, sensor-south,
 #                             armyx-tech-event-archive
-#                             (job spec stays in cluster; can be
+#                             (job specs stay in cluster; can be
 #                              restarted via UI or `expanso-cli job rerun`)
+#                             NOT touched: fusion-node (it serves the
+#                             dashboard — stopping it would blank the
+#                             conference monitor between rehearsals).
 #   - rm -f                 : orchestrator.db, events.ndjson,
 #                             triggers.yaml  (in repo root)
 #
@@ -26,11 +29,13 @@
 
 set -uo pipefail
 
+# Only the 3 workload jobs. The fusion-node (local FastAPI) stays
+# running so the dashboard keeps serving between rehearsals — stopping
+# it would blank the conference monitor.
 JOBS=(
   armyx-tech-event-archive
   sensor-south
   sensor-north
-  orchestrator
 )
 LOCAL_FILES=(
   orchestrator.db
