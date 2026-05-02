@@ -62,7 +62,9 @@ def run_real(
 
     snapshot_path = Path(snapshot_dir) / f"{node_id}.jpg"
     snapshot_path.parent.mkdir(parents=True, exist_ok=True)
-    SNAPSHOT_INTERVAL_SEC = 0.4  # noqa: N806 — function-local constant
+    # ≈10 FPS — orchestrator's /stream/{sector} MJPEG endpoint pushes each new
+    # snapshot file write to connected dashboards, so visible cadence matches.
+    SNAPSHOT_INTERVAL_SEC = 0.1  # noqa: N806 — function-local constant
     last_snapshot_ts = 0.0
     last_event_for_overlay: object = None
     LAST_EVENT_HOLD_SEC = 1.5  # noqa: N806 — function-local constant

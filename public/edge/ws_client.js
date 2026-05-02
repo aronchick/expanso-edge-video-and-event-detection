@@ -455,19 +455,23 @@ setInterval(() => {
   }
 }, 1000);
 
-// Camera feed: preload next frame in a hidden Image, only swap once decoded.
-// Without this, setting img.src directly causes a brief blank/flash during
-// fetch+decode that reads as "jumpy" even though the dimensions are stable.
+// Camera feeds use the orchestrator's MJPEG /stream/{sector} endpoint —
+// browser holds an HTTP connection open and renders new frames as the
+// orchestrator pushes them (~10fps, baked-in YOLO bbox overlays). No JS
+// polling needed; the <img src="/stream/...> in index.html does it natively.
+//
+// If the connection drops (sensor restart, orchestrator restart), reload
+// the img by tickling its src — browser otherwise won't auto-reconnect.
 setInterval(() => {
-  const t = Date.now();
   for (const node of ['sensor-north', 'sensor-south']) {
     const img = document.getElementById(`feed-${node}`);
     if (!img) continue;
-    const next = new Image();
-    next.onload = () => { img.src = next.src; };
-    next.src = `/snapshot/${node}?t=${t}`;
+    // naturalWidth === 0 means the stream broke; reload it.
+    if (img.complete && img.naturalWidth === 0) {
+      img.src = `/stream/${node}?reconnect=${Date.now()}`;
+    }
   }
-}, 2000);
+}, 5000);
 
 // ── Cloud egress / S3 archive tile ──────────────────────────────────
 

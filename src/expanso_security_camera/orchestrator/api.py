@@ -27,7 +27,7 @@ from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from expanso_security_camera.orchestrator.correlator import Correlator
@@ -193,6 +193,74 @@ def create_app(
                 headers={"Cache-Control": "no-cache, no-store"},
             )
         return JSONResponse({"error": f"no snapshot for {sector}"}, status_code=404)
+
+    @app.get("/stream/{sector}")
+    async def stream_snapshot(sector: str) -> StreamingResponse:
+        """MJPEG stream — pushes each new snapshot file write to connected
+        dashboards as a multipart/x-mixed-replace body. Browsers natively
+        render this in an `<img>` tag as a continuous video. Latency tracks
+        the sensor's snapshot write cadence (currently ~10fps) — far better
+        than the 2s polling that /snapshot/{sector} alone supports."""
+        import asyncio
+        import os
+
+        boundary = b"frameboundary"
+        snap_file = snapshots_path / f"{sector}.jpg"
+
+        async def gen():
+            last_mtime = 0.0
+            try:
+                while True:
+                    # Detect file change cheaply via mtime; read + yield only
+                    # when a new frame has actually been written. Avoids re-
+                    # streaming the same JPEG over and over (which would burn
+                    # bandwidth without changing pixels).
+                    try:
+                        stat = os.stat(snap_file)
+                        mtime = stat.st_mtime
+                    except FileNotFoundError:
+                        # No real frame yet — fall through to the synth path
+                        # via a one-shot fake JPEG so the browser sees motion.
+                        jpg = (
+                            fake_cache.render(sector, cloud_up=metrics.is_cloud_up())
+                            if fake_mode
+                            else None
+                        )
+                        if jpg:
+                            yield (
+                                b"--" + boundary + b"\r\n"
+                                b"Content-Type: image/jpeg\r\n"
+                                b"Content-Length: " + str(len(jpg)).encode() + b"\r\n\r\n"
+                                + jpg + b"\r\n"
+                            )
+                        await asyncio.sleep(0.5)
+                        continue
+
+                    if mtime != last_mtime:
+                        try:
+                            jpg = snap_file.read_bytes()
+                        except OSError:
+                            await asyncio.sleep(0.05)
+                            continue
+                        last_mtime = mtime
+                        yield (
+                            b"--" + boundary + b"\r\n"
+                            b"Content-Type: image/jpeg\r\n"
+                            b"Content-Length: " + str(len(jpg)).encode() + b"\r\n\r\n"
+                            + jpg + b"\r\n"
+                        )
+                    # Tight sleep so we react quickly when the sensor writes
+                    # a new frame; matches the sensor's ~100ms write cadence.
+                    await asyncio.sleep(0.05)
+            except asyncio.CancelledError:
+                # Browser disconnected; let the generator unwind cleanly.
+                return
+
+        return StreamingResponse(
+            gen(),
+            media_type=f"multipart/x-mixed-replace; boundary={boundary.decode()}",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"},
+        )
 
     @app.post("/demo/wan-down")
     async def wan_down() -> dict:
