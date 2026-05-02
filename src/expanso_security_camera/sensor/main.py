@@ -139,8 +139,8 @@ def run_real(
             last_snapshot_ts = ts
 
         # Tiny sleep so we don't pin a CPU core when RTSP is firing fast.
+        # (YOLO printing happens inside yolo_worker, not here.)
         time.sleep(0.02)
-        print(f"[{node_id}] emitted: {labels}", flush=True)
 
 
 # ── Fake sensor loop (no GPU, no cameras) ───────────────────────────────
