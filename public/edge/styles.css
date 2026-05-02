@@ -107,9 +107,9 @@ body {
     minmax(0, 1fr)          /* 5: south sector + south events */
     auto                    /* 6: platform-strip (with tier dots inline) */
     auto;                   /* 7: footer */
-  /* Two-column grid. Camera column uses fr-share so it scales with the row
-     height — keeps both N + S sectors fully visible at any viewport. */
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  /* Two-column grid. Camera column sized so two stacked 16:9 tiles fit
+     the available vertical space; events column takes whatever's left. */
+  grid-template-columns: minmax(0, 36rem) minmax(0, 1fr);
   height: 100vh;
   width: 100vw;
   gap: var(--gap);
@@ -128,12 +128,17 @@ body {
 .archive-view     { grid-row: 2 / 7; grid-column: 1 / span 2; display: none; }
 .footer           { grid-row: 7; grid-column: 1 / span 2; }
 
-/* Tab visibility — header + footer + platform-strip always visible. */
+/* Tab visibility — header + footer + platform-strip always visible.
+   Triggers bar is hidden on ARCH/ARCHIVE tabs because those views show
+   structural / archival info, not live-ops trigger config. Hiding it also
+   reclaims row 2 so the arch-view can use it without overlapping. */
+body.tab-arch .triggers-bar,
 body.tab-arch .fusion-tile,
 body.tab-arch .sector,
 body.tab-arch .events-panel { display: none; }
 body.tab-arch .arch-view { display: grid; }
 
+body.tab-archive .triggers-bar,
 body.tab-archive .fusion-tile,
 body.tab-archive .sector,
 body.tab-archive .events-panel { display: none; }
@@ -152,12 +157,14 @@ body.tab-archive .archive-view { display: flex; }
 }
 
 .brand {
-  font-size: var(--t-h);
+  font-size: var(--t-body-lg);
   font-weight: 600;
   letter-spacing: -0.02em;
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .brand .dot {
   width: 0.5em; height: 0.5em;
@@ -187,15 +194,17 @@ body.tab-archive .archive-view { display: flex; }
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: var(--t-caption);
   font-weight: 700;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-mono);
   background: transparent;
   border: 0;
-  padding: 0.45em 1.4em;
+  padding: 0.4em 0.95em;
   cursor: pointer;
   transition: color var(--m-fast), background var(--m-fast), box-shadow var(--m-fast);
   border-right: 1px solid var(--border);
+  white-space: nowrap;
+  text-decoration: none;
 }
 .tab:last-child { border-right: 0; }
 .tab:hover { color: var(--text-dim); background: rgba(127,184,220,0.05); }
@@ -206,32 +215,36 @@ body.tab-archive .archive-view { display: flex; }
 }
 
 .metric-pill {
-  font-size: var(--t-body-lg);
-  padding: 0.4em 0.9em;
+  font-size: var(--t-body);
+  padding: 0.3em 0.75em;
   border-radius: 999px;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  /* Reserve space so the pill doesn't resize as the value grows from "9" to "10" */
-  min-width: 9rem;
   display: inline-flex;
-  justify-content: space-between;
-  gap: 0.5em;
+  align-items: baseline;
+  gap: 0.4em;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
-.metric-pill .label { color: var(--text-dim); margin-right: 0.4em; }
+.metric-pill .label { color: var(--text-dim); white-space: nowrap; }
 .metric-pill .value {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
+  min-width: 1.5em;
+  text-align: right;
 }
 
 .cloud-pill {
-  font-size: var(--t-body-lg);
-  padding: 0.4em 0.9em;
+  font-size: var(--t-body);
+  padding: 0.3em 0.75em;
   border-radius: 999px;
   background: rgba(61, 220, 132, 0.12);
   color: var(--ok);
   border: 1px solid var(--ok);
   font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .cloud-pill.down {
   background: rgba(255, 77, 79, 0.18);
@@ -401,9 +414,7 @@ body.tier-edge-down #tier-edge {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  /* Lock to a single line so adding triggers (F4) doesn't reflow the page */
-  height: 2.6rem;
-  overflow: hidden;
+  min-height: 2.6rem;
 }
 .triggers-bar h2 {
   margin: 0;
@@ -416,9 +427,8 @@ body.tier-edge-down #tier-edge {
 }
 .trigger-chips {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 0.35rem;
-  overflow-x: hidden;
   flex: 1;
   min-width: 0;
 }
@@ -453,11 +463,13 @@ body.tier-edge-down #tier-edge {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  /* Fill the grid cell — both camera tiles equal height, both visible.
-     The aspect-ratio: 1/1 hack was breaking the layout when the column
-     was wider than half the available row height. */
+  /* Native 16:9 to match the WebRTC sub-stream — no cropping, no letterbox.
+     `align-self: start` so the grid row doesn't stretch the tile beyond
+     its natural aspect-ratio height. */
   width: 100%;
-  height: 100%;
+  aspect-ratio: 16 / 9;
+  align-self: start;
+  max-height: 100%;
 }
 .sector-head {
   display: flex;
@@ -1229,41 +1241,57 @@ body.show-topology .topology { display: block; }
 .arch-box--gemini  { border-top: 2px solid var(--alert); }
 .arch-box--s3      { border-top: 2px solid var(--expanso); }
 
-/* Square-ish fan-out boxes — wider and taller to hit ~5:4 aspect; pills wrap. */
+/* Fan-out boxes — wider rectangles so multi-word pills like "store-and-forward"
+   fit on a single line without clipping. Uniform width for vertical rhythm. */
 .arch-box--square {
-  min-width: 9rem;
-  width: 9.5rem;
-  min-height: 7.5rem;
-  padding: 0.7rem 0.75rem;
+  min-width: 13rem;
+  width: 13rem;
+  min-height: 7rem;
+  padding: 0.7rem 0.85rem;
   justify-content: flex-start;
 }
 .arch-box--square .arch-pills { flex-wrap: wrap; }
 
-/* Live stat block inside Jetson box. Tabular numerals, mono font, dim divider. */
+/* Live stat block inside Jetson box — 2x2 instrument cluster.
+   Each cell shows VALUE (large, top) over LABEL (small caps, bottom),
+   so the eye lands on the number first. Tabular numerals lock the
+   width so values don't dance as they update. */
 .arch-livestat {
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 0.15rem 0.6rem;
-  margin-top: 0.45rem;
-  padding-top: 0.4rem;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+  padding-top: 0.55rem;
   border-top: 1px dashed var(--border);
   font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: 0.7rem;
 }
 .arch-livestat-row {
-  display: contents;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.05rem;
+  background: rgba(11, 13, 16, 0.45);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.3rem 0.5rem;
 }
 .arch-livestat-label {
   color: var(--text-mono);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
+  font-size: 0.65rem;
+  font-weight: 600;
+  order: 2;
 }
 .arch-livestat-val {
   color: var(--text);
-  font-weight: 600;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
-  text-align: right;
+  font-size: var(--t-body-lg);
+  letter-spacing: -0.01em;
+  line-height: 1;
+  order: 1;
 }
 
 /* ── Pills (bracket-label primitive — keeps with the operational vocab) ── */
@@ -1292,49 +1320,56 @@ body.show-topology .topology { display: block; }
 }
 
 /* ── Arrows (stem + animated flow dot + counter meta) ──────────────── */
+/* Horizontal layout: meta-chip sits ABOVE a longer, more substantial arrow stem
+   so the eye reads "label → flow" as one unit. Stem is dimmed teal so it visually
+   belongs to the Expanso accent palette, not just generic border-grey. */
 .arch-arrow {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.2rem;
+  gap: 0.35rem;
   flex-shrink: 0;
-}
-.arch-arrow--horizontal {
-  /* Stem horizontal */
 }
 .arch-arrow-stem {
   position: relative;
-  height: 2px;
-  width: 5rem;
-  background: var(--border);
-  border-radius: 1px;
+  height: 3px;
+  width: 7rem;
+  background: linear-gradient(90deg,
+    var(--border) 0%,
+    rgba(127, 184, 220, 0.45) 50%,
+    var(--text-mono) 100%);
+  border-radius: 1.5px;
 }
 .arch-arrow-stem::after {
   /* Arrowhead at the right end */
   content: "";
   position: absolute;
-  right: -1px;
+  right: -2px;
   top: 50%;
   transform: translateY(-50%);
   width: 0;
   height: 0;
-  border-left: 6px solid var(--text-mono);
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
+  border-left: 8px solid var(--text-mono);
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
 }
 .arch-arrow-stem--vertical {
-  width: 2px;
+  width: 3px;
   height: 3.4rem;
+  background: linear-gradient(180deg,
+    var(--border) 0%,
+    rgba(127, 184, 220, 0.45) 50%,
+    var(--text-mono) 100%);
 }
 .arch-arrow-stem--vertical::after {
   /* Arrowhead at the bottom */
   right: 50%;
-  bottom: -1px;
+  bottom: -2px;
   top: auto;
   transform: translateX(50%);
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-  border-top: 6px solid var(--text-mono);
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 8px solid var(--text-mono);
   border-bottom: 0;
 }
 
@@ -1370,30 +1405,38 @@ body.show-topology .topology { display: block; }
   100% { top: calc(100% - 6px); opacity: 0; }
 }
 
-/* Branch arrows (smaller, dim until activity). Same visual shape, tighter. */
-.arch-arrow--branch .arch-arrow-stem { width: 4rem; }
+/* Branch arrows (fan-out, slightly shorter). Alert-colored flow dot to
+   distinguish branch traffic from the upstream camera→jetson stream. */
+.arch-arrow--branch .arch-arrow-stem { width: 5.5rem; }
 .arch-arrow--branch .arch-arrow-flow { animation-duration: 1.4s; background: var(--alert); box-shadow: 0 0 0.4em var(--alert); }
 
 .arch-arrow-meta {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.05rem;
+  gap: 0.1rem;
   font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: 0.72rem;
-  letter-spacing: 0.05em;
+  font-size: var(--t-caption);
+  letter-spacing: 0.04em;
+  background: rgba(11, 13, 16, 0.6);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.2em 0.55em;
+  min-width: 5.5rem;
 }
 .arch-arrow-counter {
   color: var(--text);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
+  white-space: nowrap;
 }
 .arch-arrow-label {
   color: var(--text-mono);
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  font-size: 0.65rem;
+  letter-spacing: 0.14em;
+  font-size: 0.7em;
+  white-space: nowrap;
 }
 
 /* ── Cloud → Jetson arrow (centered column, vertical stem with the meta
@@ -1550,7 +1593,6 @@ body.show-topology .topology { display: block; }
   align-items: center;
   gap: 0.85rem;
   padding: 0.5rem 1rem;
-  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   min-height: 3rem;
@@ -1571,6 +1613,8 @@ body.show-topology .topology { display: block; }
   display: flex;
   gap: 0.7rem;
   flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
 }
 
 /* Legacy header-triggers wrapper — kept defined so any straggling references
