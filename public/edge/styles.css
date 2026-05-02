@@ -1529,8 +1529,12 @@ body.show-topology .topology { display: block; }
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 auto;
+  /* Without an explicit min-width, the flex sibling pills (each min-width 9rem)
+     consume all space and the chips collapse to width 0 — Beat 0/4 lose their
+     trigger-bar visual entirely. 24rem reserves enough room for 6-7 short chips
+     at stage scale before overflow:hidden truncates the tail. */
+  min-width: 24rem;
   overflow: hidden;
   padding: 0 0.6rem;
 }

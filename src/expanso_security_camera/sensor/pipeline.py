@@ -45,7 +45,19 @@ def _open_capture(rtsp_url: str, prefer_gstreamer: bool) -> cv2.VideoCapture:
         cap = cv2.VideoCapture(reolink_gst_pipeline(rtsp_url), cv2.CAP_GSTREAMER)
         if cap.isOpened():
             return cap
-    cap = cv2.VideoCapture(rtsp_url)
+    # CRITICAL: set OPENCV_FFMPEG_CAPTURE_OPTIONS BEFORE constructing the
+    # VideoCapture so the FFmpeg backend uses TCP (RTSP-over-UDP loses
+    # packets on flaky links and freezes for 30s waiting for keyframes).
+    # Setting via env at the OS level isn't reliable across shell wrappers;
+    # do it explicitly in-process here.
+    import os as _os
+
+    _os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
+        "rtsp_transport;tcp"
+        "|stimeout;5000000"  # 5s read timeout (default is 30s)
+        "|max_delay;500000"  # 500ms reorder buffer
+    )
+    cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
     if "rtsp" in rtsp_url.lower():
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     return cap

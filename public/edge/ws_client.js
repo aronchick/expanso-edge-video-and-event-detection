@@ -779,10 +779,12 @@ document.addEventListener('keydown', async (ev) => {
     case 'F2': ev.preventDefault(); await fetch('/demo/wan-up',   { method: 'POST' }); break;
     case 'F3': ev.preventDefault(); await fetch('/demo/fused-test', { method: 'POST' }); break;
     case 'F4': ev.preventDefault();
+      // Beat 4: end state is exactly person + backpack + drone. One new chip
+      // pulses in. That's the entire trigger-bar story, do not bloat.
       await fetch('/triggers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ triggers: ['person', 'backpack', 'drone', 'airplane', 'car', 'truck'] }),
+        body: JSON.stringify({ triggers: ['person', 'backpack', 'drone'] }),
       });
       break;
   }

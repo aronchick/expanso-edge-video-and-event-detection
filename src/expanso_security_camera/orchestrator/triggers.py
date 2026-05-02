@@ -17,12 +17,11 @@ from pathlib import Path
 import yaml
 
 DEFAULT_TRIGGERS: list[str] = [
-    # Demo trigger set — only what's actually visible/relevant in the demo
-    # space. "airplane" is COCO's class for any aerial vehicle (drones map
-    # here); the dashboard aliases it to "drone" in the UI.
+    # Beat 0 / Beat 3 lights-up state — TWO chips, nothing else.
+    # Beat 4 (F4) adds "drone" → end state is exactly ["person","backpack","drone"].
+    # Don't add anything else. Three chips total at end is the entire chip story.
     "person",
     "backpack",
-    "airplane",
 ]
 
 

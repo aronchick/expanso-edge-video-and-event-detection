@@ -15,11 +15,10 @@ import urllib.error
 import urllib.request
 
 DEFAULT_TRIGGERS = [
-    # Demo trigger set — see orchestrator/triggers.py for rationale.
-    # "airplane" matches COCO; UI aliases to "drone".
+    # Keep in sync with orchestrator/triggers.py. Two chips at lights-up;
+    # F4 brings end state to ["person","backpack","drone"].
     "person",
     "backpack",
-    "airplane",
 ]
 POLL_INTERVAL_SEC = 1.0
 
