@@ -66,32 +66,71 @@ def run_real(
     # snapshot file write to connected dashboards, so visible cadence matches.
     SNAPSHOT_INTERVAL_SEC = 0.1  # noqa: N806 — function-local constant
     last_snapshot_ts = 0.0
-    last_event_for_overlay: object = None
     LAST_EVENT_HOLD_SEC = 1.5  # noqa: N806 — function-local constant
+
+    # YOLO runs on a background thread so it doesn't block the snapshot/write
+    # loop. The main loop reads RTSP frames at full rate (~10fps) and writes
+    # annotated snapshots using whatever the most recent detection is. YOLO
+    # picks up the LATEST frame from a single-slot mailbox, runs inference
+    # (slow on .pt), publishes the result, and grabs the next-latest frame.
+    # Net effect: video stays smooth even when YOLO is taking ~500ms+ per call.
+    import threading
+
+    yolo_inbox: dict = {"frame": None, "ts": 0.0}
+    yolo_out: dict = {"event": None, "ts": 0.0}
+    yolo_lock = threading.Lock()
+    yolo_event = threading.Event()
+
+    def yolo_worker() -> None:
+        while True:
+            yolo_event.wait()
+            yolo_event.clear()
+            with yolo_lock:
+                frame = yolo_inbox["frame"]
+                ts = yolo_inbox["ts"]
+                yolo_inbox["frame"] = None
+            if frame is None:
+                continue
+            try:
+                ev = detector.detect(frame, ts)
+            except Exception as e:
+                print(f"[{node_id}] yolo error: {e}", flush=True)
+                continue
+            with yolo_lock:
+                yolo_out["event"] = ev
+                yolo_out["ts"] = ts
+            if ev is not None:
+                sign_event(ev)
+                emitter.emit(ev)
+                labels = [h.label for h in ev.yolo_hits]
+                print(f"[{node_id}] emitted: {labels}", flush=True)
+
+    threading.Thread(target=yolo_worker, daemon=True, name=f"{node_id}-yolo").start()
 
     print(f"[{node_id}] warmed up, entering main loop", flush=True)
     while True:
         result = reader.read()
         if result is None:
-            time.sleep(0.05)
+            time.sleep(0.02)
             continue
         frame, ts = result
-        event = detector.detect(frame, ts)
 
-        # Throttled snapshot write — gives the dashboard a real, live camera feed
-        # with annotations. Writes even on no-detection frames so the feed never
-        # freezes; overlays the last detection's boxes for a brief hold so the
-        # demo doesn't strobe.
-        if event is not None:
-            last_event_for_overlay = (event, ts)
+        # Hand the latest frame to the YOLO worker (single-slot mailbox —
+        # newer frames overwrite older unprocessed ones, so YOLO always
+        # works on the most recent frame even if it's slow).
+        with yolo_lock:
+            yolo_inbox["frame"] = frame
+            yolo_inbox["ts"] = ts
+            latest_event = yolo_out["event"]
+            latest_event_ts = yolo_out["ts"]
+        yolo_event.set()
+
+        # Snapshot write at full RTSP rate, decoupled from YOLO inference.
         if ts - last_snapshot_ts >= SNAPSHOT_INTERVAL_SEC:
             overlay_event = None
-            if last_event_for_overlay is not None:
-                cached_event, cached_ts = last_event_for_overlay
-                if ts - cached_ts <= LAST_EVENT_HOLD_SEC:
-                    overlay_event = cached_event
+            if latest_event is not None and (ts - latest_event_ts) <= LAST_EVENT_HOLD_SEC:
+                overlay_event = latest_event
             annotated = detector.annotate(frame, overlay_event)
-            # Atomic write so the orchestrator never reads a half-encoded JPEG.
             tmp_path = snapshot_path.with_suffix(".jpg.tmp")
             ok, buf = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 78])
             if ok:
@@ -99,12 +138,8 @@ def run_real(
                 tmp_path.replace(snapshot_path)
             last_snapshot_ts = ts
 
-        if event is None:
-            time.sleep(0.05)
-            continue
-        sign_event(event)
-        emitter.emit(event)
-        labels = [h.label for h in event.yolo_hits]
+        # Tiny sleep so we don't pin a CPU core when RTSP is firing fast.
+        time.sleep(0.02)
         print(f"[{node_id}] emitted: {labels}", flush=True)
 
 
