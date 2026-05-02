@@ -1,0 +1,16 @@
+[Unit]
+Description=armyx-tech expanso-edge auto-updater (one-shot)
+Documentation=https://github.com/aronchick/demo-drone-detection
+After=network-online.target expanso-edge.service
+Wants=network-online.target
+ConditionPathExists=/usr/local/sbin/jetson_update_expanso_edge.sh
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/jetson_update_expanso_edge.sh
+StandardOutput=journal
+StandardError=journal
+# 10 minute upper bound — installer + restart + 30s verify should land in <2min.
+TimeoutStartSec=600
+# Run as root: needs to stop/start expanso-edge service and write to /usr/local/bin.
+User=root

@@ -1,0 +1,47 @@
+# Edge-ISR sensor — sector south.
+# Per HACKATHON_SCRIPT.md §11. See sensor-north-job.yaml for context;
+# this is identical except NODE_ID, RTSP_URL, and DB_PATH.
+#
+# Deploy:
+#   expanso-cli job deploy jobs/sensor-south-job.yaml
+
+Name: sensor-south
+Type: ops
+Constraints:
+  - Key: node_type
+    Operator: "="
+    Values: ["jetson"]
+
+Tasks:
+  - Name: detector
+    Engine:
+      Type: docker
+      Params:
+        Image: ghcr.io/aronchick/edge-isr-sensor:demo
+        EnvironmentVariables:
+          - "NODE_ID=sensor-south"
+          - "RTSP_URL=rtsp://${REOLINK_USER}:${REOLINK_PASS_SOUTH}@192.168.50.12:554/h264Preview_01_sub"
+          - "YOLO_MODEL=/models/yolo11s.engine"
+          - "ORCHESTRATOR_URL=http://192.168.50.30:8080"
+          - "GOOGLE_API_KEY=${GOOGLE_API_KEY}"
+          - "DB_PATH=/data/sensor-south.db"
+        Devices:
+          - PathOnHost: /dev/nvhost-gpu
+            PathInContainer: /dev/nvhost-gpu
+            CgroupPermissions: rwm
+        Volumes:
+          - Source: /opt/edge-isr/data
+            Target: /data
+            ReadOnly: false
+          - Source: /opt/edge-isr/models
+            Target: /models
+            ReadOnly: true
+
+    Network:
+      Type: HTTP
+      Domains:
+        - "generativelanguage.googleapis.com"
+        - "192.168.50.30"
+
+    Resources:
+      GPU: "1"

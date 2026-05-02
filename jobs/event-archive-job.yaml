@@ -1,0 +1,67 @@
+# Edge-ISR event archive — pure Bloblang lineage + archive pipeline.
+# Per DEMO_UI_SPEC.md §3.2. Tails the orchestrator's event log, validates
+# DBOM signature presence, adds archive lineage, writes to a daily
+# NDJSON file plus stdout (so `expanso job logs event-archive` shows
+# the platform doing real work during the demo).
+#
+# Deploy:
+#   expanso-cli job deploy jobs/event-archive-job.yaml
+
+name: event-archive
+type: pipeline
+
+config:
+  input:
+    file:
+      paths:
+        - /data/orchestrator/events.ndjson
+      codec: lines
+      scanner:
+        lines: {}
+
+  pipeline:
+    processors:
+      # Parse JSON — drop non-JSON lines (e.g. log noise)
+      - mapping: root = this.parse_json().catch(deleted())
+
+      # Drop fused alerts and synthetic orchestrator-emitted entries — we
+      # archive sensor-emitted events only.
+      - mapping: |
+          root = if this.node == "fusion-node" || this.type == "multi_sector_correlation" {
+            deleted()
+          } else {
+            this
+          }
+
+      # Validate DBOM signature presence. Events without a signature get a
+      # warning attached; we don't drop them, but the archive shows which
+      # events failed signing so the operator can investigate.
+      - mapping: |
+          root = this
+          root.audit = {
+            "signed": this.signature != null,
+            "signature_format_ok": this.signature != null && this.signature.has_prefix("dbom:sha256:")
+          }
+
+      # Add archive lineage: who archived this, when, from where.
+      - mapping: |
+          root = this
+          root.archive = {
+            "archived_at": now().ts_format("2006-01-02T15:04:05.000Z"),
+            "archived_by": env("HOSTNAME").or("unknown"),
+            "pipeline": "event-archive",
+            "pipeline_version": "1.0.0"
+          }
+
+  output:
+    broker:
+      pattern: fan_out
+      outputs:
+        # Daily NDJSON archive for compliance/audit
+        - file:
+            path: /data/archive/events-${! now().ts_format("2006-01-02") }.ndjson
+            codec: lines
+        # Stdout so `expanso job logs event-archive` shows live activity
+        # during the demo — judges asking "where do events go" can see it.
+        - stdout:
+            codec: lines

@@ -1,0 +1,16 @@
+[Unit]
+Description=Run armyx-tech expanso-edge updater nightly
+Documentation=https://github.com/aronchick/demo-drone-detection
+
+[Timer]
+# Nightly at 03:00 local time. RandomizedDelaySec adds 0-15min jitter so a
+# fleet of Jetsons doesn't slam Expanso's CDN at the same instant.
+OnCalendar=*-*-* 03:00:00
+RandomizedDelaySec=900
+# Persistent=true means a missed run (laptop closed at 3am) catches up on
+# next boot. Important for portable Jetson rigs that aren't always on.
+Persistent=true
+Unit=armyx-edge-update.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,41 @@
+# Edge-ISR sensor image — Jetson.
+# Per HACKATHON_SCRIPT.md §6.3. Based on l4t-pytorch so OpenCV ships with
+# GStreamer + nvv4l2decoder support. Pip's opencv-python doesn't have
+# GStreamer, so RTSP via OpenCV would fall back to FFmpeg software decode
+# and eat the CPU on two streams.
+#
+# At build time, copy yolo11s.engine in alongside the package — TensorRT
+# engines aren't portable across hardware/JetPack versions, so build the
+# engine on the same Jetson model you'll demo on (see scripts/export_tensorrt.py).
+
+FROM nvcr.io/nvidia/l4t-pytorch:r36.2.0-pth2.1-py3
+
+# Strip pip's opencv if it sneaks in via deps — we want the system one.
+RUN pip3 install --no-cache-dir \
+        ultralytics \
+        pydantic \
+        pyyaml \
+        eval_type_backport \
+        git+https://github.com/ultralytics/CLIP.git \
+    && pip3 uninstall -y opencv-python opencv-python-headless 2>/dev/null || true
+
+# Install the sensor package
+WORKDIR /app
+COPY pyproject.toml /app/
+COPY src /app/src
+RUN pip3 install --no-cache-dir -e .
+
+# Bake in the prebuilt TensorRT engine. Build it on the target Jetson
+# with `python scripts/export_tensorrt.py` and place it next to this
+# Dockerfile before docker build.
+COPY yolo11s.engine /models/yolo11s.engine
+
+ENV YOLO_VERBOSE=false
+ENV NO_COLOR=1
+
+# Default — overridden by Expanso job env vars at runtime.
+ENV NODE_ID=sensor-unset
+ENV ORCHESTRATOR_URL=http://localhost:8080
+ENV YOLO_MODEL=/models/yolo11s.engine
+
+CMD ["edge-sensor"]
