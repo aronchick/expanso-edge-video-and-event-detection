@@ -500,8 +500,13 @@ body.tier-edge-down #tier-edge {
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  /* `contain` shows the full 1280×720 camera frame with letterbox bars when
+     the tile aspect ratio doesn't match. Avoids cropping detection boxes
+     and the sensor metadata overlay (sensor ID, ISO 8601 UTC, REC dot)
+     off the top/bottom of the visible area. */
+  object-fit: contain;
   display: block;
+  background: #000;
 }
 .sector-overlay {
   position: absolute;
