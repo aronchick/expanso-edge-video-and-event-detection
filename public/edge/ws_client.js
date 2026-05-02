@@ -809,8 +809,11 @@ document.addEventListener('keydown', async (ev) => {
 // even when YOLO is mid-inference.
 
 const GO2RTC_BASE = `${location.protocol}//${location.hostname}:1984`;
-const SECTOR_SOURCE_W = 1280;   // RTSP main stream native resolution
-const SECTOR_SOURCE_H = 720;
+// Source dims are detected per-sector from the actual <video>'s videoWidth/Height
+// at draw time, NOT hardcoded — sensor's RTSP source can be sub-stream (640×360),
+// main (1280×720), or 4K depending on config. Fallback used until video has loaded.
+const SECTOR_SOURCE_W_FALLBACK = 640;
+const SECTOR_SOURCE_H_FALLBACK = 360;
 const _bboxClearTimers = {};    // sector -> setTimeout handle for clear-after-hold
 
 async function startWebRTCFor(sectorEl) {
@@ -878,9 +881,13 @@ function drawBboxOverlay(sector, hits) {
   if (!hits || !hits.length) return;
 
   // Replicate the video element's `object-fit: cover` transform so bbox
-  // coords (in source 1280x720 space) project onto the visible video area.
-  const sw = SECTOR_SOURCE_W;
-  const sh = SECTOR_SOURCE_H;
+  // coords (in source frame space — whatever resolution YOLO inferred on)
+  // project onto the visible canvas. Read source dims from the live video
+  // so we work whether sensor reads sub-stream (640×360), main (1280×720),
+  // or 4K — the only thing that matters is that source matches what YOLO saw.
+  const video = document.getElementById(`video-${sector}`);
+  const sw = (video && video.videoWidth) || SECTOR_SOURCE_W_FALLBACK;
+  const sh = (video && video.videoHeight) || SECTOR_SOURCE_H_FALLBACK;
   const scale = Math.max(cw / sw, ch / sh);
   const renderedW = sw * scale;
   const renderedH = sh * scale;

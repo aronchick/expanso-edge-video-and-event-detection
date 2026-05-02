@@ -184,29 +184,26 @@
        boxes (Local / Gemini / S3) stacked. -->
   <section class="arch-view" aria-label="Architecture and data flow">
 
-    <!-- Column 1: cameras (two distinct boxes, north + south). The horizontal
-         arrow on each camera tile points at the Jetson. -->
+    <!-- Column 1: cameras wrapped in a SENSORS group container so the eye
+         reads them as one logical entity (the field), not two floating boxes. -->
     <div class="arch-col arch-col--cameras">
-      <div class="arch-cameras">
-        <div class="arch-box arch-box--cam-mini">
-          <div class="arch-box__head">
-            <div class="arch-box__label">Camera · north</div>
-            <div class="arch-box__sub">EO/IR · RTSP</div>
+      <section class="arch-group arch-group--sensors">
+        <header class="arch-group__head">
+          <span class="arch-group__icon" aria-hidden="true">▣</span>
+          <span class="arch-group__title">SENSOR FIELD</span>
+        </header>
+        <div class="arch-group__body">
+          <div class="arch-tile">
+            <div class="arch-tile__label">Camera · north</div>
+            <div class="arch-tile__sub">EO/IR · RTSP</div>
           </div>
-          <div class="arch-pills">
-            <span class="arch-pill">existing infra</span>
+          <div class="arch-tile">
+            <div class="arch-tile__label">Camera · south</div>
+            <div class="arch-tile__sub">EO/IR · RTSP</div>
           </div>
+          <div class="arch-group__caption">existing infrastructure</div>
         </div>
-        <div class="arch-box arch-box--cam-mini">
-          <div class="arch-box__head">
-            <div class="arch-box__label">Camera · south</div>
-            <div class="arch-box__sub">EO/IR · RTSP</div>
-          </div>
-          <div class="arch-pills">
-            <span class="arch-pill">existing infra</span>
-          </div>
-        </div>
-      </div>
+      </section>
     </div>
 
     <!-- Camera → Jetson stem (single arrow, since both cameras feed the same
@@ -225,133 +222,128 @@
          visually terminates AT the top edge of the Jetson box (no gap). -->
     <div class="arch-col arch-col--center">
       <div class="arch-box arch-box--cloud">
-        <div class="arch-box__head">
-          <div class="arch-box__label">Expanso Cloud</div>
-          <div class="arch-box__sub">control plane · orchestration</div>
-        </div>
-        <div class="arch-pills">
-          <span class="arch-pill">job deploy</span>
-          <span class="arch-pill">triggers config</span>
-          <span class="arch-pill">live updates</span>
-        </div>
+        <header class="arch-box__tag arch-box__tag--cloud">
+          <span class="arch-box__tag-icon" aria-hidden="true">⚡</span>
+          <span class="arch-box__tag-text">EXPANSO CLOUD</span>
+        </header>
+        <div class="arch-box__sub arch-box__sub--lead">Management &amp; orchestration plane</div>
+        <div class="arch-box__caption">No customer data passes through</div>
+        <ul class="arch-box__list">
+          <li>Deploy pipelines remotely</li>
+          <li>Push trigger config live</li>
+          <li>Monitor fleet health</li>
+        </ul>
       </div>
       <div class="arch-control-arrow">
-        <div class="arch-arrow-stem arch-arrow-stem--vertical">
-          <span class="arch-arrow-flow arch-arrow-flow--vertical" id="arch-flow-jobs"></span>
+        <div class="arch-arrow-stem arch-arrow-stem--vertical arch-arrow-stem--control">
+          <span class="arch-arrow-flow arch-arrow-flow--vertical arch-arrow-flow--control" id="arch-flow-jobs"></span>
         </div>
-        <div class="arch-arrow-meta">
+        <div class="arch-arrow-meta arch-arrow-meta--control">
           <span class="arch-arrow-counter" id="arch-counter-jobs">— jobs</span>
-          <span class="arch-arrow-label">deploy</span>
+          <span class="arch-arrow-label">control plane</span>
         </div>
       </div>
       <div class="arch-box arch-box--jetson">
-        <div class="arch-box__head">
-          <div class="arch-box__label">Jetson Orin</div>
-          <div class="arch-box__sub">edge node · GPU inference · DDIL-tolerant</div>
-        </div>
-        <div class="arch-pills">
-          <span class="arch-pill arch-pill--accent">Expanso Edge</span>
-          <span class="arch-pill">YOLO v8 GPU</span>
-          <span class="arch-pill">fresh-frame reader</span>
-          <span class="arch-pill">trigger filter</span>
-          <span class="arch-pill">event router</span>
-          <span class="arch-pill">DBOM sign</span>
-          <span class="arch-pill">SQLite store</span>
-          <span class="arch-pill">offline replay queue</span>
-        </div>
-        <!-- Live stat block: real numbers describing what the node is doing
-             RIGHT NOW. Wired client-side from /metrics. -->
+        <header class="arch-box__tag arch-box__tag--edge">
+          <span class="arch-box__tag-icon" aria-hidden="true">▼</span>
+          <span class="arch-box__tag-text">EXPANSO EDGE</span>
+          <span class="arch-box__tag-host">on Jetson Orin</span>
+        </header>
+        <div class="arch-box__sub arch-box__sub--lead">Processing pipeline · GPU inference · DDIL-tolerant</div>
+        <ul class="arch-box__list arch-box__list--steps">
+          <li><span class="step-name">YOLO v8 GPU</span><span class="step-meta">fresh-frame reader</span></li>
+          <li><span class="step-name">Trigger filter + cascade</span><span class="step-meta">live config from cloud</span></li>
+          <li><span class="step-name">DBOM sign + SQLite</span><span class="step-meta">offline replay queue</span></li>
+        </ul>
+        <!-- Live stat strip: 2 most-load-bearing numbers, kept compact so the
+             pipeline list stays the eye-catcher. Was a 4-cell debug grid. -->
         <div class="arch-livestat">
           <div class="arch-livestat-row">
             <span class="arch-livestat-label">events/min</span>
             <span class="arch-livestat-val" id="arch-jet-epm">—</span>
           </div>
           <div class="arch-livestat-row">
-            <span class="arch-livestat-label">frames/sec</span>
-            <span class="arch-livestat-val" id="arch-jet-fps">—</span>
-          </div>
-          <div class="arch-livestat-row">
-            <span class="arch-livestat-label">last frame</span>
-            <span class="arch-livestat-val" id="arch-jet-age">—</span>
-          </div>
-          <div class="arch-livestat-row">
             <span class="arch-livestat-label">queued offline</span>
             <span class="arch-livestat-val" id="arch-jet-queued">0</span>
           </div>
         </div>
+        <!-- Hidden stat ids — kept so ws_client.js setText calls don't error.
+             They have no visible effect; we surface only the 2 above. -->
+        <span hidden id="arch-jet-fps">—</span>
+        <span hidden id="arch-jet-age">—</span>
       </div>
     </div>
 
-    <!-- Column 3: 3-way fan-out, each branch arrow + box. Boxes are square-ish
-         (aspect-ratio target ~5:4), pills wrap, content centered. -->
+    <!-- Column 3: 3-way fan-out wrapped in a DESTINATIONS group, mirroring
+         the SENSOR FIELD container on the left. Each branch row = arrow + tile. -->
     <div class="arch-col arch-col--fanout">
-      <div class="arch-fanout-row">
-        <div class="arch-arrow arch-arrow--horizontal arch-arrow--branch">
-          <div class="arch-arrow-stem">
-            <span class="arch-arrow-flow" id="arch-flow-local"></span>
+      <section class="arch-group arch-group--destinations">
+        <header class="arch-group__head">
+          <span class="arch-group__icon" aria-hidden="true">⤳</span>
+          <span class="arch-group__title">DESTINATIONS</span>
+        </header>
+        <div class="arch-group__body arch-group__body--rows">
+          <div class="arch-fanout-row">
+            <div class="arch-arrow arch-arrow--horizontal arch-arrow--branch">
+              <div class="arch-arrow-stem">
+                <span class="arch-arrow-flow" id="arch-flow-local"></span>
+              </div>
+              <div class="arch-arrow-meta">
+                <span class="arch-arrow-counter" id="arch-counter-local">— /min</span>
+                <span class="arch-arrow-label">fused</span>
+              </div>
+            </div>
+            <div class="arch-tile arch-tile--dest">
+              <div class="arch-tile__label">Local Decision</div>
+              <div class="arch-tile__sub">correlator · 5s window · 8s cooldown</div>
+            </div>
           </div>
-          <div class="arch-arrow-meta">
-            <span class="arch-arrow-counter" id="arch-counter-local">— /min</span>
-            <span class="arch-arrow-label">fused</span>
+          <div class="arch-fanout-row">
+            <div class="arch-arrow arch-arrow--horizontal arch-arrow--branch">
+              <div class="arch-arrow-stem">
+                <span class="arch-arrow-flow" id="arch-flow-gemini"></span>
+              </div>
+              <div class="arch-arrow-meta">
+                <span class="arch-arrow-counter" id="arch-counter-gemini-flow">— /min</span>
+                <span class="arch-arrow-label">reachback</span>
+              </div>
+            </div>
+            <div class="arch-tile arch-tile--dest">
+              <div class="arch-tile__label">Gemini · cloud analyst</div>
+              <div class="arch-tile__sub">per-event descriptions on demand</div>
+            </div>
+          </div>
+          <div class="arch-fanout-row">
+            <div class="arch-arrow arch-arrow--horizontal arch-arrow--branch">
+              <div class="arch-arrow-stem">
+                <span class="arch-arrow-flow" id="arch-flow-s3"></span>
+              </div>
+              <div class="arch-arrow-meta">
+                <span class="arch-arrow-counter" id="arch-counter-s3-flow">— obj</span>
+                <span class="arch-arrow-label">archive</span>
+              </div>
+            </div>
+            <div class="arch-tile arch-tile--dest">
+              <div class="arch-tile__label">S3 Archive</div>
+              <div class="arch-tile__sub">store-and-forward · bloblang fan-out</div>
+            </div>
           </div>
         </div>
-        <div class="arch-box arch-box--local arch-box--square">
-          <div class="arch-box__head">
-            <div class="arch-box__label">Local Decision</div>
-            <div class="arch-box__sub">stays on edge</div>
-          </div>
-          <div class="arch-pills">
-            <span class="arch-pill">correlator (5s)</span>
-            <span class="arch-pill">fused alerts</span>
-            <span class="arch-pill">8s cooldown</span>
-          </div>
-        </div>
-      </div>
+      </section>
+    </div>
 
-      <div class="arch-fanout-row">
-        <div class="arch-arrow arch-arrow--horizontal arch-arrow--branch">
-          <div class="arch-arrow-stem">
-            <span class="arch-arrow-flow" id="arch-flow-gemini"></span>
-          </div>
-          <div class="arch-arrow-meta">
-            <span class="arch-arrow-counter" id="arch-counter-gemini-flow">— /min</span>
-            <span class="arch-arrow-label">reachback</span>
-          </div>
-        </div>
-        <div class="arch-box arch-box--gemini arch-box--square">
-          <div class="arch-box__head">
-            <div class="arch-box__label">Gemini</div>
-            <div class="arch-box__sub">cloud analyst</div>
-          </div>
-          <div class="arch-pills">
-            <span class="arch-pill">per-event</span>
-            <span class="arch-pill">descriptions</span>
-            <span class="arch-pill">cloud analyst</span>
-          </div>
-        </div>
+    <!-- Legend strip — explains the two line languages used in the diagram.
+         Mirrors the reference architecture diagram's "Data flow / Management
+         plane" footer so the viewer immediately knows that customer data
+         never traverses the dashed line to Expanso Cloud. -->
+    <div class="arch-legend">
+      <div class="arch-legend__item">
+        <span class="arch-legend__line arch-legend__line--data"></span>
+        <span class="arch-legend__text">Data flow · stays on edge unless you say otherwise</span>
       </div>
-
-      <div class="arch-fanout-row">
-        <div class="arch-arrow arch-arrow--horizontal arch-arrow--branch">
-          <div class="arch-arrow-stem">
-            <span class="arch-arrow-flow" id="arch-flow-s3"></span>
-          </div>
-          <div class="arch-arrow-meta">
-            <span class="arch-arrow-counter" id="arch-counter-s3-flow">— obj</span>
-            <span class="arch-arrow-label">archive</span>
-          </div>
-        </div>
-        <div class="arch-box arch-box--s3 arch-box--square">
-          <div class="arch-box__head">
-            <div class="arch-box__label">S3 Archive</div>
-            <div class="arch-box__sub">long-term storage</div>
-          </div>
-          <div class="arch-pills">
-            <span class="arch-pill">bloblang</span>
-            <span class="arch-pill">fan-out</span>
-            <span class="arch-pill">store-and-forward</span>
-          </div>
-        </div>
+      <div class="arch-legend__item">
+        <span class="arch-legend__line arch-legend__line--control"></span>
+        <span class="arch-legend__text">Control plane · config + jobs only, no customer data</span>
       </div>
     </div>
 

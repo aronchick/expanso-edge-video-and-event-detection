@@ -1161,25 +1161,26 @@ body.show-topology .topology { display: block; }
    Animated dots travel along arrow stems to make data flow visible. */
 
 .arch-view {
-  /* Replaces all OPS rows when active. Internal layout is a 4-column grid:
-     col 1 = cameras (stacked north + south),
-     col 2 = camera→jetson arrow,
-     col 3 = cloud + vertical arrow + jetson stacked (the "spine"),
-     col 4 = 3-way fan-out (local / gemini / s3) stacked.
-     The footer spans all 4 columns. */
-  grid-template-columns: auto auto 1fr auto;
-  grid-template-rows: 1fr auto;
-  column-gap: 0.4rem;
+  /* 4-column auto-sized grid, horizontally centered in the viewport.
+     Previous layout used `1fr` for the center column which, on a 2000px+
+     viewport, produced an 1500px void with the Cloud+Jetson floating in
+     the middle of nothing. `justify-content: center` packs columns by
+     content width; arrows span the visible gap because their stems are
+     sized in rem (see .arch-arrow-stem). Vertical: `align-content: center`
+     so the whole assembly sits in the middle of the available height. */
+  grid-template-columns: auto auto auto auto;
+  grid-template-rows: auto auto auto;   /* row 1: diagram, row 2: legend, row 3: footer tagline */
+  column-gap: 0;
   row-gap: 0.6rem;
-  padding: 1.2rem 1rem 0.6rem;
+  justify-content: center;
+  align-content: center;
+  padding: 1.5rem 1rem;
   background:
     radial-gradient(ellipse 70% 50% at 50% 0%, rgba(127,184,220,0.05), transparent 60%),
     var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
-  align-items: center;
-  justify-items: center;
 }
 .arch-col {
   display: flex;
@@ -1187,11 +1188,12 @@ body.show-topology .topology { display: block; }
   align-items: center;
   justify-content: center;
 }
-.arch-col--cameras   { grid-column: 1; grid-row: 1; gap: 0.6rem; }
-.arch-col--cam-arrow { grid-column: 2; grid-row: 1; }
+.arch-col--cameras   { grid-column: 1; grid-row: 1; gap: 1.2rem; align-self: center; }
+.arch-col--cam-arrow { grid-column: 2; grid-row: 1; align-self: center; }
 .arch-col--center    { grid-column: 3; grid-row: 1; gap: 0; align-self: center; }
-.arch-col--fanout    { grid-column: 4; grid-row: 1; gap: 0.6rem; }
-.arch-view > .arch-footer { grid-column: 1 / -1; grid-row: 2; }
+.arch-col--fanout    { grid-column: 4; grid-row: 1; gap: 1rem; align-self: center; }
+.arch-view > .arch-legend { grid-column: 1 / -1; grid-row: 2; align-self: end; }
+.arch-view > .arch-footer { grid-column: 1 / -1; grid-row: 3; }
 
 /* ── Boxes (display-rectangle primitive) ──────────────────────────── */
 .arch-box {
@@ -1225,7 +1227,7 @@ body.show-topology .topology { display: block; }
 }
 
 /* Box variants — subtle accent on top edge to differentiate roles */
-.arch-box--cloud   { border-top: 2px solid var(--expanso); min-width: 16rem; }
+.arch-box--cloud   { border-top: 2px solid var(--expanso); min-width: 18rem; max-width: 21rem; }
 .arch-box--camera  { border-top: 2px solid var(--text-mono); }
 .arch-box--cam-mini {
   border-top: 2px solid var(--text-mono);
@@ -1233,7 +1235,7 @@ body.show-topology .topology { display: block; }
   max-width: 11rem;
   padding: 0.45rem 0.7rem;
 }
-.arch-box--jetson  { border-top: 2px solid var(--ok); min-width: 16rem; max-width: 22rem; }
+.arch-box--jetson  { border-top: 2px solid var(--ok); min-width: 19rem; max-width: 23rem; }
 /* Jetson sits directly under the cloud arrow with no visual gap so the arrow
    appears to terminate AT the box's top edge. */
 .arch-col--center .arch-box--jetson { margin-top: -1px; }
@@ -1333,10 +1335,10 @@ body.show-topology .topology { display: block; }
 .arch-arrow-stem {
   position: relative;
   height: 3px;
-  width: 7rem;
+  width: 11rem;
   background: linear-gradient(90deg,
     var(--border) 0%,
-    rgba(127, 184, 220, 0.45) 50%,
+    rgba(127, 184, 220, 0.55) 50%,
     var(--text-mono) 100%);
   border-radius: 1.5px;
 }
@@ -1405,9 +1407,9 @@ body.show-topology .topology { display: block; }
   100% { top: calc(100% - 6px); opacity: 0; }
 }
 
-/* Branch arrows (fan-out, slightly shorter). Alert-colored flow dot to
-   distinguish branch traffic from the upstream camera→jetson stream. */
-.arch-arrow--branch .arch-arrow-stem { width: 5.5rem; }
+/* Branch arrows (fan-out). Same width as the camera→jetson stem so the diagram
+   has consistent rhythm. Alert-colored flow dot distinguishes branch traffic. */
+.arch-arrow--branch .arch-arrow-stem { width: 9rem; }
 .arch-arrow--branch .arch-arrow-flow { animation-duration: 1.4s; background: var(--alert); box-shadow: 0 0 0.4em var(--alert); }
 
 .arch-arrow-meta {
@@ -1477,6 +1479,269 @@ body.show-topology .topology { display: block; }
   gap: 0.6rem;
   align-items: stretch;
 }
+
+/* ── Group containers (SENSOR FIELD, DESTINATIONS) ────────────────── */
+/* Wrap related sub-tiles in a single rounded card so the eye reads them
+   as ONE entity. Mirrors the reference architecture diagram's "Commercial
+   Building" / "Your Data Warehouse" group panels. Header tag sits at the
+   top-left corner of the card, like a panel title strip. */
+.arch-group {
+  background:
+    linear-gradient(180deg, rgba(127,184,220,0.04), transparent 30%),
+    var(--surface);
+  border: 1px solid rgba(127,184,220,0.25);
+  border-radius: 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 14rem;
+  overflow: hidden;
+}
+.arch-group__head {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.45rem 0.85rem;
+  background: rgba(127,184,220,0.10);
+  border-bottom: 1px solid rgba(127,184,220,0.2);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: var(--t-caption);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--expanso);
+  text-transform: uppercase;
+}
+.arch-group__icon {
+  font-size: 1.1em;
+  line-height: 1;
+  opacity: 0.85;
+}
+.arch-group__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.7rem 0.7rem 0.55rem;
+}
+.arch-group__body--rows {
+  /* Each row is [arrow + tile]; rows stacked vertically with comfortable gap */
+  gap: 0.7rem;
+}
+.arch-group__caption {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.7rem;
+  color: var(--text-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-align: center;
+  margin-top: 0.2rem;
+  opacity: 0.85;
+}
+.arch-group--sensors  {
+  /* Match destinations width visually so the diagram has symmetric columns */
+  min-width: 16rem;
+}
+.arch-group--destinations {
+  /* Destinations group is wider since each row carries a full tile */
+  min-width: 19rem;
+}
+
+/* ── Group sub-tiles (used inside .arch-group__body) ─────────────── */
+.arch-tile {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.5rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+.arch-tile__label {
+  font-size: var(--t-body);
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+.arch-tile__sub {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  letter-spacing: 0.04em;
+}
+.arch-tile--dest {
+  /* Destination tiles are rectangular with a subtle accent bar on the left,
+     so the eye reads them as endpoints (something receives data here). */
+  border-left: 3px solid var(--ok);
+  min-width: 13rem;
+}
+
+/* ── Box tag headers (EXPANSO CLOUD ⚡, EXPANSO EDGE ▼) ─────────────── */
+.arch-box__tag {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  margin: -0.55rem -0.85rem 0.55rem;
+  padding: 0.4rem 0.85rem;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: var(--t-caption);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+}
+.arch-box__tag-icon { font-size: 1.05em; line-height: 1; }
+.arch-box__tag-text { letter-spacing: 0.2em; }
+.arch-box__tag-host {
+  margin-left: auto;
+  font-size: 0.7em;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--text-mono);
+  text-transform: none;
+}
+.arch-box__tag--cloud {
+  background: linear-gradient(90deg, rgba(127,184,220,0.18), rgba(127,184,220,0.04));
+  color: var(--expanso);
+  border-bottom-color: rgba(127,184,220,0.3);
+}
+.arch-box__tag--edge {
+  background: linear-gradient(90deg, rgba(61,220,132,0.18), rgba(61,220,132,0.04));
+  color: var(--ok);
+  border-bottom-color: rgba(61,220,132,0.3);
+}
+.arch-box__sub--lead {
+  font-size: var(--t-caption);
+  color: var(--text-dim);
+  margin-bottom: 0.35rem;
+  letter-spacing: 0;
+  font-family: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
+}
+.arch-box__caption {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.7rem;
+  color: var(--text-mono);
+  letter-spacing: 0.08em;
+  margin-bottom: 0.5rem;
+  font-style: italic;
+}
+
+/* ── Box content lists (replaces the [bracket] pill noise) ─────────── */
+.arch-box__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.arch-box__list li {
+  background: rgba(127,184,220,0.06);
+  border: 1px solid rgba(127,184,220,0.18);
+  border-radius: 4px;
+  padding: 0.4rem 0.7rem;
+  font-size: var(--t-body);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.05rem;
+}
+.arch-box__list--steps li {
+  background: rgba(61,220,132,0.06);
+  border-color: rgba(61,220,132,0.20);
+}
+.arch-box__list .step-name {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.arch-box__list .step-meta {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.7rem;
+  color: var(--text-mono);
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  white-space: nowrap;
+}
+
+/* ── Control plane (dashed teal) styling for arrows + flow dots ───── */
+/* Cloud → Jetson is config + jobs only, never customer data. The dashed
+   line + teal palette tells that story silently. Reference architecture
+   diagram pattern. */
+/* Vertical dashed control-plane line. Use border-left on a 0-width element
+   so dashes render at the correct rhythm. Color matches the Expanso accent
+   so the eye reads "this is the management plane, not the data plane". */
+.arch-arrow-stem--control {
+  background: none !important;
+  border-left: 3px dashed rgba(127, 184, 220, 0.85);
+  width: 0 !important;
+  height: 4.2rem !important;
+  border-radius: 0;
+}
+.arch-arrow-stem--control::after {
+  border-top-color: var(--expanso) !important;
+  border-left-width: 6px !important;
+  border-right-width: 6px !important;
+  border-top-width: 9px !important;
+}
+.arch-arrow-flow--control {
+  background: var(--expanso) !important;
+  box-shadow: 0 0 0.6em var(--expanso) !important;
+}
+.arch-arrow-meta--control {
+  border-color: rgba(127,184,220,0.45) !important;
+  background: rgba(127,184,220,0.08) !important;
+}
+.arch-arrow-meta--control .arch-arrow-counter { color: var(--expanso) !important; }
+
+/* Boost data-plane flow dot visibility — the reference diagram has chunky,
+   eye-catching dots. Our 6px nubs were forgettable. Keep the gradient stem
+   subtle so the dot does the visual work. */
+.arch-arrow-flow {
+  width: 10px;
+  height: 10px;
+  box-shadow: 0 0 0.7em var(--ok), 0 0 0.2em #fff inset;
+}
+.arch-arrow--branch .arch-arrow-flow {
+  width: 9px;
+  height: 9px;
+  box-shadow: 0 0 0.7em var(--alert), 0 0 0.2em #fff inset;
+}
+
+/* ── Legend strip (data flow vs control plane) ────────────────────── */
+.arch-legend {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2.5rem;
+  padding: 0.45rem 1rem;
+  border-top: 1px dashed var(--border);
+  margin-top: 0.4rem;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  grid-column: 1 / -1;
+}
+.arch-legend__item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.arch-legend__line {
+  width: 2.4rem;
+  height: 3px;
+  border-radius: 1.5px;
+  background: linear-gradient(90deg,
+    var(--border) 0%,
+    var(--ok) 50%,
+    var(--text-mono) 100%);
+}
+.arch-legend__line--control {
+  background: none;
+  border-top: 2px dashed rgba(127,184,220,0.6);
+  height: 0;
+}
+.arch-legend__text { white-space: nowrap; }
 
 /* ── Footer line of arch view ──────────────────────────────────────── */
 .arch-footer {
