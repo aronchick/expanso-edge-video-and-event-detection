@@ -100,14 +100,12 @@ body {
      after the header/tier/triggers/fusion rows. Events column takes the rest
      so events have room to breathe. */
   grid-template-rows:
-    auto                    /* 1: header */
-    auto                    /* 2: tier strip */
-    auto                    /* 3: triggers bar */
-    auto                    /* 4: fusion tile */
-    minmax(0, 1fr)          /* 5: north sector + north events */
-    minmax(0, 1fr)          /* 6: south sector + south events */
-    auto                    /* 7: platform-strip */
-    auto;                   /* 8: footer */
+    auto                    /* 1: header (now contains triggers) */
+    auto                    /* 2: fusion tile (column 2 only — shifted right) */
+    minmax(0, 1fr)          /* 3: north sector + north events */
+    minmax(0, 1fr)          /* 4: south sector + south events */
+    auto                    /* 5: platform-strip (with tier dots inline) */
+    auto;                   /* 6: footer */
   grid-template-columns: minmax(0, 28rem) minmax(0, 1fr);
   height: 100vh;
   width: 100vw;
@@ -116,29 +114,22 @@ body {
 }
 
 .header           { grid-row: 1; grid-column: 1 / span 2; }
-.tier-strip       { grid-row: 2; grid-column: 1 / span 2; }
-.triggers-bar     { grid-row: 3; grid-column: 1 / span 2; }
-.fusion-tile      { grid-row: 4; grid-column: 1 / span 2; }
-.sector-north     { grid-row: 5; grid-column: 1; margin-left: 0.6rem; margin-right: 0.4rem; }
-.events-north     { grid-row: 5; grid-column: 2; }
-.sector-south     { grid-row: 6; grid-column: 1; margin-left: 0.6rem; margin-right: 0.4rem; }
-.events-south     { grid-row: 6; grid-column: 2; }
-.platform-strip   { grid-row: 7; grid-column: 1 / span 2; }
-.arch-view        { grid-row: 2 / 8; grid-column: 1 / span 2; display: none; }
-.archive-view     { grid-row: 2 / 8; grid-column: 1 / span 2; display: none; }
-.footer           { grid-row: 8; grid-column: 1 / span 2; }
+.fusion-tile      { grid-row: 2; grid-column: 2; }   /* shifted right — only over events column */
+.sector-north     { grid-row: 3; grid-column: 1; margin-left: 0.6rem; margin-right: 0.4rem; }
+.events-north     { grid-row: 3; grid-column: 2; }
+.sector-south     { grid-row: 4; grid-column: 1; margin-left: 0.6rem; margin-right: 0.4rem; }
+.events-south     { grid-row: 4; grid-column: 2; }
+.platform-strip   { grid-row: 5; grid-column: 1 / span 2; }
+.arch-view        { grid-row: 2 / 6; grid-column: 1 / span 2; display: none; }
+.archive-view     { grid-row: 2 / 6; grid-column: 1 / span 2; display: none; }
+.footer           { grid-row: 6; grid-column: 1 / span 2; }
 
-/* Tab visibility — body class drives which view is rendered. Header,
-   tabs, footer, and platform-strip are always visible across all tabs. */
-body.tab-arch .tier-strip,
-body.tab-arch .triggers-bar,
+/* Tab visibility — header + footer + platform-strip always visible. */
 body.tab-arch .fusion-tile,
 body.tab-arch .sector,
 body.tab-arch .events-panel { display: none; }
 body.tab-arch .arch-view { display: grid; }
 
-body.tab-archive .tier-strip,
-body.tab-archive .triggers-bar,
 body.tab-archive .fusion-tile,
 body.tab-archive .sector,
 body.tab-archive .events-panel { display: none; }
@@ -573,16 +564,20 @@ body.tier-edge-down #tier-edge {
 
 .event {
   background:
-    linear-gradient(90deg, rgba(255,167,38,0.06), transparent 25%),
+    linear-gradient(90deg, rgba(255,167,38,0.06), transparent 30%),
     var(--surface-2);
   border-left: 3px solid var(--alert);
-  border-radius: 4px;
-  padding: 0.4rem 0.7rem 0.45rem;
+  border-radius: 3px;
+  padding: 0.25rem 0.6rem 0.3rem;
   animation: slide-in var(--m-base) ease-out;
-  /* Lock each event to a fixed height so inserts don't ripple through the list */
+  /* Single-line compressed event row — fixed thin height. */
   flex: 0 0 auto;
-  height: 3.6rem;
+  height: 1.8rem;
   overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  white-space: nowrap;
 }
 @keyframes slide-in {
   /* Opacity-only fade — no horizontal slide that visually nudges the column */
@@ -592,46 +587,48 @@ body.tier-edge-down #tier-edge {
 .event.queued { border-left-color: var(--replay); }
 
 .event-row1 {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  font-size: var(--t-body);
-  color: var(--text-dim);
+  display: contents;  /* Promote children to direct flex items of .event */
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
 }
+.event-row1 .ts {
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-size: var(--t-caption);
+  color: var(--text-mono);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  letter-spacing: 0.04em;
+  order: -1;  /* timestamp first */
+}
 .event-row1 .yolo {
-  font-size: var(--t-body-lg);
+  font-size: var(--t-body);
   color: var(--text);
-  font-weight: 500;
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
-  flex: 1;
-  margin-right: 0.5em;
+  flex-shrink: 0;
 }
-.event-row1 .ts { white-space: nowrap; flex-shrink: 0; }
 .event-desc {
   font-size: var(--t-body);
-  color: var(--text);
-  margin-top: 0.25rem;
+  color: var(--text-dim);
   font-style: italic;
-  /* Single-line clamp keeps event height predictable */
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
 }
-.event-desc.local { color: var(--text-dim); font-style: normal; }
-.event-sig {
-  margin-top: 0.3rem;
-  font-size: var(--t-caption);
+.event-desc.local {
   color: var(--text-mono);
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  letter-spacing: 0.02em;
+  font-style: normal;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: var(--t-caption);
+  letter-spacing: 0.04em;
 }
+/* Hide the per-event sig line — too noisy for the compressed row */
+.event-sig { display: none; }
 
 /* ── Expanso platform tile ────────────────────────────────────────── */
 
@@ -1479,4 +1476,76 @@ body.show-topology .topology { display: block; }
   max-width: 64rem;
   height: auto;
   aspect-ratio: auto;
+}
+
+/* ── Header triggers (chips moved up from standalone row) ──────────── */
+.header-triggers {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 0.6rem;
+}
+.header-triggers-label {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: var(--t-caption);
+  color: var(--text-mono);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  flex-shrink: 0;
+}
+.header-triggers .trigger-chips {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── Tier strip inline in platform-strip ──────────────────────────── */
+.tier-strip-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: var(--t-caption);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+.platform-strip .tier {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+}
+.platform-strip .tier-dot {
+  width: 0.55em;
+  height: 0.55em;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 0.4em var(--ok);
+  transition: background var(--m-base), box-shadow var(--m-base);
+}
+.platform-strip .tier-sep { color: var(--text-mono); }
+.platform-strip .tier-label { font-weight: 600; }
+
+.platform-strip-divider {
+  width: 1px;
+  height: 1.2em;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+/* When body.cloud-down: dim CLOUD dot in the bottom strip */
+body.cloud-down .platform-strip #tier-cloud {
+  background: var(--text-mono);
+  box-shadow: none;
+}
+body.tier-edge-down .platform-strip #tier-edge {
+  background: var(--text-mono);
+  box-shadow: none;
 }

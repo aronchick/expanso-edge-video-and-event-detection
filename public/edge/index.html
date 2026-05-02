@@ -41,12 +41,15 @@
       <span>Edge ISR · Expanso</span>
     </div>
     <nav class="tab-switcher" role="tablist" aria-label="View">
-      <!-- Anchor tabs so they're bookmarkable + middle-clickable to open in new browser tabs.
-           JS still claims the click for SPA-style behavior, but the browser semantics are real. -->
       <a class="tab is-active" data-tab="ops"     role="tab" aria-selected="true"  href="#ops">OPS</a>
       <a class="tab"           data-tab="arch"    role="tab" aria-selected="false" href="#arch">ARCH</a>
       <a class="tab"           data-tab="archive" role="tab" aria-selected="false" href="#archive">ARCHIVE</a>
     </nav>
+    <!-- Trigger chips inline in the header — moved up from the standalone row per user direction. -->
+    <div class="header-triggers">
+      <span class="header-triggers-label">TRIGGERS</span>
+      <div id="trigger-chips" class="trigger-chips"></div>
+    </div>
     <div class="header-right">
       <div class="metric-pill">
         <span class="label">events/min</span>
@@ -64,18 +67,8 @@
     </div>
   </header>
 
-  <section class="tier-strip" aria-label="Architecture tiers">
-    <div class="tier"><span class="tier-dot" id="tier-edge"></span><span class="tier-label">EDGE</span></div>
-    <div class="tier-sep">·</div>
-    <div class="tier"><span class="tier-dot" id="tier-fusion"></span><span class="tier-label">FUSION</span></div>
-    <div class="tier-sep">·</div>
-    <div class="tier"><span class="tier-dot" id="tier-cloud"></span><span class="tier-label">CLOUD</span></div>
-  </section>
-
-  <section class="triggers-bar">
-    <h2>Trigger classes</h2>
-    <div id="trigger-chips" class="trigger-chips"></div>
-  </section>
+  <!-- (Tier strip and standalone triggers row removed — triggers now in header,
+       tier dots merged into the bottom platform-strip per user direction.) -->
 
   <!-- Fusion tile — always visible, replaces the old full-screen modal.
        STANDBY when no recent multi-sector correlation; ACTIVE when one fires
@@ -132,12 +125,20 @@
     <div id="events-sensor-south" class="events-list"></div>
   </section>
 
-  <!-- Bottom strip: Expanso wordmark + inline pipeline statuses (single line).
-       Replaces the previous 2x2 platform tile + tagline. -->
+  <!-- Bottom strip: Expanso wordmark + tier dots + inline pipeline statuses (single line).
+       Tier strip merged here per user direction. -->
   <section class="platform-strip">
     <a class="platform-wordmark" href="https://expanso.io" target="_blank" rel="noopener" aria-label="Expanso">
       <span class="wordmark-text">EXPANSO</span>
     </a>
+    <div class="tier-strip-inline" aria-label="Architecture tiers">
+      <span class="tier"><span class="tier-dot" id="tier-edge"></span><span class="tier-label">EDGE</span></span>
+      <span class="tier-sep">·</span>
+      <span class="tier"><span class="tier-dot" id="tier-fusion"></span><span class="tier-label">FUSION</span></span>
+      <span class="tier-sep">·</span>
+      <span class="tier"><span class="tier-dot" id="tier-cloud"></span><span class="tier-label">CLOUD</span></span>
+    </div>
+    <div class="platform-strip-divider"></div>
     <div id="platform-jobs" class="platform-jobs-inline"></div>
   </section>
 
