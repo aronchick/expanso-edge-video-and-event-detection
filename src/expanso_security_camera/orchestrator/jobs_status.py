@@ -34,13 +34,15 @@ EXPECTED_JOBS = [
     {"name": "armyx-tech-event-archive", "type": "pipeline", "role": "S3 archive"},
 ]
 
-# pgrep patterns for each process-backed job. The orchestrator process registers
-# as `edge-orchestrator`; sensors as `edge-sensor --node-id <name>`. Anchored on
-# `--node-id <name>` so we don't false-match a sensor for the orchestrator.
+# pgrep patterns for each process-backed job. The actual process command line
+# is `<python> <path>/.venv/bin/edge-{orchestrator,sensor} ...`, so we anchor
+# on `python.*edge-<binary>` to avoid false-matching unrelated shells/SSH
+# sessions whose command line happens to contain the string `edge-orchestrator`
+# (e.g. background nohup launchers, this very file in an editor, etc.).
 PGREP_PATTERNS: dict[str, str] = {
-    "fusion-node": r"edge-orchestrator",
-    "sensor-north": r"edge-sensor.*--node-id\s+sensor-north",
-    "sensor-south": r"edge-sensor.*--node-id\s+sensor-south",
+    "fusion-node": r"python[^ ]* .*edge-orchestrator(\s|$)",
+    "sensor-north": r"python[^ ]* .*edge-sensor.*--node-id[ =]sensor-north(\s|$)",
+    "sensor-south": r"python[^ ]* .*edge-sensor.*--node-id[ =]sensor-south(\s|$)",
 }
 
 

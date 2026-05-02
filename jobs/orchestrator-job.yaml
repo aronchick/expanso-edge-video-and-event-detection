@@ -1,0 +1,58 @@
+# Edge-ISR fusion node, deployed to the armyx-tech Expanso Cloud cluster
+# as a real Expanso pipeline (replaces the standalone nohup edge-orchestrator
+# process on the Jetson).
+#
+# Why a pipeline, not Type: ops with a docker engine: the current Expanso
+# CLI accepts only Type: pipeline. We wrap the long-running edge-orchestrator
+# FastAPI process as a subprocess input. restart_on_exit keeps it alive
+# across crashes; output: drop because the process publishes nothing useful
+# on stdout — its real outputs are HTTP (port 8090, dashboard + sensor
+# ingest) and the events.ndjson tail consumed by armyx-tech-event-archive.
+#
+# Selector is empty: there is exactly one node attached to the armyx-tech
+# cluster (security-camera-overseer / Jetson), so it always lands there.
+#
+# === BEFORE DEPLOYING ===
+# The Jetson must be prepped:
+#   1. Free port 8090: `pkill -f edge-orchestrator` (do this just before
+#      `expanso-cli job deploy` so Expanso can bind immediately).
+#   2. The binary at /home/daaronch/security-cameras/.venv/bin/edge-orchestrator
+#      must exist (uv-managed venv from `uv sync` in the security-cameras repo).
+#   3. The orchestrator writes events.ndjson + orchestrator.db + snapshots/
+#      relative to its CWD. Expanso edge runs the subprocess from its own
+#      working dir; pass absolute paths so output ends up where the archive
+#      pipeline expects (/opt/edge-isr/orchestrator/events.ndjson). Create
+#      that dir first:
+#         sudo mkdir -p /opt/edge-isr/{orchestrator/snapshots,archive}
+#         sudo chown -R daaronch:daaronch /opt/edge-isr
+#
+# Deploy:
+#   expanso-cli profile select armyx-tech
+#   expanso-cli job deploy jobs/orchestrator-job.yaml
+
+name: fusion-node
+type: pipeline
+
+config:
+  input:
+    subprocess:
+      name: /home/daaronch/security-cameras/.venv/bin/edge-orchestrator
+      args:
+        - --host=0.0.0.0
+        - --port=8090
+        - --db=/opt/edge-isr/orchestrator/orchestrator.db
+        - --triggers=/opt/edge-isr/orchestrator/triggers.yaml
+        - --snapshots=/opt/edge-isr/orchestrator/snapshots
+        - --ndjson=/opt/edge-isr/orchestrator/events.ndjson
+      codec: lines
+      restart_on_exit: true
+      max_buffer: 1048576
+
+  pipeline:
+    processors:
+      # uvicorn access lines aren't JSON; keep them as-is so they appear in
+      # `expanso-cli execution logs fusion-node` for live debugging.
+      - mapping: root = this
+
+  output:
+    drop: {}
