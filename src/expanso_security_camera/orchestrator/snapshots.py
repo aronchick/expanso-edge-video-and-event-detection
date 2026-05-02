@@ -231,7 +231,9 @@ def synthesize_awaiting_start(sector: str) -> bytes:
     )
 
     # Sub-line: which sector this placeholder is for.
-    sub = sector.upper().replace("SENSOR-", "SENSOR · ")
+    # NOTE: OpenCV's HERSHEY_SIMPLEX is ASCII-only; the U+00B7 middle dot
+    # falls back to "?" which reads as a glitch. Use plain ASCII separator.
+    sub = sector.upper().replace("SENSOR-", "SENSOR  ")
     (tw2, _), _ = cv2.getTextSize(sub, font, 0.95, 2)
     cv2.putText(
         bg,

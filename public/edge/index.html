@@ -45,11 +45,6 @@
       <a class="tab"           data-tab="arch"    role="tab" aria-selected="false" href="#arch">ARCH</a>
       <a class="tab"           data-tab="archive" role="tab" aria-selected="false" href="#archive">ARCHIVE</a>
     </nav>
-    <!-- Trigger chips inline in the header — moved up from the standalone row per user direction. -->
-    <div class="header-triggers">
-      <span class="header-triggers-label">TRIGGERS</span>
-      <div id="trigger-chips" class="trigger-chips"></div>
-    </div>
     <div class="header-right">
       <div class="metric-pill">
         <span class="label">events/min</span>
@@ -67,8 +62,13 @@
     </div>
   </header>
 
-  <!-- (Tier strip and standalone triggers row removed — triggers now in header,
-       tier dots merged into the bottom platform-strip per user direction.) -->
+  <!-- Triggers bar — dedicated row so the Beat 4 F4 chip-pulse animation
+       has room to land dramatically. Header was overflowing at stage scale
+       with chips inline. Tier dots stay in the bottom platform-strip. -->
+  <section class="triggers-bar" aria-label="Active trigger classes">
+    <span class="triggers-bar-label">TRIGGERS</span>
+    <div id="trigger-chips" class="trigger-chips"></div>
+  </section>
 
   <!-- Fusion tile — always visible, replaces the old full-screen modal.
        STANDBY when no recent multi-sector correlation; ACTIVE when one fires
@@ -81,13 +81,19 @@
     <div class="fusion-meta" id="fusion-meta">last: —</div>
   </section>
 
+  <!-- Camera tiles use WebRTC (via go2rtc on :1984) for true real-time video,
+       with a canvas overlay for YOLO bbox track gates. Video latency ≈100-200ms,
+       bbox latency = YOLO inference (~150ms). Fallback <img> shows the last
+       JPEG snapshot if WebRTC fails to negotiate. -->
   <section class="sector sector-north">
     <div class="sector-head">
       <div class="sector-title">Sector North</div>
       <div id="status-sensor-north" class="sector-status">connecting</div>
     </div>
-    <div class="sector-feed">
-      <img id="feed-sensor-north" src="/snapshot/sensor-north" alt="">
+    <div class="sector-feed" data-stream="cam-outside" data-sector="sensor-north">
+      <video id="video-sensor-north" class="sector-video" autoplay muted playsinline></video>
+      <canvas id="overlay-sensor-north" class="bbox-overlay"></canvas>
+      <img id="feed-sensor-north" class="sector-fallback" src="/snapshot/sensor-north" alt="">
       <div class="sector-overlay">
         <span id="overlay-north-label">awaiting motion</span>
         <span id="overlay-north-ts">–</span>
@@ -100,8 +106,10 @@
       <div class="sector-title">Sector South</div>
       <div id="status-sensor-south" class="sector-status">connecting</div>
     </div>
-    <div class="sector-feed">
-      <img id="feed-sensor-south" src="/snapshot/sensor-south" alt="">
+    <div class="sector-feed" data-stream="cam-inside" data-sector="sensor-south">
+      <video id="video-sensor-south" class="sector-video" autoplay muted playsinline></video>
+      <canvas id="overlay-sensor-south" class="bbox-overlay"></canvas>
+      <img id="feed-sensor-south" class="sector-fallback" src="/snapshot/sensor-south" alt="">
       <div class="sector-overlay">
         <span id="overlay-south-label">awaiting motion</span>
         <span id="overlay-south-ts">–</span>

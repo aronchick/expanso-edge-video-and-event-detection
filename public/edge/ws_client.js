@@ -799,3 +799,142 @@ document.addEventListener('keydown', async (ev) => {
       break;
   }
 });
+
+// ── WebRTC live video + bbox canvas overlay ─────────────────────────
+// Replaces the snapshot polling for the camera tiles. Video comes from
+// go2rtc on :1984 (separate Jetson sidecar process). YOLO bbox coords
+// arrive via the existing WS event stream — drawn on a canvas overlay
+// positioned over the <video>. Video runs at native ~25fps; bbox redraws
+// at YOLO's ~5-10Hz inference rate. They're decoupled — video stays smooth
+// even when YOLO is mid-inference.
+
+const GO2RTC_BASE = `${location.protocol}//${location.hostname}:1984`;
+const SECTOR_SOURCE_W = 1280;   // RTSP main stream native resolution
+const SECTOR_SOURCE_H = 720;
+const _bboxClearTimers = {};    // sector -> setTimeout handle for clear-after-hold
+
+async function startWebRTCFor(sectorEl) {
+  const stream = sectorEl.dataset.stream;
+  const sector = sectorEl.dataset.sector;
+  if (!stream || !sector) return;
+  const video = document.getElementById(`video-${sector}`);
+  if (!video) return;
+
+  try {
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+    });
+    pc.addTransceiver('video', { direction: 'recvonly' });
+    pc.addTransceiver('audio', { direction: 'recvonly' });
+    pc.ontrack = (e) => {
+      video.srcObject = e.streams[0];
+    };
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    const resp = await fetch(`${GO2RTC_BASE}/api/webrtc?src=${encodeURIComponent(stream)}`, {
+      method: 'POST',
+      body: pc.localDescription.sdp,
+    });
+    if (!resp.ok) throw new Error(`go2rtc HTTP ${resp.status}`);
+    const answerSdp = await resp.text();
+    await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+    console.log(`[webrtc] ${sector} ← ${stream} negotiated`);
+  } catch (err) {
+    console.warn(`[webrtc] ${sector} failed, falling back to JPEG snapshot:`, err);
+    // The fallback <img class="sector-fallback"> is z-index 0 underneath the video.
+    // When video has no srcObject, it's transparent — img shows through.
+    // Trigger a re-poll on the fallback img every 300ms as before.
+    setInterval(() => {
+      const img = document.getElementById(`feed-${sector}`);
+      if (img) img.src = `/snapshot/${sector}?t=${Date.now()}`;
+    }, 300);
+  }
+}
+
+function _drawTrackGate(ctx, x1, y1, x2, y2, color) {
+  const leg = Math.max(12, Math.min((x2 - x1) / 5, (y2 - y1) / 5, 24));
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'miter';
+  // 4 corner brackets
+  ctx.beginPath(); ctx.moveTo(x1, y1 + leg); ctx.lineTo(x1, y1); ctx.lineTo(x1 + leg, y1); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x2 - leg, y1); ctx.lineTo(x2, y1); ctx.lineTo(x2, y1 + leg); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x1, y2 - leg); ctx.lineTo(x1, y2); ctx.lineTo(x1 + leg, y2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x2 - leg, y2); ctx.lineTo(x2, y2); ctx.lineTo(x2, y2 - leg); ctx.stroke();
+}
+
+function drawBboxOverlay(sector, hits) {
+  const canvas = document.getElementById(`overlay-${sector}`);
+  if (!canvas) return;
+  // Match canvas internal dims to its display dims so 1px = 1px.
+  const cw = canvas.clientWidth;
+  const ch = canvas.clientHeight;
+  if (canvas.width !== cw) canvas.width = cw;
+  if (canvas.height !== ch) canvas.height = ch;
+
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, cw, ch);
+  if (!hits || !hits.length) return;
+
+  // Replicate the video element's `object-fit: cover` transform so bbox
+  // coords (in source 1280x720 space) project onto the visible video area.
+  const sw = SECTOR_SOURCE_W;
+  const sh = SECTOR_SOURCE_H;
+  const scale = Math.max(cw / sw, ch / sh);
+  const renderedW = sw * scale;
+  const renderedH = sh * scale;
+  const offsetX = (cw - renderedW) / 2;
+  const offsetY = (ch - renderedH) / 2;
+
+  ctx.font = 'bold 13px "IBM Plex Mono", ui-monospace, monospace';
+  ctx.textBaseline = 'bottom';
+
+  for (let i = 0; i < hits.length; i++) {
+    const hit = hits[i];
+    if (!hit || !hit.bbox) continue;
+    const [x1s, y1s, x2s, y2s] = hit.bbox;
+    const x1 = x1s * scale + offsetX;
+    const y1 = y1s * scale + offsetY;
+    const x2 = x2s * scale + offsetX;
+    const y2 = y2s * scale + offsetY;
+    _drawTrackGate(ctx, x1, y1, x2, y2, '#ffa726');
+    const labelText = `TRK-${String(i + 1).padStart(3, '0')} ${displayLabel(hit.label).toUpperCase()} ${Math.round((hit.confidence || 0) * 100)}`;
+    ctx.fillStyle = '#ffa726';
+    ctx.fillText(labelText, x1, Math.max(y1 - 4, 14));
+  }
+}
+
+// Hook: every WS event with yolo_hits triggers an overlay redraw, with a
+// 1.5s hold-then-clear so boxes don't strobe between frames.
+function pushBboxOverlay(e) {
+  if (!e || !e.node || !e.yolo_hits) return;
+  drawBboxOverlay(e.node, e.yolo_hits);
+  if (_bboxClearTimers[e.node]) clearTimeout(_bboxClearTimers[e.node]);
+  _bboxClearTimers[e.node] = setTimeout(() => {
+    drawBboxOverlay(e.node, []);
+  }, 1500);
+}
+
+// Boot WebRTC for every .sector-feed[data-stream] (after page load so DOM exists).
+window.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.sector-feed[data-stream]').forEach((el) => {
+    startWebRTCFor(el);
+  });
+});
+
+// Hook the WebSocket message dispatcher to push to the bbox overlay too.
+// (Reassigning `handleEvent` directly is fragile across linter reorderings.)
+const _origOnMessage = ws.onmessage;
+ws.onmessage = function (msg) {
+  _origOnMessage.call(ws, msg);
+  try {
+    const m = JSON.parse(msg.data);
+    if (m.type === 'event') {
+      pushBboxOverlay(m.data);
+    } else if (m.type === 'backfill' && Array.isArray(m.data)) {
+      const recent = m.data[m.data.length - 1];
+      if (recent && recent.node && recent.yolo_hits) pushBboxOverlay(recent);
+    }
+  } catch (_e) { /* not JSON or schema mismatch — ignore */ }
+};
