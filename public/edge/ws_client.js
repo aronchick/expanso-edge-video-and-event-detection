@@ -326,18 +326,22 @@ function renderJobs(list) {
     if (status === 'failed') failed += 1;
     if (status === 'running' && /^sensor-/.test(j.name)) anySensorRunning = true;
 
-    const pill = document.createElement('div');
-    pill.className = 'job-pill ' + (j.status || 'pending');
-    pill.title = `${j.name} · ${j.status || 'pending'}` + (j.role ? ` · ${j.role}` : '');
-    const dot = document.createElement('span');
-    dot.className = 'job-dot';
-    pill.appendChild(dot);
+    // Inline format for the bottom strip: ■ name STATUS
+    const item = document.createElement('span');
+    item.className = 'job-inline ' + (status || 'pending');
+    item.title = `${j.name} · ${status || 'pending'}` + (j.role ? ` · ${j.role}` : '');
+    const led = document.createElement('span');
+    led.className = 'job-inline-led';
+    item.appendChild(led);
     const name = document.createElement('span');
-    // Trim long job names so all 4 fit on a single row at laptop scale.
-    // Hover title still shows the full name + status + role.
+    name.className = 'job-inline-name';
     name.textContent = j.name.replace(/^armyx-tech-/, '').replace(/^edge-/, '');
-    pill.appendChild(name);
-    container.appendChild(pill);
+    item.appendChild(name);
+    const statusEl = document.createElement('span');
+    statusEl.className = 'job-inline-status';
+    statusEl.textContent = (status || 'pending').toUpperCase();
+    item.appendChild(statusEl);
+    container.appendChild(item);
   }
   document.getElementById('footer-jobs').textContent = `${running}/${total}` + (failed ? ` (${failed} failed)` : '');
   // Mirror to ARCH control-plane counter
@@ -604,27 +608,27 @@ function drawTopology() {
 }
 setInterval(drawTopology, 100);
 
-// ── Tab switcher (OPS / ARCH) ───────────────────────────────────────
-// Default = OPS. Body class drives which view is visible (CSS handles the rest).
+// ── Tab routing (URL-hash based, bookmarkable, opens in new tabs) ──
+// `#ops` → OPS view, `#arch` → ARCH view, `#archive` → ARCHIVE view (S3 tile).
+// Tabs are anchor elements with real hrefs, so cmd/middle-click opens a fresh
+// browser tab pointed straight at the chosen view.
 
-(function initTabs() {
-  document.body.classList.add('tab-ops');
-  for (const btn of document.querySelectorAll('.tab-switcher .tab')) {
-    btn.addEventListener('click', () => {
-      const target = btn.dataset.tab;
-      if (!target) return;
-      // Update body class
-      document.body.classList.remove('tab-ops', 'tab-arch');
-      document.body.classList.add(`tab-${target}`);
-      // Update aria/active state
-      for (const b of document.querySelectorAll('.tab-switcher .tab')) {
-        const isActive = b === btn;
-        b.classList.toggle('is-active', isActive);
-        b.setAttribute('aria-selected', isActive ? 'true' : 'false');
-      }
-    });
+const TABS = ['ops', 'arch', 'archive'];
+
+function applyTabFromHash() {
+  const raw = (window.location.hash || '#ops').slice(1).toLowerCase();
+  const target = TABS.includes(raw) ? raw : 'ops';
+  document.body.classList.remove('tab-ops', 'tab-arch', 'tab-archive');
+  document.body.classList.add(`tab-${target}`);
+  for (const a of document.querySelectorAll('.tab-switcher .tab')) {
+    const isActive = a.dataset.tab === target;
+    a.classList.toggle('is-active', isActive);
+    a.setAttribute('aria-selected', isActive ? 'true' : 'false');
   }
-})();
+}
+
+window.addEventListener('hashchange', applyTabFromHash);
+applyTabFromHash();
 
 // ── Operator keyboard shortcuts ─────────────────────────────────────
 

@@ -15,21 +15,13 @@ import urllib.error
 import urllib.request
 
 DEFAULT_TRIGGERS = [
-    # Aerial contacts (airplane, drone) intentionally excluded — added live
-    # mid-demo per HACKATHON_SCRIPT.md §13 Beat 3.
+    # Trimmed — aerial contacts (airplane, drone) intentionally excluded,
+    # added live mid-demo per HACKATHON_SCRIPT.md §13 Beat 3.
     "person",
     "backpack",
-    "handbag",
-    "suitcase",
     "knife",
-    "scissors",
-    "cell phone",
-    "laptop",
     "car",
     "truck",
-    "bus",
-    "bicycle",
-    "motorcycle",
 ]
 POLL_INTERVAL_SEC = 1.0
 

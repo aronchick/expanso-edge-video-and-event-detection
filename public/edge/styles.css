@@ -92,44 +92,57 @@ body {
      fixed-height so platform + egress always match. The tier-strip is a
      narrow auto-sized row that visualizes the EDGE → ORCHESTRATOR → CLOUD
      hierarchy claimed in the demo script. */
+  /* New OPS layout per user direction:
+       - Cameras LEFT, stacked vertically as 1:1 squares
+       - Events RIGHT, stacked vertically (north above south)
+       - Platform-strip + footer as bottom rails
+     Camera column is sized so two stacked squares fit the available height
+     after the header/tier/triggers/fusion rows. Events column takes the rest
+     so events have room to breathe. */
   grid-template-rows:
     auto                    /* 1: header */
     auto                    /* 2: tier strip */
     auto                    /* 3: triggers bar */
-    auto                    /* 4: fusion tile (replaces modal — always visible) */
-    minmax(0, 1.4fr)        /* 5: camera tiles */
-    minmax(0, 1fr)          /* 6: event panels */
-    auto                    /* 7: platform + egress */
+    auto                    /* 4: fusion tile */
+    minmax(0, 1fr)          /* 5: north sector + north events */
+    minmax(0, 1fr)          /* 6: south sector + south events */
+    auto                    /* 7: platform-strip */
     auto;                   /* 8: footer */
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 28rem) minmax(0, 1fr);
   height: 100vh;
   width: 100vw;
   gap: var(--gap);
   padding: var(--gap);
 }
 
-.header        { grid-row: 1; grid-column: 1 / span 2; }
-.tier-strip    { grid-row: 2; grid-column: 1 / span 2; }
-.triggers-bar  { grid-row: 3; grid-column: 1 / span 2; }
-.fusion-tile   { grid-row: 4; grid-column: 1 / span 2; }
-.sector-north  { grid-row: 5; grid-column: 1; }
-.sector-south  { grid-row: 5; grid-column: 2; }
-.events-north  { grid-row: 6; grid-column: 1; }
-.events-south  { grid-row: 6; grid-column: 2; }
-.platform      { grid-row: 7; grid-column: 1; }
-.egress        { grid-row: 7; grid-column: 2; }
-.arch-view     { grid-row: 2 / 8; grid-column: 1 / span 2; display: none; }
-.footer        { grid-row: 8; grid-column: 1 / span 2; }
+.header           { grid-row: 1; grid-column: 1 / span 2; }
+.tier-strip       { grid-row: 2; grid-column: 1 / span 2; }
+.triggers-bar     { grid-row: 3; grid-column: 1 / span 2; }
+.fusion-tile      { grid-row: 4; grid-column: 1 / span 2; }
+.sector-north     { grid-row: 5; grid-column: 1; }
+.events-north     { grid-row: 5; grid-column: 2; }
+.sector-south     { grid-row: 6; grid-column: 1; }
+.events-south     { grid-row: 6; grid-column: 2; }
+.platform-strip   { grid-row: 7; grid-column: 1 / span 2; }
+.arch-view        { grid-row: 2 / 8; grid-column: 1 / span 2; display: none; }
+.archive-view     { grid-row: 2 / 8; grid-column: 1 / span 2; display: none; }
+.footer           { grid-row: 8; grid-column: 1 / span 2; }
 
-/* Tab visibility — body class drives which view is rendered. Header always visible. */
+/* Tab visibility — body class drives which view is rendered. Header,
+   tabs, footer, and platform-strip are always visible across all tabs. */
 body.tab-arch .tier-strip,
 body.tab-arch .triggers-bar,
 body.tab-arch .fusion-tile,
 body.tab-arch .sector,
-body.tab-arch .events-panel,
-body.tab-arch .platform,
-body.tab-arch .egress { display: none; }
+body.tab-arch .events-panel { display: none; }
 body.tab-arch .arch-view { display: grid; }
+
+body.tab-archive .tier-strip,
+body.tab-archive .triggers-bar,
+body.tab-archive .fusion-tile,
+body.tab-archive .sector,
+body.tab-archive .events-panel { display: none; }
+body.tab-archive .archive-view { display: flex; }
 
 /* ── Header ───────────────────────────────────────────────────────── */
 
@@ -445,6 +458,11 @@ body.tier-edge-down #tier-edge {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  /* Square tile per user direction — full width of camera column, height
+     auto-matched. align-self: start prevents grid from stretching to row height. */
+  aspect-ratio: 1 / 1;
+  align-self: start;
+  width: 100%;
 }
 .sector-head {
   display: flex;
@@ -500,11 +518,10 @@ body.tier-edge-down #tier-edge {
   inset: 0;
   width: 100%;
   height: 100%;
-  /* `contain` shows the full 1280×720 camera frame with letterbox bars when
-     the tile aspect ratio doesn't match. Avoids cropping detection boxes
-     and the sensor metadata overlay (sensor ID, ISO 8601 UTC, REC dot)
-     off the top/bottom of the visible area. */
-  object-fit: contain;
+  /* `cover` because the tile is now square but the camera is 16:9 — user
+     explicitly chose "no black bars" so we crop the left/right edges of
+     the frame. Center reticle + most detection boxes stay visible. */
+  object-fit: cover;
   display: block;
   background: #000;
 }
@@ -1365,4 +1382,96 @@ body.show-topology .topology { display: block; }
   padding-top: 0.4rem;
   border-top: 1px solid var(--border);
   width: 100%;
+}
+
+/* ── Bottom platform strip (replaces the platform tile) ─────────────── */
+/* Single horizontal line: [Expanso wordmark]  pipeline(status) pipeline(status) ...
+   Always visible at the bottom of the OPS view. */
+.platform-strip {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  padding: 0.4rem 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  height: 2.6rem;
+  overflow: hidden;
+}
+.platform-wordmark {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: var(--t-body);
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: var(--expanso);
+  text-decoration: none;
+  flex-shrink: 0;
+  padding: 0.1em 0.5em;
+  border: 1px solid rgba(127,184,220,0.4);
+  border-radius: 3px;
+  background: rgba(127,184,220,0.06);
+  transition: background var(--m-fast), color var(--m-fast);
+}
+.platform-wordmark:hover {
+  background: rgba(127,184,220,0.14);
+  color: var(--text);
+}
+.platform-jobs-inline {
+  display: flex;
+  gap: 1rem;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  align-items: center;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: var(--t-caption);
+}
+.platform-jobs-inline .job-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.platform-jobs-inline .job-inline-name {
+  color: var(--text);
+  letter-spacing: 0.04em;
+}
+.platform-jobs-inline .job-inline-status {
+  color: var(--text-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.platform-jobs-inline .job-inline.running .job-inline-status { color: var(--ok); }
+.platform-jobs-inline .job-inline.pending .job-inline-status { color: var(--alert); }
+.platform-jobs-inline .job-inline.failed  .job-inline-status,
+.platform-jobs-inline .job-inline.down    .job-inline-status { color: var(--critical); }
+.platform-jobs-inline .job-inline-led {
+  width: 0.55em; height: 0.55em;
+  border-radius: 1px;  /* square LED, matching the design vocab */
+  background: var(--text-mono);
+  flex-shrink: 0;
+}
+.platform-jobs-inline .job-inline.running .job-inline-led { background: var(--ok); box-shadow: 0 0 0.4em var(--ok); }
+.platform-jobs-inline .job-inline.pending .job-inline-led { background: var(--alert); }
+.platform-jobs-inline .job-inline.failed  .job-inline-led,
+.platform-jobs-inline .job-inline.down    .job-inline-led { background: var(--critical); }
+
+/* ── ARCHIVE view (third tab) ──────────────────────────────────────── */
+.archive-view {
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 1.5rem;
+  gap: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: auto;
+}
+.archive-view .egress {
+  width: 100%;
+  max-width: 64rem;
+  height: auto;
+  aspect-ratio: auto;
 }

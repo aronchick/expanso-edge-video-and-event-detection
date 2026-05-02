@@ -17,22 +17,15 @@ from pathlib import Path
 import yaml
 
 DEFAULT_TRIGGERS: list[str] = [
-    # Default set for the demo's "before" state. Aerial contacts (airplane,
-    # drone) are intentionally excluded so the live-update beat in
-    # HACKATHON_SCRIPT.md §13 Beat 3 lands — the operator adds them mid-demo.
+    # Trimmed demo "before" state — only what the ISR narrative needs.
+    # Aerial contacts (airplane, drone) intentionally excluded; the operator
+    # adds them mid-demo per HACKATHON_SCRIPT.md §13 Beat 3 to show live
+    # trigger updates.
     "person",
     "backpack",
-    "handbag",
-    "suitcase",
     "knife",
-    "scissors",
-    "cell phone",
-    "laptop",
     "car",
     "truck",
-    "bus",
-    "bicycle",
-    "motorcycle",
 ]
 
 
