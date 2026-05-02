@@ -224,21 +224,39 @@ def test_demo_reset_help_works():
     assert "demo_reset" in out or "rehearsal" in out
 
 
-def test_jobs_status_synthetic_fallback_is_pending_not_running():
-    """Beat 0 demands honesty: when no expanso-cli is reachable, the panel
-    must report jobs as 'pending' (gray dot), NEVER 'running' (green dot).
+def test_jobs_status_reflects_real_process_state_not_synthetic_running():
+    """Beat 0 demands honesty: the panel must NEVER hard-code 'running' for the
+    process-backed jobs. Status comes from pgrep (running if process found,
+    failed if not) plus expanso-cli for the cloud-side archive pipeline (or
+    'pending' if the CLI can't reach Expanso Cloud).
+
     A green-dot synthetic fallback would lie about the deploy state and
     nullify Beat 0 visually.
     """
-    src = (REPO_ROOT / "src/expanso_security_camera/orchestrator/jobs_status.py").read_text()
-    # The synthetic_inventory helper exists; every CALL must use "pending".
-    import re
-
-    calls = re.findall(r'_synthetic_inventory\("([a-z]+)"\)', src)
-    assert calls, "jobs_status.py must invoke _synthetic_inventory somewhere"
-    assert all(s == "pending" for s in calls), (
-        f"all _synthetic_inventory(...) calls must use 'pending', got: {calls}"
+    from expanso_security_camera.orchestrator.jobs_status import (
+        EXPECTED_JOBS,
+        PGREP_PATTERNS,
+        JobsStatus,
     )
+
+    # The three process-backed jobs must each have a pgrep pattern.
+    process_jobs = {"fusion-node", "sensor-north", "sensor-south"}
+    assert process_jobs.issubset(set(PGREP_PATTERNS)), (
+        f"PGREP_PATTERNS must cover {process_jobs}, got {set(PGREP_PATTERNS)}"
+    )
+    expected_names = {j["name"] for j in EXPECTED_JOBS}
+    assert process_jobs.issubset(expected_names)
+    assert "armyx-tech-event-archive" in expected_names
+
+    # In the test environment (no edge-orchestrator/edge-sensor processes
+    # running, no expanso-cli auth), the panel MUST NOT report any of the
+    # process-backed jobs as 'running'. They should be 'failed' (down).
+    js = JobsStatus(refresh_sec=0)
+    by_name = {j["name"]: j for j in js.get()}
+    for name in process_jobs:
+        assert by_name[name]["status"] != "running", (
+            f"{name} reported 'running' with no actual process — Beat 0 would lie"
+        )
 
 
 def test_dashboard_html_has_platform_tagline():
