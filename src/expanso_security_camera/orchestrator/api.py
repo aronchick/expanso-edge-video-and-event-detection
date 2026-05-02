@@ -38,6 +38,7 @@ from expanso_security_camera.orchestrator.s3_watcher import S3Watcher
 from expanso_security_camera.orchestrator.snapshots import (
     FakeSnapshotCache,
     read_real_snapshot,
+    synthesize_awaiting_start,
 )
 from expanso_security_camera.orchestrator.store import EventStore
 from expanso_security_camera.orchestrator.triggers import TriggerStore
@@ -156,6 +157,8 @@ def create_app(
     @app.get("/snapshot/{sector}")
     async def get_snapshot(sector: str) -> Response:
         # Real-mode first: serve the JPEG written by the sensor's detect_loop.
+        # If a real frame is on disk, the sensor is producing — show it
+        # regardless of what /jobs reports (real wins over abstract state).
         real = read_real_snapshot(snapshots_path, sector)
         if real is not None:
             return Response(
@@ -163,7 +166,25 @@ def create_app(
                 media_type="image/jpeg",
                 headers={"Cache-Control": "no-cache, no-store"},
             )
-        # Fake fallback: synthesize so the dashboard isn't a sea of broken-image icons.
+
+        # No real frame. Decide whether to render the fake-feed (sensor is
+        # supposed to be running, just no frame yet) or the awaiting-start
+        # placeholder (sensor's Expanso job is stopped — Beat 0 lights-up).
+        if sector.startswith("sensor-"):
+            sensor_running = any(
+                j.get("name") == sector and str(j.get("status", "")).lower() == "running"
+                for j in jobs.get()
+            )
+            if not sensor_running:
+                jpg = synthesize_awaiting_start(sector)
+                return Response(
+                    content=jpg,
+                    media_type="image/jpeg",
+                    headers={"Cache-Control": "no-cache, no-store"},
+                )
+
+        # Fake fallback: synthesize so the dashboard isn't a sea of
+        # broken-image icons during fake-mode rehearsals.
         if fake_mode:
             jpg = fake_cache.render(sector, cloud_up=metrics.is_cloud_up())
             return Response(

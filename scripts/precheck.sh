@@ -30,7 +30,7 @@ echo "-- Network --"
 check "Reolink north (.50.11) reachable"  ping -c 1 -W 2 192.168.50.11
 check "Reolink south (.50.12) reachable"  ping -c 1 -W 2 192.168.50.12
 check "Jetson (.50.20) reachable"         ping -c 1 -W 2 192.168.50.20
-check "Laptop orchestrator (.50.30) reachable" ping -c 1 -W 2 192.168.50.30
+check "Laptop fusion node (.50.30) reachable" ping -c 1 -W 2 192.168.50.30
 echo
 
 # 2. Internet (for Gemini)
@@ -71,15 +71,22 @@ echo
 # 4. Expanso jobs (all four)
 echo "-- Expanso jobs --"
 if command -v expanso-cli > /dev/null; then
-  for job in orchestrator sensor-north sensor-south armyx-tech-event-archive; do
+  # fusion-node should ALWAYS be running pre-demo (it serves the dashboard).
+  # The 3 workload jobs are stopped at Beat 0 lights-up; precheck flags
+  # them deployed-but-not-running rather than failing.
+  for job in fusion-node sensor-north sensor-south armyx-tech-event-archive; do
     if expanso-cli job list 2>/dev/null | grep -q "${job}.*Running"; then
       ok "${job} running"
+    elif [[ "$job" == "fusion-node" ]]; then
+      fail "${job} not running (dashboard will be blank!)"
+    elif expanso-cli job describe "${job}" >/dev/null 2>&1; then
+      ok "${job} deployed but stopped (correct for Beat 0 lights-up)"
     else
-      fail "${job} not running"
+      fail "${job} not deployed — run scripts/demo_deploy_all.sh first"
     fi
   done
 else
-  fail "expanso-cli not on PATH (orchestrator may still work via direct uv run)"
+  fail "expanso-cli not on PATH (fusion-node may still work via direct uv run)"
 fi
 echo
 

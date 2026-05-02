@@ -180,6 +180,11 @@ def test_dashboard_html_has_tier_strip():
     assert "EDGE" in html
     assert "FUSION" in html
     assert "CLOUD" in html
+    # Regression guard: the renamed tier ID must NOT reappear. If it
+    # does, someone partially reverted the orchestrator → fusion-node
+    # rename and the script's vocabulary will be out of sync with the UI.
+    assert "tier-orchestrator" not in html
+    assert ">ORCHESTRATOR<" not in html, "tier label must read 'FUSION', not 'ORCHESTRATOR'"
 
 
 def test_dashboard_html_has_gemini_reachback_pill():
@@ -263,3 +268,76 @@ def test_dashboard_js_handles_s3_message():
     # JS must keep toggling that body class. (setCloudState already does this;
     # the assertion locks the contract in.)
     assert "cloud-down" in js, "ws_client.js must toggle body.cloud-down so #tier-cloud dims"
+
+
+def test_sector_status_has_stopped_state():
+    """Beat 0 lights-up: sector badge reads 'stopped' (gray) when the
+    underlying sensor-* job is not running. Both the JS state machine and
+    the CSS treatment must exist for the badge to render."""
+    js = (REPO_ROOT / "public" / "edge" / "ws_client.js").read_text()
+    css = (REPO_ROOT / "public" / "edge" / "styles.css").read_text()
+
+    # JS: sensorJobRunning state + 'stopped' status string.
+    assert "sensorJobRunning" in js, (
+        "ws_client.js must track sensorJobRunning per sector for the "
+        "Beat 0 lights-up 'stopped' badge"
+    )
+    assert "'stopped'" in js, "ws_client.js must produce the 'stopped' status"
+
+    # CSS: distinct treatment from .live and .offline.
+    assert ".sector-status.stopped" in css, (
+        "styles.css must have .sector-status.stopped — Beat 0 promises a "
+        "calmer color than .offline because stopped is intentional"
+    )
+
+
+def test_snapshot_awaiting_start_renders():
+    """snapshots.synthesize_awaiting_start must produce a real JPEG that's
+    visually distinct from the live synthesize_snapshot output (no reticle,
+    no scan-line, headline 'AWAITING START'). The api.py /snapshot endpoint
+    falls through to this when the sensor's job is stopped."""
+    from expanso_security_camera.orchestrator.snapshots import (
+        synthesize_awaiting_start,
+    )
+
+    for sector in ("sensor-north", "sensor-south"):
+        jpg = synthesize_awaiting_start(sector)
+        assert isinstance(jpg, bytes)
+        # JPEG SOI marker. Anything smaller than ~5KB is suspicious for a
+        # 1280x720 frame even with strong compression.
+        assert jpg.startswith(b"\xff\xd8"), f"{sector}: not a valid JPEG"
+        assert len(jpg) > 5000, f"{sector}: placeholder frame suspiciously small ({len(jpg)})"
+
+
+def test_snapshot_endpoint_serves_awaiting_start_when_sensor_stopped(tmp_path):
+    """End-to-end via TestClient: when the synthetic /jobs inventory reports
+    sensors as 'pending' (not running), /snapshot/{sector} returns the
+    awaiting-start placeholder bytes, NOT the live fake-feed bytes.
+
+    The behavior matters because the synthetic-fallback in jobs_status.py
+    reports 'pending' when no expanso-cli is reachable — which is the state
+    of every fresh laptop demo before Beat 0's deploy. If the snapshot
+    endpoint ignored job state, the conference monitor would show the
+    full live-feed reticle even though no sensor is producing frames.
+    """
+    from fastapi.testclient import TestClient
+
+    from expanso_security_camera.orchestrator.api import create_app
+
+    app = create_app(
+        db_path=str(tmp_path / "o.db"),
+        triggers_path=str(tmp_path / "t.yaml"),
+        snapshots_dir=str(tmp_path / "snap"),
+        ndjson_path=str(tmp_path / "e.ndjson"),
+        fake_mode=True,
+    )
+    client = TestClient(app)
+    r = client.get("/snapshot/sensor-north")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "image/jpeg"
+    # Awaiting-start frame is a flat dark-gray scene; the live fake-feed
+    # frame has a horizon gradient + grid lines + reticle, so they encode
+    # to substantially different sizes. Awaiting-start is much smaller
+    # because flat colors compress well.
+    awaiting_size = len(r.content)
+    assert awaiting_size > 5000, "frame too small to be valid"

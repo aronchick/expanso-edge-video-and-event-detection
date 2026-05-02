@@ -32,7 +32,7 @@ After that you should have:
    - Cloud pill is **green** "CLOUD LINK · UP".
    - Trigger bar shows chips. **NO `drone`. NO `airplane`.** (If they're there, run the reset curl below.)
    - Both sector tiles show camera feeds with green "live" badges.
-   - EXPANSO PLATFORM tile shows **4 dots, all green**: orchestrator, sensor-north, sensor-south, armyx-tech-event-archive.
+   - EXPANSO PLATFORM tile shows **4 dots, all green**: fusion-node, sensor-north, sensor-south, armyx-tech-event-archive.
    - **Cloud egress tile** (right of platform): bucket name visible, state badge **green "live"**, object count climbing (or stable from rehearsal).
    - Footer: "4/4 jobs · 0 events · 0 fused".
 3. Run `scripts/precheck.sh` — must report 0 fail.
@@ -71,7 +71,7 @@ curl -X POST http://localhost:8080/triggers -H "Content-Type: application/json" 
 | Cloud DOWN banner stuck | F2. If F2 doesn't work, run `ssh ${ARMYX_JETSON_HOST} sudo nmcli radio wifi on` directly. |
 | Trigger chip didn't pulse on F4 | Verify the curl with `curl http://localhost:8080/triggers` — if `drone` is in the list, the animation just missed; the demo state is still correct. Move on. |
 | Fused alert never fires in Beat 4 | F3 to fire a synthetic one. Narrate over it; judges won't know the difference. |
-| Real Reolink camera died | The sector tile will go gray ("offline" badge). Don't acknowledge it; move to the live sector. The orchestrator + other sensor keep working. |
+| Real Reolink camera died | The sector tile will go gray ("offline" badge). Don't acknowledge it; move to the live sector. The fusion node + other sensor keep working. |
 | Cloud egress tile says "not configured" | `.env` lost `ARMYX_S3_BUCKET`. Restart `edge-orchestrator` after `set -a; source .env; set +a`. |
 | Cloud egress tile "stalled" but you didn't press F1 | The Jetson's Wi-Fi association may have rolled over. Check `ssh ${ARMYX_JETSON_HOST} nmcli device status`. The pipeline is buffering; don't panic — F2 will drain on the next reconnect. |
 | S3 object viewer modal shows "error: NoSuchKey" | The eventually-consistent list was ahead of the read. Wait 2s, click again. |
@@ -105,12 +105,12 @@ ssh ${ARMYX_JETSON_HOST} sudo nmcli radio wifi on
 aws --profile armyx-tech s3 rm s3://${ARMYX_S3_BUCKET}/events/ --recursive
 ```
 
-For the NEXT rehearsal, Beat 0 starts the already-deployed jobs from
-the Expanso Cloud UI tab (operator clicks Start/Rerun on each job in
-order: orchestrator → sensor-north → sensor-south → archive). CLI
-fallback if the UI is slow:
+For the NEXT rehearsal, Beat 0 starts the three already-deployed
+**workload** jobs from the Expanso Cloud UI tab (operator clicks
+Start/Rerun on each in order: sensor-north → sensor-south → archive).
+The fusion-node stays running between rehearsals so the dashboard
+keeps painting. CLI fallback if the UI is slow:
 ```bash
-expanso-cli job rerun orchestrator
 expanso-cli job rerun sensor-north
 expanso-cli job rerun sensor-south
 expanso-cli job rerun armyx-tech-event-archive

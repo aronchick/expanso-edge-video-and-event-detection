@@ -123,6 +123,40 @@ class Detector:
             },
         )
 
+    def annotate(self, frame: np.ndarray, event: Optional[Event]) -> np.ndarray:
+        """Return a copy of `frame` with track-gate boxes + labels drawn for
+        the detections in `event`. If event is None, returns the frame
+        with only the always-on operational overlay (sensor ID, ISO 8601
+        UTC timestamp, REC dot, scan tick) so the live snapshot still
+        reads as a working sensor feed even between detections.
+        """
+        out = frame.copy()
+        h, w = out.shape[:2]
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        amber = (38, 167, 255)  # BGR for #ffa726
+        text_white = (220, 230, 240)
+        text_dim = (160, 175, 190)
+
+        # Always-on overlay: sensor ID + ISO 8601 UTC + REC pulse.
+        iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        cv2.putText(out, self.node_id.upper(), (16, 30), font, 0.6, text_white, 1, cv2.LINE_AA)
+        cv2.putText(out, iso, (16, 52), font, 0.5, text_dim, 1, cv2.LINE_AA)
+        rec_on = (int(time.time() * 2) % 2) == 0
+        rec_color = (40, 40, 230) if rec_on else (40, 40, 90)
+        cv2.circle(out, (w - 28, 32), 5, rec_color, -1, cv2.LINE_AA)
+        cv2.putText(out, "REC", (w - 64, 38), font, 0.45, text_white, 1, cv2.LINE_AA)
+
+        if event is not None:
+            for i, hit in enumerate(event.yolo_hits):
+                x1, y1, x2, y2 = (int(v) for v in hit.bbox)
+                _draw_track_gate(out, x1, y1, x2, y2, amber)
+                label_text = f"TRK-{i + 1:03d} {hit.label.upper()} {int(hit.confidence * 100)}"
+                cv2.putText(
+                    out, label_text, (x1, max(y1 - 8, 18)), font, 0.55, amber, 1, cv2.LINE_AA
+                )
+
+        return out
+
     def _maybe_describe(
         self, frame: np.ndarray, hits: list[Detection], ts: float
     ) -> tuple[Optional[str], bool]:
@@ -184,3 +218,21 @@ def _call_gemini(api_key: str, jpg_bytes: bytes, timeout: float = 5.0) -> str:
                 time.sleep(2**attempt)
                 continue
             raise
+
+
+def _draw_track_gate(img: np.ndarray, x1: int, y1: int, x2: int, y2: int, color: tuple) -> None:
+    """L-shaped corner brackets — track-gate style, matches the orchestrator
+    snapshot synth aesthetic. Module-level so the class boundary stays clean."""
+    leg = max(12, min((x2 - x1) // 5, (y2 - y1) // 5, 24))
+    # Top-left
+    cv2.line(img, (x1, y1), (x1 + leg, y1), color, 2, cv2.LINE_AA)
+    cv2.line(img, (x1, y1), (x1, y1 + leg), color, 2, cv2.LINE_AA)
+    # Top-right
+    cv2.line(img, (x2, y1), (x2 - leg, y1), color, 2, cv2.LINE_AA)
+    cv2.line(img, (x2, y1), (x2, y1 + leg), color, 2, cv2.LINE_AA)
+    # Bottom-left
+    cv2.line(img, (x1, y2), (x1 + leg, y2), color, 2, cv2.LINE_AA)
+    cv2.line(img, (x1, y2), (x1, y2 - leg), color, 2, cv2.LINE_AA)
+    # Bottom-right
+    cv2.line(img, (x2, y2), (x2 - leg, y2), color, 2, cv2.LINE_AA)
+    cv2.line(img, (x2, y2), (x2, y2 - leg), color, 2, cv2.LINE_AA)

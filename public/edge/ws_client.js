@@ -59,7 +59,7 @@ function handleEvent(e) {
   if (e.queued_offline) queuedOfflineCount += 1;
   if (e.gemini_description) bumpGeminiReachback();
   renderEvent(e);
-  updateSectorStatus(sector, true);
+  updateSectorStatus(sector, 'event');
   updateOverlay(sector, e);
   pingTopology(sector);
   reflectQueueCount();
@@ -152,11 +152,43 @@ function updateOverlay(sector, e) {
   lastEventLabel[sector] = labels;
 }
 
-function updateSectorStatus(node, online) {
+// Per-sector tracking so updateSectorStatus can decide final state from
+// multiple inputs (job state from /jobs + event freshness from WS).
+const sensorJobRunning = { 'sensor-north': null, 'sensor-south': null };
+
+function updateSectorStatus(node, signal) {
+  // Three signals can drive sector status; priority order matters because
+  // they arrive on independent timers:
+  //   1. Job NOT running (from /jobs poll) → "stopped"  (Beat 0 lights-up)
+  //   2. Recent event arrived (from WS handleEvent)     → "live"
+  //   3. No event in last 8s (from heartbeat checker)   → "offline"
+  //   4. Boot, nothing observed yet                     → "connecting"
+  // Callers pass the signal that just changed; we compute the final state.
   const el = document.getElementById(`status-${node}`);
   if (!el) return;
-  el.textContent = online ? 'live' : 'offline';
-  el.className = 'sector-status ' + (online ? 'live' : 'offline');
+
+  const jobRunning = sensorJobRunning[node];
+
+  let status;
+  if (jobRunning === false) {
+    // Highest priority: if the cluster says the sensor's job is stopped,
+    // nothing else matters — even a stale "live" signal would be wrong.
+    status = 'stopped';
+  } else if (signal === 'live' || (signal === 'event' && jobRunning !== false)) {
+    status = 'live';
+  } else if (signal === 'offline' && jobRunning !== false) {
+    status = 'offline';
+  } else if (jobRunning === true) {
+    // Job running but no event signal yet → leave existing state unless
+    // we're at boot, in which case start at 'connecting'.
+    status = el.textContent === '' ? 'connecting' : el.textContent;
+  } else {
+    // Job state unknown (haven't polled /jobs yet) → connecting.
+    status = 'connecting';
+  }
+
+  el.textContent = status;
+  el.className = 'sector-status ' + status;
 }
 
 // ── Fusion tile (replaces the old full-screen overlay) ─────────────
@@ -315,6 +347,16 @@ function renderJobs(list) {
   // (FUSION dimming is implicit — if the fusion node is down, this whole
   //  page isn't rendering. CLOUD dimming is driven by F1 / cloud-down.)
   document.body.classList.toggle('tier-edge-down', !anySensorRunning);
+
+  // Per-sector job state for sector-tile badge ("stopped" vs "live"/"offline"
+  // vs "connecting"). Update sensorJobRunning then recompute each badge so
+  // Beat 0 lights-up shows "stopped" badges, not stale "connecting".
+  for (const sectorName of Object.keys(sensorJobRunning)) {
+    const job = (list || []).find((j) => j.name === sectorName);
+    sensorJobRunning[sectorName] =
+      job ? String(job.status || '').toLowerCase() === 'running' : null;
+    updateSectorStatus(sectorName, 'jobs');
+  }
 }
 
 // ── Metrics ─────────────────────────────────────────────────────────
@@ -376,7 +418,7 @@ setInterval(async () => {
 setInterval(() => {
   const now = Date.now();
   for (const node of Object.keys(lastSeen)) {
-    if (lastSeen[node] && now - lastSeen[node] > 8000) updateSectorStatus(node, false);
+    if (lastSeen[node] && now - lastSeen[node] > 8000) updateSectorStatus(node, 'offline');
   }
 }, 1000);
 

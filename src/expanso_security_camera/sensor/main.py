@@ -39,9 +39,18 @@ from expanso_security_camera.sensor.triggers_client import TriggerClient
 
 
 def run_real(
-    node_id: str, rtsp_url: str, orchestrator_url: str, db_path: str, yolo_model: str
+    node_id: str,
+    rtsp_url: str,
+    orchestrator_url: str,
+    db_path: str,
+    yolo_model: str,
+    snapshot_dir: str = "snapshots",
 ) -> None:
     # Defer heavy imports so --fake doesn't pay for them.
+    from pathlib import Path
+
+    import cv2
+
     from expanso_security_camera.sensor.detector import Detector
     from expanso_security_camera.sensor.pipeline import FreshFrameReader
 
@@ -51,6 +60,13 @@ def run_real(
     detector = Detector(node_id, triggers, model_path=yolo_model)
     emitter = Emitter(node_id, db_path, orchestrator_url)
 
+    snapshot_path = Path(snapshot_dir) / f"{node_id}.jpg"
+    snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+    SNAPSHOT_INTERVAL_SEC = 0.4  # ≈2.5 FPS — dashboard polls every 2s, so 2.5 FPS is plenty
+    last_snapshot_ts = 0.0
+    last_event_for_overlay: object = None
+    LAST_EVENT_HOLD_SEC = 1.5  # keep the last detection's boxes visible for 1.5s
+
     print(f"[{node_id}] warmed up, entering main loop", flush=True)
     while True:
         result = reader.read()
@@ -59,6 +75,28 @@ def run_real(
             continue
         frame, ts = result
         event = detector.detect(frame, ts)
+
+        # Throttled snapshot write — gives the dashboard a real, live camera feed
+        # with annotations. Writes even on no-detection frames so the feed never
+        # freezes; overlays the last detection's boxes for a brief hold so the
+        # demo doesn't strobe.
+        if event is not None:
+            last_event_for_overlay = (event, ts)
+        if ts - last_snapshot_ts >= SNAPSHOT_INTERVAL_SEC:
+            overlay_event = None
+            if last_event_for_overlay is not None:
+                cached_event, cached_ts = last_event_for_overlay
+                if ts - cached_ts <= LAST_EVENT_HOLD_SEC:
+                    overlay_event = cached_event
+            annotated = detector.annotate(frame, overlay_event)
+            # Atomic write so the orchestrator never reads a half-encoded JPEG.
+            tmp_path = snapshot_path.with_suffix(".jpg.tmp")
+            ok, buf = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 78])
+            if ok:
+                tmp_path.write_bytes(buf.tobytes())
+                tmp_path.replace(snapshot_path)
+            last_snapshot_ts = ts
+
         if event is None:
             time.sleep(0.05)
             continue

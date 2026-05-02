@@ -60,10 +60,10 @@ Open `http://localhost:8080` in a browser, hit F11 for fullscreen, and you have 
        │ wlan0  │              └─┬─────────┬─┘          │  wlan0  │ ← F1/F2 toggles this
        └────────┘                ▼         ▼            └─────────┘
        192.168.50.30          Reolink   Reolink         192.168.50.1
-       (orchestrator+UI)      .50.11    .50.12          (DHCP+DNS host)
+       (fusion node + UI)     .50.11    .50.12          (DHCP+DNS host)
 ```
 
-Every component runs as an Expanso job (`jobs/*.yaml`). `expanso-cli job list` shows four jobs on the `armyx-tech` cluster: `orchestrator`, `sensor-north`, `sensor-south`, `armyx-tech-event-archive`.
+Every component runs as an Expanso job (`jobs/*.yaml`). `expanso-cli job list` shows four jobs on the `armyx-tech` cluster: `fusion-node`, `sensor-north`, `sensor-south`, `armyx-tech-event-archive`. ("Orchestrator" in this codebase means **Expanso Cloud**, the cluster control plane — not the local FastAPI process. The local FastAPI process is the `fusion-node` job: event store + cross-sensor correlator + dashboard backend.)
 
 The `armyx-tech-event-archive` pipeline writes every signed event to a real S3 bucket with date-partitioned keys; the dashboard's "Cloud egress" tile polls the bucket from the Mac (independent path) so judges see data move in real time and verify objects via the in-dashboard JSON viewer.
 
@@ -97,7 +97,7 @@ docker push ghcr.io/aronchick/edge-isr-sensor:demo
 
 # Deploy (the bootstrap script does this for you, but here's the manual path):
 expanso-cli profile select armyx-tech
-expanso-cli job deploy jobs/orchestrator-job.yaml
+expanso-cli job deploy jobs/fusion-node-job.yaml
 expanso-cli job deploy jobs/sensor-north-job.yaml
 expanso-cli job deploy jobs/sensor-south-job.yaml
 expanso-cli job deploy jobs/armyx-tech-event-archive.yaml
@@ -129,7 +129,7 @@ public/
 jobs/
   yolo-detector-job.yaml          Box-counting GPU loop
   security-camera-events-job.yaml Box-counting event enrichment
-  orchestrator-job.yaml           Edge-ISR orchestrator on laptop
+  fusion-node-job.yaml            Edge-ISR fusion node (laptop FastAPI backend; renamed from orchestrator-job.yaml)
   sensor-north-job.yaml           Edge-ISR sensor (north)
   sensor-south-job.yaml           Edge-ISR sensor (south)
   armyx-tech-event-archive.yaml   Edge-ISR S3 archive pipeline (Beat 5 centerpiece)

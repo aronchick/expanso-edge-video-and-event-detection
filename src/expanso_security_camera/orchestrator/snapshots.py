@@ -191,6 +191,79 @@ def _placeholder_bbox(label: str, w: int, h: int) -> tuple[int, int, int, int]:
     return (cx - bw // 2, cy - bh // 2, cx + bw // 2, cy + bh // 2)
 
 
+def synthesize_awaiting_start(sector: str) -> bytes:
+    """Render a 1280x720 placeholder for a sensor whose Expanso job is
+    NOT running (Beat 0 lights-up state, or any time the operator has
+    intentionally stopped a sensor between rehearsals).
+
+    Visually distinct from the live `synthesize_snapshot`:
+      - Flat gray scene (no horizon tint, no atmospheric noise)
+      - No reticle, no scan-line, no track gates, no REC pulse
+      - Just sensor metadata in the corner + a single centered line
+        "AWAITING START · sensor-X" so judges at 15ft can read it
+      - Subdued color reads as "intentionally idle," not "broken"
+
+    The contract: anyone seeing this frame should understand "the
+    sensor exists, it has an identity, it just hasn't been started yet."
+    """
+    h, w = 720, 1280
+    cx, cy = w // 2, h // 2
+
+    # Flat dark-gray scene, no gradient, no noise.
+    bg = np.full((h, w, 3), 36, dtype=np.uint8)
+
+    # Subtle horizontal rule one-third up to anchor the eye.
+    cv2.line(bg, (0, int(h * 0.66)), (w, int(h * 0.66)), (62, 70, 80), 1, cv2.LINE_AA)
+
+    # Big centered headline.
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    headline = "AWAITING START"
+    (tw, th), _ = cv2.getTextSize(headline, font, 2.4, 4)
+    cv2.putText(
+        bg,
+        headline,
+        (cx - tw // 2, cy - th // 2 + 30),
+        font,
+        2.4,
+        (180, 195, 210),
+        4,
+        cv2.LINE_AA,
+    )
+
+    # Sub-line: which sector this placeholder is for.
+    sub = sector.upper().replace("SENSOR-", "SENSOR · ")
+    (tw2, _), _ = cv2.getTextSize(sub, font, 0.95, 2)
+    cv2.putText(
+        bg,
+        sub,
+        (cx - tw2 // 2, cy + 50),
+        font,
+        0.95,
+        (130, 145, 160),
+        2,
+        cv2.LINE_AA,
+    )
+
+    # Corner sensor metadata (same identity card as the live frame, so a
+    # judge comparing the two reads it as "same sensor, different state").
+    meta = _SENSOR_META.get(sector, {"id": "?", "lat": 0.0, "lon": 0.0, "az": 0, "fov": 0.0})
+    iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    text_white = (220, 230, 240)
+    text_dim = (140, 155, 170)
+    cv2.putText(bg, meta["id"], (24, 38), font, 0.7, text_white, 1, cv2.LINE_AA)
+    cv2.putText(bg, iso, (24, 62), font, 0.55, text_dim, 1, cv2.LINE_AA)
+    gps = f"{meta['lat']:.4f}N {abs(meta['lon']):.4f}W"
+    cv2.putText(bg, gps, (w - 320, 38), font, 0.55, text_dim, 1, cv2.LINE_AA)
+    cv2.putText(bg, "STOPPED", (w - 320, 62), font, 0.55, (90, 100, 115), 1, cv2.LINE_AA)
+
+    # NO REC pulse. NO reticle. NO scan-line. Stillness = stopped.
+
+    ok, buf = cv2.imencode(".jpg", bg, [cv2.IMWRITE_JPEG_QUALITY, 78])
+    if not ok:
+        return b""
+    return buf.tobytes()
+
+
 class FakeSnapshotCache:
     """Holds the latest-event-derived snapshot per sector, regenerated on demand."""
 

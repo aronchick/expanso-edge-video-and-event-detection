@@ -69,7 +69,7 @@ Specific motion moments:
 │   sig: dbom:sha256:abc123...     │   sig: dbom:sha256:def456...  │
 ├──────────────────────────────────┴───────────────────────────────┤
 │ EXPANSO PLATFORM                                                 │
-│  ● orchestrator · running        ● sensor-north · running        │
+│  ● fusion-node · running         ● sensor-north · running        │
 │  ● event-archive · running       ● sensor-south · running        │
 ├──────────────────────────────────────────────────────────────────┤
 │ FOOTER  Powered by Expanso · 4/4 jobs · 0 failed · 47 evts · 3 fused │
@@ -97,12 +97,17 @@ OVERLAYS:
 
 ## 3. Stream A — Expanso visible
 
-### 3.1 Orchestrator as an Expanso job (`jobs/orchestrator-job.yaml`)
+### 3.1 Fusion node as an Expanso job (`jobs/fusion-node-job.yaml`)
+
+> Naming: this job runs the local FastAPI process (event store +
+> cross-sensor correlator + dashboard backend). It used to be called
+> `orchestrator` but that name collided with Expanso's term for the
+> cluster control plane (Expanso Cloud). It's now `fusion-node`.
 - `Type: ops`, runs on the laptop (constraint `node_type=laptop` or no constraint, scheduled by location)
 - Maps `0.0.0.0:8080` → host
 - Mounts `/data/orchestrator` for SQLite + triggers.yaml persistence
 - Same Docker image as sensor (or a slim variant), CMD = `edge-orchestrator`
-- Gives `expanso-cli job list` four entries: `orchestrator`, `sensor-north`, `sensor-south`, `armyx-tech-event-archive`
+- Gives `expanso-cli job list` four entries: `fusion-node`, `sensor-north`, `sensor-south`, `armyx-tech-event-archive`
 
 ### 3.2 Event archive pipeline (`jobs/armyx-tech-event-archive.yaml`)
 - Bloblang pipeline that tails the orchestrator's events stream
@@ -192,8 +197,8 @@ Triggered by a click on any recent key. Pulls `GET /s3/object?key=...` (orchestr
 
 ### 5.2 Mini topology diagram
 - 200×120 canvas in the bottom-right corner
-- Three nodes: north sensor, south sensor, orchestrator
-- When an event is received, draw a brief arrow from sensor → orchestrator (300ms fade)
+- Three nodes: north sensor, south sensor, fusion node
+- When an event is received, draw a brief arrow from sensor → fusion node (300ms fade)
 - When a fused alert fires, both arrows light up amber
 
 ### 5.3 Keyboard shortcuts (operator-only)
@@ -235,7 +240,7 @@ Highest-leverage first (so partial completion still ships a better demo):
 6. Trigger panel rebuild (top, big chips, animated)
 7. Expanso jobs tile + `/jobs` endpoint
 8. Footer metrics + `/metrics` endpoint
-9. Wrap orchestrator as Expanso job (`jobs/orchestrator-job.yaml`)
+9. Wrap fusion node as Expanso job (`jobs/fusion-node-job.yaml`)
 10. S3 event archive Bloblang pipeline (`jobs/armyx-tech-event-archive.yaml`)
 11. Mini topology
 12. Keyboard shortcuts

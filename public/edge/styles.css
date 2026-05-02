@@ -484,6 +484,10 @@ body.tier-edge-down #tier-edge {
 }
 .sector-status.live    { color: var(--ok); border-color: var(--ok); background: rgba(61, 220, 132, 0.10); }
 .sector-status.offline { color: var(--critical); border-color: var(--critical); background: rgba(255, 77, 79, 0.10); }
+/* Beat 0 lights-up: sensor's Expanso job is stopped. Calmer color than
+   "offline" — stopped is intentional, offline is a malfunction. */
+.sector-status.stopped { color: var(--text-mono); border-color: var(--text-mono); background: rgba(91, 100, 112, 0.10); }
+.sector-status.connecting { color: var(--text-dim); border-color: var(--border); background: var(--surface-2); }
 
 .sector-feed {
   flex: 1;

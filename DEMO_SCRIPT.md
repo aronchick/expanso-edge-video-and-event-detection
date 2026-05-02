@@ -38,7 +38,7 @@ state Beat 1 starts from:
 - **Two sector tiles**: live camera feeds, each labeled SECTOR NORTH
   and SECTOR SOUTH, both with green "live" status badges.
 - **Recent events panels**: empty.
-- **EXPANSO PLATFORM tile**: four green dots — `orchestrator`,
+- **EXPANSO PLATFORM tile**: four green dots — `fusion-node`,
   `sensor-north`, `sensor-south`, `armyx-tech-event-archive`. All
   running.
 - **Cloud Egress tile** (right of platform): bucket name visible,
@@ -54,89 +54,106 @@ four green dots and both live sector feeds.
 
 ---
 
-## Beat 0 — start the pipelines from the cloud UI (30s)
+## Beat 0 — start the workload from the cloud UI (30s)
 
 **This beat exists so the "pipeline IS the control plane" claim in
 Beat 1 lands as something judges literally watched happen, not as
-something they have to take on faith.** The four jobs are *already
-deployed* in the Expanso Cloud cluster — but stopped. Operator brings
-them online from the cloud control-plane UI. Skippable under time
-pressure (see guardrail below).
+something they have to take on faith.** All four jobs are *already
+deployed* in Expanso Cloud's `armyx-tech` cluster. The fusion node —
+the local FastAPI process that serves this dashboard — is already
+running (it has to be: it's what's painting these pixels). The three
+**workload** jobs (two sensors and the S3 archive) are stopped.
+Operator brings them online from the cloud control-plane UI.
+Skippable under time pressure (see guardrail below).
 
 **Operator setup** — what's on the screen at lights-up, BEFORE Beat 0:
 
 - **Conference monitor**: dashboard fullscreen.
 - **Operator's laptop screen** (judges see this on the conference
   monitor too, briefly): a second browser tab open to **Expanso
-  Cloud UI**, the `armyx-tech` cluster, jobs view — showing all four
-  jobs in **Stopped** state. Operator has the Start (or Rerun)
-  control visible without scrolling.
+  Cloud UI**, the `armyx-tech` cluster, jobs view — showing
+  `fusion-node` in **Running** state and the three workload jobs
+  (`sensor-north`, `sensor-south`, `armyx-tech-event-archive`) in
+  **Stopped** state. Operator has the Start (or Rerun) control
+  visible without scrolling.
 - **Dashboard state on the conference monitor**:
   - **Header**: brand dot gray. `events/min` and `fused` at 0. Cloud
-    pill **green** "CLOUD LINK · UP" (the Mac's own internet is up
-    — only the cluster workload is paused).
-  - **Tier strip**: EDGE and ORCHESTRATOR dots gray (no agent
-    actively reporting), CLOUD dot green (the cloud control plane
-    itself is reachable — that's how we're about to start the jobs).
-  - **Trigger bar**: empty / placeholder ("orchestrator stopped").
-  - **Two sector tiles**: gray placeholders, badge reads
-    "stopped". Snapshots return the synthesized "awaiting start"
-    frame.
+    pill **green** "CLOUD LINK · UP" (the Mac's internet is up —
+    only the workload is paused).
+  - **Tier strip**: EDGE dot **gray** (no sensors connected yet),
+    FUSION dot **green** (this dashboard is rendering — proof of
+    life), CLOUD dot **green** (Expanso Cloud reachable — that's
+    how we're about to start the workload).
+  - **Trigger bar**: chips already populated with the fusion node's
+    default trigger classes (`person`, `backpack`, vehicles — but
+    **no `drone`/`airplane`**, that's Beat 3's surprise). The fusion
+    node is up, so its config is up; the chips show "what the
+    sensors *will* look for once they're running."
+  - **Two sector tiles**: badge reads "stopped" (gray, calmer than
+    "offline" — stopped is intentional). Snapshot endpoint returns
+    a flat-gray "AWAITING START · SENSOR · NORTH" placeholder frame
+    (no reticle, no scan-line, no REC pulse — just the sensor's
+    identity card and a single line saying it hasn't been started).
   - **Recent events panels**: empty.
-  - **EXPANSO PLATFORM tile**: **0/4 running**, four gray dots
-    labeled `orchestrator`, `sensor-north`, `sensor-south`,
-    `armyx-tech-event-archive` — each pill text reads
-    "name · stopped".
+  - **EXPANSO PLATFORM tile**: **1/4 running** — `fusion-node` is
+    the lone green dot ("fusion-node · running"); the three
+    workload jobs (`sensor-north`, `sensor-south`,
+    `armyx-tech-event-archive`) are gray and read "name · stopped".
   - **Cloud Egress tile**: bucket name visible, badge **gray "idle"**,
     object count 0.
   - **Footer**: "Powered by Expanso · workload moves to the data ·
-    0/4 jobs · 0 events · 0 fused".
+    1/4 jobs · 0 events · 0 fused".
   - **Topology**: gray, no arrows lit.
 
 *[Stand at the laptop. Gesture at the dashboard, then at the cloud
 UI on your screen.]*
 
 > "Before I start: every Expanso job for this demo — sensors,
-> orchestrator, archive — is already provisioned in the cluster
-> you can see in this browser tab. Right now they're all stopped.
-> Look at the dashboard: zero of four jobs running."
+> archive, and the fusion node you're watching this dashboard
+> through — is already provisioned in the `armyx-tech` cluster
+> on Expanso Cloud. The fusion node is running. Look at the
+> bottom of the screen: one of four jobs running. The other
+> three — both sensors and the cloud archive pipeline — are
+> stopped, waiting."
 
-*[Pause one beat. Let judges see the gray dots and "0/4".]*
+*[Pause one beat. Let judges see the 1/4 and the three gray dots.]*
 
 > "Everything is one click away. From this cloud control plane,
-> right now, I'm going to start all four — orchestrator first,
-> then both sensors, then the archive — and watch what fires up
-> on the dashboard."
+> right now, I'm going to start the three stopped workload jobs
+> — sensor-north, sensor-south, and the S3 archive — and watch
+> what comes alive on the dashboard."
 
 **Operator**: switch focus to the Expanso Cloud UI tab. Click **Start**
-(or **Rerun**) on each of the four jobs in order: `orchestrator` →
+(or **Rerun**) on each of the three stopped jobs in order:
 `sensor-north` → `sensor-south` → `armyx-tech-event-archive`. *(If the
 UI offers a "start all" bulk action, use it — the per-job clicks are
 the unbulked fallback.)*
 
 *[Switch focus back to the dashboard. The EXPANSO PLATFORM tile dots
-flip green one-by-one as each job's Expanso execution reports
-Running. The "0/4" counter ticks up: 1/4 … 2/4 … 3/4 … 4/4. Tier
-strip's EDGE and ORCHESTRATOR dots go green. Sector tiles light up
-with live camera feed as the sensors attach. Trigger bar populates
-from the orchestrator's default config.]*
+flip green one-by-one as each Expanso execution reports Running. The
+"1/4" counter ticks up: 2/4 … 3/4 … 4/4. Tier strip's EDGE dot goes
+green as the first sensor attaches. Sector tiles light up with live
+camera feed. Trigger bar populates from the fusion node's default
+config.]*
 
-> "Four jobs. Same control plane. Same spec format. Orchestrator,
-> two sensors, archive. Started from the cloud, executing on the
-> edge. Now we're live."
+> "Four jobs. Same control plane. Same spec format. The fusion node
+> hosting this dashboard, two sensors on the Jetson, and the archive
+> pipeline that's about to ship every event to S3. Started from the
+> cloud, executing on the edge. Now we're live."
 
 *[Hold on the fully-green dashboard for one beat. Transition into
 Beat 1.]*
 
-**Drop-rule**: if any job hasn't flipped Running by ~10s after the
-click, the operator says **"…and we'll come back to that"** and
-advances straight to Beat 1, narrating *as if* the start completed
-(the dashboard catches up in the background, usually before Beat 2
-ends). CLI fallback if the UI is slow or wedged: drop to a terminal
-and run `expanso-cli job rerun <name>` for whichever job is still
-gray. Reset between rehearsals with `./scripts/demo_reset.sh`
-(stops the four jobs without deleting them, so the next rehearsal
-starts from the same Beat 0 lights-up state).
+**Drop-rule**: if any of the three workload jobs hasn't flipped
+Running by ~10s after the click, the operator says **"…and we'll
+come back to that"** and advances straight to Beat 1, narrating *as
+if* the start completed (the dashboard catches up in the background,
+usually before Beat 2 ends). CLI fallback if the UI is slow or
+wedged: drop to a terminal and run `expanso-cli job rerun <name>`
+for whichever job is still gray. Reset between rehearsals with
+`./scripts/demo_reset.sh` (stops the three workload jobs without
+touching the fusion node, so the next rehearsal starts from the
+same Beat 0 lights-up state with the dashboard still alive).
 
 ---
 
@@ -156,7 +173,7 @@ starts from the same Beat 0 lights-up state).
 > see — the sensors, the correlator, the audit pipeline — is the
 > same kind of Expanso job, on the same control plane.  The best part about it is that this is a pure augmentation overlay. The same cloud-like intelligence you have in the cloud still works. You're just layering these solutions over the cloud and reusing them as if they had been plugged in without installing any new physical devices. 
 > 
-> Let's start by looking at the bottom of the screen: those four jobs we just deployed are now running. "
+> Let's start by looking at the bottom of the screen: those four jobs we just brought online — fusion node, two sensors, archive — all running on the same control plane. "
 
 ---
 
@@ -177,7 +194,7 @@ starts from the same Beat 0 lights-up state).
 > the model version that produced it. That's a choice the edge
 > made, not the cloud. Watch the topology indicator in the corner —
 > that arrow lit up the moment the event left the Jetson and arrived
-> at the orchestrator."
+> at the fusion node."
 
 ---
 
@@ -200,7 +217,7 @@ starts from the same Beat 0 lights-up state).
 > hardware. Hours to days. What if you could change what the fleet
 > is *looking for* right now, while every sensor stays running?
 >
-> The orchestrator holds the active trigger list. Every sensor
+> The fusion node holds the active trigger list. Every sensor
 > polls it once a second. I push one config update — and every
 > sensor on the network picks it up before I finish the sentence."
 
@@ -237,7 +254,7 @@ dashboard with both contacts side-by-side in 60-pixel type, amber on
 black.]*
 
 > "Multi-sector correlation. Two sectors, two contact types, fused
-> locally on the orchestrator. No human did that correlation. The
+> locally on the fusion node — no human did that correlation. The
 > system did, in under five seconds, without anything reaching back
 > to a cloud. This is the fusion problem that almost nothing in
 > production solves today."
@@ -394,9 +411,9 @@ wasn't there pre-Beat-5B.]*
 > cleanly when the link came back. And every event from that demo
 > is sitting in S3 right now, signed, with provenance.
 >
-> Every component on the screen — the sensors, the orchestrator,
+> Every component on the screen — the sensors, the fusion node,
 > the archive pipeline — is the same kind of job spec, managed by
-> the same control plane. That spec, with no code changes, deploys
+> the same control plane: Expanso Cloud. That spec, with no code changes, deploys
 > to the perimeter of a FOB. To a Reaper. To a JTAC's pack. To a
 > destroyer's CIC. Or all four at once. The sensor changes. The
 > pipeline doesn't.
