@@ -895,7 +895,16 @@ async function startWebRTCFor(sectorEl) {
     if (!resp.ok) throw new Error(`go2rtc HTTP ${resp.status}`);
     const answerSdp = await resp.text();
     await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
-    console.log(`[webrtc] ${sector} ← ${stream} negotiated`);
+    // Tell the browser to maintain a 2s playout buffer on the video stream.
+    // This artificially delays the live WebRTC display so it lines up with
+    // YOLO bbox events (which trail realtime by ~300–500ms inference + WS).
+    // Net effect: judges see the bracket land on the person at the same
+    // instant the video frame shows them. The "live" badge becomes a
+    // 2-second-old-live, which is fine for a stage demo.
+    for (const r of pc.getReceivers()) {
+      if (r.track && r.track.kind === 'video') r.playoutDelayHint = 2.0;
+    }
+    console.log(`[webrtc] ${sector} ← ${stream} negotiated (playoutDelay 2s)`);
   } catch (err) {
     console.warn(`[webrtc] ${sector} failed, falling back to JPEG snapshot:`, err);
     // The fallback <img class="sector-fallback"> is z-index 0 underneath the video.
