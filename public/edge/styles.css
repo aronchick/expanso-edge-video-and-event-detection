@@ -106,9 +106,9 @@ body {
     minmax(0, 1fr)          /* 4: south sector + south events */
     auto                    /* 5: platform-strip (with tier dots inline) */
     auto;                   /* 6: footer */
-  /* Cameras get more horizontal weight — they're the visual hero. Events
-     column is dense single-line rows so it doesn't need 70% of width. */
-  grid-template-columns: minmax(0, 42rem) minmax(0, 1fr);
+  /* Two-column grid. Camera column uses fr-share so it scales with the row
+     height — keeps both N + S sectors fully visible at any viewport. */
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
   height: 100vh;
   width: 100vw;
   gap: var(--gap);
@@ -451,11 +451,11 @@ body.tier-edge-down #tier-edge {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  /* Square tile per user direction — full width of camera column, height
-     auto-matched. align-self: start prevents grid from stretching to row height. */
-  aspect-ratio: 1 / 1;
-  align-self: start;
+  /* Fill the grid cell — both camera tiles equal height, both visible.
+     The aspect-ratio: 1/1 hack was breaking the layout when the column
+     was wider than half the available row height. */
   width: 100%;
+  height: 100%;
 }
 .sector-head {
   display: flex;

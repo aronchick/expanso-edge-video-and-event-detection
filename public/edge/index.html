@@ -170,10 +170,52 @@
   </div>
 
   <!-- ARCH view — alternative to OPS dashboard. Hidden by default; tab toggles
-       body.tab-arch to show. Spans rows 2-7 (everything below the header). -->
+       body.tab-arch to show. Spans rows 2-7 (everything below the header).
+       Layout: 3-column grid. Col 1 = 2 cameras (stacked), col 2 = Cloud-above-
+       Jetson (the cloud arrow lands on Jetson's top edge), col 3 = 3 fan-out
+       boxes (Local / Gemini / S3) stacked. -->
   <section class="arch-view" aria-label="Architecture and data flow">
-    <!-- Control plane: Expanso Cloud (perpendicular to data flow) -->
-    <div class="arch-control-plane">
+
+    <!-- Column 1: cameras (two distinct boxes, north + south). The horizontal
+         arrow on each camera tile points at the Jetson. -->
+    <div class="arch-col arch-col--cameras">
+      <div class="arch-cameras">
+        <div class="arch-box arch-box--cam-mini">
+          <div class="arch-box__head">
+            <div class="arch-box__label">Camera · north</div>
+            <div class="arch-box__sub">EO/IR · RTSP</div>
+          </div>
+          <div class="arch-pills">
+            <span class="arch-pill">existing infra</span>
+          </div>
+        </div>
+        <div class="arch-box arch-box--cam-mini">
+          <div class="arch-box__head">
+            <div class="arch-box__label">Camera · south</div>
+            <div class="arch-box__sub">EO/IR · RTSP</div>
+          </div>
+          <div class="arch-pills">
+            <span class="arch-pill">existing infra</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Camera → Jetson stem (single arrow, since both cameras feed the same
+         Jetson; counter is the aggregate events/min). -->
+    <div class="arch-arrow arch-arrow--horizontal arch-col arch-col--cam-arrow">
+      <div class="arch-arrow-stem">
+        <span class="arch-arrow-flow" id="arch-flow-rtsp"></span>
+      </div>
+      <div class="arch-arrow-meta">
+        <span class="arch-arrow-counter" id="arch-counter-rtsp">RTSP</span>
+        <span class="arch-arrow-label">stream</span>
+      </div>
+    </div>
+
+    <!-- Column 2: Cloud + vertical arrow + Jetson stacked. The vertical arrow
+         visually terminates AT the top edge of the Jetson box (no gap). -->
+    <div class="arch-col arch-col--center">
       <div class="arch-box arch-box--cloud">
         <div class="arch-box__head">
           <div class="arch-box__label">Expanso Cloud</div>
@@ -187,123 +229,119 @@
       </div>
       <div class="arch-control-arrow">
         <div class="arch-arrow-stem arch-arrow-stem--vertical">
-          <span class="arch-arrow-flow arch-arrow-flow--vertical"></span>
+          <span class="arch-arrow-flow arch-arrow-flow--vertical" id="arch-flow-jobs"></span>
         </div>
         <div class="arch-arrow-meta">
           <span class="arch-arrow-counter" id="arch-counter-jobs">— jobs</span>
           <span class="arch-arrow-label">deploy</span>
         </div>
       </div>
+      <div class="arch-box arch-box--jetson">
+        <div class="arch-box__head">
+          <div class="arch-box__label">Jetson Orin</div>
+          <div class="arch-box__sub">edge node · GPU inference · DDIL-tolerant</div>
+        </div>
+        <div class="arch-pills">
+          <span class="arch-pill arch-pill--accent">Expanso Edge</span>
+          <span class="arch-pill">YOLO v8 GPU</span>
+          <span class="arch-pill">fresh-frame reader</span>
+          <span class="arch-pill">trigger filter</span>
+          <span class="arch-pill">event router</span>
+          <span class="arch-pill">DBOM sign</span>
+          <span class="arch-pill">SQLite store</span>
+          <span class="arch-pill">offline replay queue</span>
+        </div>
+        <!-- Live stat block: real numbers describing what the node is doing
+             RIGHT NOW. Wired client-side from /metrics. -->
+        <div class="arch-livestat">
+          <div class="arch-livestat-row">
+            <span class="arch-livestat-label">events/min</span>
+            <span class="arch-livestat-val" id="arch-jet-epm">—</span>
+          </div>
+          <div class="arch-livestat-row">
+            <span class="arch-livestat-label">frames/sec</span>
+            <span class="arch-livestat-val" id="arch-jet-fps">—</span>
+          </div>
+          <div class="arch-livestat-row">
+            <span class="arch-livestat-label">last frame</span>
+            <span class="arch-livestat-val" id="arch-jet-age">—</span>
+          </div>
+          <div class="arch-livestat-row">
+            <span class="arch-livestat-label">queued offline</span>
+            <span class="arch-livestat-val" id="arch-jet-queued">0</span>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <!-- Data plane: Camera → Jetson → 3-way fan-out -->
-    <div class="arch-data-plane">
-
-      <!-- Trunk: camera and jetson on a single horizontal line, centered against the fan-out. -->
-      <div class="arch-data-trunk">
-        <div class="arch-box arch-box--camera">
-          <div class="arch-box__head">
-            <div class="arch-box__label">Camera</div>
-            <div class="arch-box__sub">existing infra · 2× EO/IR</div>
-          </div>
-          <div class="arch-pills">
-            <span class="arch-pill">north</span>
-            <span class="arch-pill">south</span>
-          </div>
-        </div>
-
-        <div class="arch-arrow arch-arrow--horizontal">
+    <!-- Column 3: 3-way fan-out, each branch arrow + box. Boxes are square-ish
+         (aspect-ratio target ~5:4), pills wrap, content centered. -->
+    <div class="arch-col arch-col--fanout">
+      <div class="arch-fanout-row">
+        <div class="arch-arrow arch-arrow--horizontal arch-arrow--branch">
           <div class="arch-arrow-stem">
-            <span class="arch-arrow-flow"></span>
+            <span class="arch-arrow-flow" id="arch-flow-local"></span>
           </div>
           <div class="arch-arrow-meta">
-            <span class="arch-arrow-counter" id="arch-counter-rtsp">RTSP</span>
-            <span class="arch-arrow-label">stream</span>
+            <span class="arch-arrow-counter" id="arch-counter-local">— /min</span>
+            <span class="arch-arrow-label">fused</span>
           </div>
         </div>
-
-        <div class="arch-box arch-box--jetson">
+        <div class="arch-box arch-box--local arch-box--square">
           <div class="arch-box__head">
-            <div class="arch-box__label">Jetson Orin</div>
-            <div class="arch-box__sub">edge node · GPU inference · DDIL-tolerant</div>
+            <div class="arch-box__label">Local Decision</div>
+            <div class="arch-box__sub">stays on edge</div>
           </div>
           <div class="arch-pills">
-            <span class="arch-pill arch-pill--accent">Expanso Edge</span>
-            <span class="arch-pill">YOLO v8 GPU</span>
-            <span class="arch-pill">fresh-frame reader</span>
-            <span class="arch-pill">trigger filter</span>
-            <span class="arch-pill">event router</span>
-            <span class="arch-pill">DBOM sign</span>
-            <span class="arch-pill">SQLite store</span>
-            <span class="arch-pill">offline replay queue</span>
+            <span class="arch-pill">correlator (5s)</span>
+            <span class="arch-pill">fused alerts</span>
+            <span class="arch-pill">8s cooldown</span>
           </div>
         </div>
       </div>
 
-      <div class="arch-fanout">
-        <div class="arch-fanout-row">
-          <div class="arch-arrow arch-arrow--horizontal arch-arrow--branch">
-            <div class="arch-arrow-stem">
-              <span class="arch-arrow-flow"></span>
-            </div>
-            <div class="arch-arrow-meta">
-              <span class="arch-arrow-counter" id="arch-counter-local">— /min</span>
-              <span class="arch-arrow-label">fused</span>
-            </div>
+      <div class="arch-fanout-row">
+        <div class="arch-arrow arch-arrow--horizontal arch-arrow--branch">
+          <div class="arch-arrow-stem">
+            <span class="arch-arrow-flow" id="arch-flow-gemini"></span>
           </div>
-          <div class="arch-box arch-box--local">
-            <div class="arch-box__head">
-              <div class="arch-box__label">Local Decision</div>
-              <div class="arch-box__sub">stays on edge</div>
-            </div>
-            <div class="arch-pills">
-              <span class="arch-pill">correlator (5s)</span>
-              <span class="arch-pill">fused alerts</span>
-            </div>
+          <div class="arch-arrow-meta">
+            <span class="arch-arrow-counter" id="arch-counter-gemini-flow">— /min</span>
+            <span class="arch-arrow-label">reachback</span>
           </div>
         </div>
-
-        <div class="arch-fanout-row">
-          <div class="arch-arrow arch-arrow--horizontal arch-arrow--branch">
-            <div class="arch-arrow-stem">
-              <span class="arch-arrow-flow"></span>
-            </div>
-            <div class="arch-arrow-meta">
-              <span class="arch-arrow-counter" id="arch-counter-gemini-flow">— /min</span>
-              <span class="arch-arrow-label">reachback</span>
-            </div>
+        <div class="arch-box arch-box--gemini arch-box--square">
+          <div class="arch-box__head">
+            <div class="arch-box__label">Gemini</div>
+            <div class="arch-box__sub">cloud analyst</div>
           </div>
-          <div class="arch-box arch-box--gemini">
-            <div class="arch-box__head">
-              <div class="arch-box__label">Gemini</div>
-              <div class="arch-box__sub">cloud analyst</div>
-            </div>
-            <div class="arch-pills">
-              <span class="arch-pill">per-event</span>
-              <span class="arch-pill">descriptions</span>
-            </div>
+          <div class="arch-pills">
+            <span class="arch-pill">per-event</span>
+            <span class="arch-pill">descriptions</span>
+            <span class="arch-pill">per-event</span>
           </div>
         </div>
+      </div>
 
-        <div class="arch-fanout-row">
-          <div class="arch-arrow arch-arrow--horizontal arch-arrow--branch">
-            <div class="arch-arrow-stem">
-              <span class="arch-arrow-flow"></span>
-            </div>
-            <div class="arch-arrow-meta">
-              <span class="arch-arrow-counter" id="arch-counter-s3-flow">— obj</span>
-              <span class="arch-arrow-label">archive</span>
-            </div>
+      <div class="arch-fanout-row">
+        <div class="arch-arrow arch-arrow--horizontal arch-arrow--branch">
+          <div class="arch-arrow-stem">
+            <span class="arch-arrow-flow" id="arch-flow-s3"></span>
           </div>
-          <div class="arch-box arch-box--s3">
-            <div class="arch-box__head">
-              <div class="arch-box__label">S3 Archive</div>
-              <div class="arch-box__sub">long-term storage</div>
-            </div>
-            <div class="arch-pills">
-              <span class="arch-pill">bloblang pipeline</span>
-              <span class="arch-pill">fan-out</span>
-            </div>
+          <div class="arch-arrow-meta">
+            <span class="arch-arrow-counter" id="arch-counter-s3-flow">— obj</span>
+            <span class="arch-arrow-label">archive</span>
+          </div>
+        </div>
+        <div class="arch-box arch-box--s3 arch-box--square">
+          <div class="arch-box__head">
+            <div class="arch-box__label">S3 Archive</div>
+            <div class="arch-box__sub">long-term storage</div>
+          </div>
+          <div class="arch-pills">
+            <span class="arch-pill">bloblang</span>
+            <span class="arch-pill">fan-out</span>
+            <span class="arch-pill">store-and-forward</span>
           </div>
         </div>
       </div>
