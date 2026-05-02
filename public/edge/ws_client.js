@@ -797,9 +797,9 @@ function updateCameraCurves() {
   const pathN = document.getElementById('cam-curve-north');
   const pathS = document.getElementById('cam-curve-south');
   if (!svg || !camN || !camS || !edge || !pathN || !pathS) return;
-  if (!svg.offsetWidth) return; // not visible yet
-
   const sR = svg.getBoundingClientRect();
+  if (!sR.width || !sR.height) return; // not visible yet (SVGElement has no offsetWidth)
+
   const nR = camN.getBoundingClientRect();
   const sR2 = camS.getBoundingClientRect();
   const eR = edge.getBoundingClientRect();
@@ -966,15 +966,19 @@ function drawBboxOverlay(sector, hits) {
   }
 }
 
-// Hook: every WS event with yolo_hits triggers an overlay redraw. Hold for 3.5s
-// so boxes stay visible between sparse events (typical 1–2 events/sec/sector).
+// Hook: every WS event with yolo_hits triggers an overlay redraw. Hold ~1s.
+// Tradeoff: a longer hold (e.g. 3.5s) bridges gaps between sparse events but
+// leaves a stale bracket painted where a fast-moving subject WAS while they
+// continue walking — looks like the tracker is drunk. 1s vanishes stale boxes
+// before the YOLO/transport lag (~300–500ms) becomes visually distracting,
+// while still keeping the bracket up most frames at ~2 events/sec/sector.
 function pushBboxOverlay(e) {
   if (!e || !e.node || !e.yolo_hits) return;
   drawBboxOverlay(e.node, e.yolo_hits);
   if (_bboxClearTimers[e.node]) clearTimeout(_bboxClearTimers[e.node]);
   _bboxClearTimers[e.node] = setTimeout(() => {
     drawBboxOverlay(e.node, []);
-  }, 3500);
+  }, 1000);
 }
 
 // Boot WebRTC for every .sector-feed[data-stream] (after page load so DOM exists).
