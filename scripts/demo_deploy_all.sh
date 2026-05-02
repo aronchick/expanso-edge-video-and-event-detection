@@ -27,10 +27,18 @@
 set -uo pipefail
 
 JOBS=(
-  "jobs/orchestrator-job.yaml:orchestrator"
+  "jobs/fusion-node-job.yaml:fusion-node"
   "jobs/sensor-north-job.yaml:sensor-north"
   "jobs/sensor-south-job.yaml:sensor-south"
   "jobs/armyx-tech-event-archive.yaml:armyx-tech-event-archive"
+)
+# These are the jobs we stop after deploy to reach Beat 0 lights-up
+# state. The fusion-node is intentionally NOT in this list — it serves
+# the dashboard, so stopping it would blank the conference monitor.
+WORKLOAD_JOBS=(
+  "sensor-north"
+  "sensor-south"
+  "armyx-tech-event-archive"
 )
 PER_JOB_TIMEOUT_SEC=10
 DRY=0
@@ -124,9 +132,9 @@ if [[ "$DRY" -eq 1 ]]; then
 fi
 
 echo
-echo "INFO  stopping jobs so post-deploy state matches Beat 0 lights-up"
-for entry in "${JOBS[@]}"; do
-  name="${entry##*:}"
+echo "INFO  stopping the 3 workload jobs so post-deploy state matches Beat 0 lights-up"
+echo "      (fusion-node stays running — it serves the dashboard)"
+for name in "${WORKLOAD_JOBS[@]}"; do
   printf "INFO  stopping %-32s ... " "$name"
   if echo "y" | timeout 8 expanso-cli job stop "$name" >/dev/null 2>&1; then
     echo "stopped"
@@ -137,6 +145,11 @@ done
 
 echo
 echo "OK    armyx-tech demo ready for Beat 0"
-echo "      4 jobs deployed and verified, all currently stopped."
-echo "      On stage, start them from the Expanso Cloud UI."
+echo "      4 jobs deployed and verified."
+echo "      fusion-node    : RUNNING (serving dashboard)"
+echo "      sensor-north   : stopped"
+echo "      sensor-south   : stopped"
+echo "      event-archive  : stopped"
+echo "      Dashboard tile shows 1/4 running. On stage, start the 3"
+echo "      stopped jobs from the Expanso Cloud UI."
 echo "      To re-rehearse: ./scripts/demo_reset.sh"
