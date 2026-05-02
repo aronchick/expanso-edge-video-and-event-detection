@@ -1,0 +1,1359 @@
+/* Edge ISR — stage-scale design system.
+   Per DEMO_UI_SPEC.md §1-2. Targeted at 1920×1080+ conference monitors
+   viewed from 15-20 ft. All hero sizes use vw/vh so larger screens
+   scale up gracefully. */
+
+:root {
+  /* Color tokens */
+  --bg: #0b0d10;
+  --surface: #15181d;
+  --surface-2: #1c2027;
+  --border: #262b33;
+  --text: #f4f6f8;
+  --text-dim: #9aa3ad;
+  --text-mono: #5b6470;
+
+  --ok: #3ddc84;
+  --alert: #ffa726;
+  --critical: #ff4d4f;
+  --replay: #7e57c2;
+  --expanso: #7fb8dc;
+
+  /* Type scale — stage default (1920×1080+ conference monitor at 15-20 ft).
+     Overridden below for laptop preview (≤ 1700px wide). */
+  --t-caption: 1.0rem;   /* 18px */
+  --t-body:    1.22rem;  /* 22px */
+  --t-body-lg: 1.55rem;  /* 28px */
+  --t-h:       2.2rem;   /* 40px */
+  --t-display: 3.3rem;   /* 60px */
+  --t-hero:    5.5rem;   /* 100px */
+
+  /* Motion */
+  --m-fast: 200ms;
+  --m-base: 300ms;
+  --m-slow: 400ms;
+
+  /* Layout */
+  --gap: 1rem;
+  --pad: 1.25rem;
+  --radius: 10px;
+}
+
+* { box-sizing: border-box; }
+
+html { font-size: 18px; }                            /* base type unit */
+@media (min-width: 1920px) { html { font-size: 20px; } }
+@media (min-width: 2560px) { html { font-size: 24px; } }
+
+/* Desk/preview override — scales the type down well below stage scale.
+   Threshold raised to 2400px so any retina laptop (≤1920 logical, often ~2000+
+   physical effective) renders at compact desk-viewing scale instead of
+   stage-monitor scale. Stage rendering only kicks in on real 2400px+ wall monitors. */
+@media (max-width: 2400px) {
+  :root {
+    --t-caption: 0.75rem;  /* 13.5px */
+    --t-body:    0.9rem;   /* 16px */
+    --t-body-lg: 1.05rem;  /* 19px */
+    --t-h:       1.25rem;  /* 22px */
+    --t-display: 1.8rem;   /* 32px */
+    --t-hero:    3rem;     /* 54px */
+    --gap: 0.5rem;
+    --pad: 0.7rem;
+    --radius: 6px;
+  }
+}
+
+body {
+  margin: 0;
+  /* Layered atmospheric background — avoids the flat-dark-card AI-dashboard
+     look. Subtle radial wash + horizontal sensor-bar gradient hint at a
+     real operational surface, not a Bootstrap template. */
+  background:
+    radial-gradient(ellipse 90% 60% at 50% -10%, rgba(127,184,220,0.04), transparent 70%),
+    radial-gradient(ellipse 80% 50% at 50% 110%, rgba(255,167,38,0.025), transparent 70%),
+    var(--bg);
+  color: var(--text);
+  font: var(--t-body)/1.45 "IBM Plex Sans", "Inter Tight", "Inter", -apple-system, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+  min-height: 100vh;
+}
+
+/* Distinctive typeface — IBM Plex Sans for body, IBM Plex Mono for data.
+   Loaded async via preconnect + display=swap so initial paint isn't blocked. */
+
+/* ── Layout grid ──────────────────────────────────────────────────── */
+
+.app {
+  display: grid;
+  /* Seven rows: header / tier-strip / triggers / cameras / events / platform+egress / footer
+     Cameras get a touch more than events because they're the hero. Row 6 is
+     fixed-height so platform + egress always match. The tier-strip is a
+     narrow auto-sized row that visualizes the EDGE → ORCHESTRATOR → CLOUD
+     hierarchy claimed in the demo script. */
+  grid-template-rows:
+    auto                    /* 1: header */
+    auto                    /* 2: tier strip */
+    auto                    /* 3: triggers bar */
+    auto                    /* 4: fusion tile (replaces modal — always visible) */
+    minmax(0, 1.4fr)        /* 5: camera tiles */
+    minmax(0, 1fr)          /* 6: event panels */
+    auto                    /* 7: platform + egress */
+    auto;                   /* 8: footer */
+  grid-template-columns: 1fr 1fr;
+  height: 100vh;
+  width: 100vw;
+  gap: var(--gap);
+  padding: var(--gap);
+}
+
+.header        { grid-row: 1; grid-column: 1 / span 2; }
+.tier-strip    { grid-row: 2; grid-column: 1 / span 2; }
+.triggers-bar  { grid-row: 3; grid-column: 1 / span 2; }
+.fusion-tile   { grid-row: 4; grid-column: 1 / span 2; }
+.sector-north  { grid-row: 5; grid-column: 1; }
+.sector-south  { grid-row: 5; grid-column: 2; }
+.events-north  { grid-row: 6; grid-column: 1; }
+.events-south  { grid-row: 6; grid-column: 2; }
+.platform      { grid-row: 7; grid-column: 1; }
+.egress        { grid-row: 7; grid-column: 2; }
+.arch-view     { grid-row: 2 / 8; grid-column: 1 / span 2; display: none; }
+.footer        { grid-row: 8; grid-column: 1 / span 2; }
+
+/* Tab visibility — body class drives which view is rendered. Header always visible. */
+body.tab-arch .tier-strip,
+body.tab-arch .triggers-bar,
+body.tab-arch .fusion-tile,
+body.tab-arch .sector,
+body.tab-arch .events-panel,
+body.tab-arch .platform,
+body.tab-arch .egress { display: none; }
+body.tab-arch .arch-view { display: grid; }
+
+/* ── Header ───────────────────────────────────────────────────────── */
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.4rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.brand {
+  font-size: var(--t-h);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.brand .dot {
+  width: 0.5em; height: 0.5em;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 0.5em var(--ok);
+}
+
+.header-right {
+  display: flex;
+  gap: var(--gap);
+  align-items: center;
+}
+
+/* Tab switcher (OPS / ARCH). LED-bracket aesthetic — square corners, mono,
+   no pill rounding. Active tab gets the Expanso accent + filled bottom rail. */
+.tab-switcher {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--surface-2);
+  margin: 0 auto;
+}
+.tab {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: var(--t-caption);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-mono);
+  background: transparent;
+  border: 0;
+  padding: 0.45em 1.4em;
+  cursor: pointer;
+  transition: color var(--m-fast), background var(--m-fast), box-shadow var(--m-fast);
+  border-right: 1px solid var(--border);
+}
+.tab:last-child { border-right: 0; }
+.tab:hover { color: var(--text-dim); background: rgba(127,184,220,0.05); }
+.tab.is-active {
+  color: var(--expanso);
+  background: rgba(127,184,220,0.10);
+  box-shadow: inset 0 -2px 0 var(--expanso);
+}
+
+.metric-pill {
+  font-size: var(--t-body-lg);
+  padding: 0.4em 0.9em;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  /* Reserve space so the pill doesn't resize as the value grows from "9" to "10" */
+  min-width: 9rem;
+  display: inline-flex;
+  justify-content: space-between;
+  gap: 0.5em;
+}
+.metric-pill .label { color: var(--text-dim); margin-right: 0.4em; }
+.metric-pill .value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+.cloud-pill {
+  font-size: var(--t-body-lg);
+  padding: 0.4em 0.9em;
+  border-radius: 999px;
+  background: rgba(61, 220, 132, 0.12);
+  color: var(--ok);
+  border: 1px solid var(--ok);
+  font-weight: 600;
+}
+.cloud-pill.down {
+  background: rgba(255, 77, 79, 0.18);
+  color: var(--critical);
+  border-color: var(--critical);
+}
+
+/* Gemini reachback pill — flashes when a Gemini call lands so the cloud's
+   participation is visible per-event, not just inferred from the description. */
+.metric-pill#metric-gemini-pill {
+  transition: background var(--m-fast), border-color var(--m-fast);
+}
+.metric-pill#metric-gemini-pill.bumped {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: #000;
+}
+.metric-pill#metric-gemini-pill.bumped .label,
+.metric-pill#metric-gemini-pill.bumped .value { color: #000; }
+
+/* ── Tier strip (EDGE · FUSION · CLOUD) ───────────────────────────── */
+
+/* Three-tier hierarchy indicator.
+     EDGE   = sensors on the Jetson
+     FUSION = local FastAPI process (event store + correlator + dashboard)
+     CLOUD  = Expanso Cloud (cluster orchestrator) + AWS S3 (archive sink)
+   Beat 1 of the demo script claims EDGE and FUSION keep working when
+   CLOUD drops. This strip makes that claim visceral: when
+   body.cloud-down is set (F1 fired), only the CLOUD dot dims to
+   monochrome — the other two stay green.
+   Beat 0 lights-up: only FUSION + CLOUD are green; EDGE dims because
+   no sensors are running yet. body.tier-edge-down handles that. */
+.tier-strip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 0.25rem 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: var(--t-caption);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.tier {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+}
+.tier-label { font-weight: 600; }
+.tier-dot {
+  width: 0.7em; height: 0.7em;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 0.5em var(--ok);
+  transition: background var(--m-base), box-shadow var(--m-base);
+}
+.tier-sep { color: var(--text-mono); font-weight: 400; }
+
+/* When the cloud is down, the CLOUD dot loses its green and its glow.
+   EDGE and FUSION stay lit — that's the architectural claim. */
+body.cloud-down #tier-cloud {
+  background: var(--text-mono);
+  box-shadow: none;
+}
+
+/* Beat 0 lights-up: no sensors connected → EDGE dot dim. Driven by
+   ws_client.js's renderJobs when no sensor-* job is in 'running' state. */
+body.tier-edge-down #tier-edge {
+  background: var(--text-mono);
+  box-shadow: none;
+}
+
+/* ── Fusion tile (replaces full-screen fused-overlay) ─────────────── */
+
+.fusion-tile {
+  display: grid;
+  grid-template-columns: auto auto auto 1fr auto;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.4rem 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: var(--t-caption);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  height: 2.4rem;
+  overflow: hidden;
+  /* Subtle border-color transition so ACTIVE state lights up the whole tile */
+  transition: border-color var(--m-fast), background var(--m-fast);
+}
+/* LED-style square indicator (the spec's `led-status` primitive) */
+.fusion-light {
+  width: 0.85em;
+  height: 0.85em;
+  background: var(--text-mono);
+  border-radius: 1px;
+  flex-shrink: 0;
+  transition: background var(--m-fast), box-shadow var(--m-fast);
+}
+.fusion-label {
+  font-weight: 700;
+  color: var(--text-dim);
+  letter-spacing: 0.18em;
+}
+.fusion-state {
+  font-weight: 700;
+  color: var(--text-mono);
+  letter-spacing: 0.12em;
+}
+.fusion-detail {
+  color: var(--text-dim);
+  font-style: italic;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  font-family: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.fusion-meta {
+  color: var(--text-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ACTIVE state — when a fused alert just fired. Pulses for 6s then fades. */
+.fusion-tile.active {
+  border-color: var(--alert);
+  background:
+    linear-gradient(90deg, rgba(255,167,38,0.18), rgba(255,167,38,0.04) 60%),
+    var(--surface);
+  animation: fusion-pulse 1.2s ease-in-out 5;
+}
+.fusion-tile.active .fusion-light {
+  background: var(--alert);
+  box-shadow: 0 0 0.6em var(--alert);
+}
+.fusion-tile.active .fusion-state {
+  color: var(--alert);
+}
+.fusion-tile.active .fusion-detail {
+  color: var(--text);
+  font-style: normal;
+}
+@keyframes fusion-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,167,38,0); }
+  50%      { box-shadow: 0 0 0 0.4em rgba(255,167,38,0.18); }
+}
+
+/* ── Trigger bar ──────────────────────────────────────────────────── */
+
+.triggers-bar {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.3rem 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  /* Lock to a single line so adding triggers (F4) doesn't reflow the page */
+  height: 2.6rem;
+  overflow: hidden;
+}
+.triggers-bar h2 {
+  margin: 0;
+  font-size: var(--t-body);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.trigger-chips {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.35rem;
+  overflow-x: hidden;
+  flex: 1;
+  min-width: 0;
+}
+.chip {
+  font-size: var(--t-body);
+  padding: 0.2em 0.7em;
+  border-radius: 999px;
+  background: rgba(127, 184, 220, 0.12);
+  color: var(--expanso);
+  border: 1px solid rgba(127, 184, 220, 0.4);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-weight: 500;
+  transition: transform var(--m-base), background var(--m-base);
+  white-space: nowrap;
+}
+.chip.added {
+  animation: chip-pulse 1.5s ease-out;
+}
+@keyframes chip-pulse {
+  0%   { transform: scale(0.7); background: var(--alert); color: #000; box-shadow: 0 0 0 0 var(--alert); }
+  30%  { transform: scale(1.15); box-shadow: 0 0 0 1.5em rgba(255, 167, 38, 0); }
+  100% { transform: scale(1.0);  background: rgba(61, 220, 132, 0.18); color: var(--ok); }
+}
+
+/* ── Sector camera tiles ──────────────────────────────────────────── */
+
+.sector {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.sector-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.35rem 0.85rem;
+  border-bottom: 1px solid var(--border);
+}
+.sector-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  min-width: 0;
+}
+.sector-title {
+  font-size: var(--t-body-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.sector-subtitle {
+  font-size: var(--t-caption);
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  opacity: 0.85;
+}
+.sector-status {
+  font-size: var(--t-body);
+  padding: 0.15em 0.7em;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  font-weight: 500;
+}
+.sector-status.live    { color: var(--ok); border-color: var(--ok); background: rgba(61, 220, 132, 0.10); }
+.sector-status.offline { color: var(--critical); border-color: var(--critical); background: rgba(255, 77, 79, 0.10); }
+
+.sector-feed {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: #000;
+}
+.sector-feed img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.sector-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 0.5rem var(--pad);
+  background: linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,0.7) 60%);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  font-size: var(--t-body);
+  color: var(--text-dim);
+}
+
+/* ── Event panels ─────────────────────────────────────────────────── */
+
+.events-panel {
+  background:
+    linear-gradient(180deg, rgba(255,167,38,0.025), transparent 25%),
+    var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.45rem 0.85rem 0.55rem;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.events-panel h2 {
+  margin: 0 0 0.4rem;
+  font-size: var(--t-caption);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 600;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+.events-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+}
+
+.event {
+  background:
+    linear-gradient(90deg, rgba(255,167,38,0.06), transparent 25%),
+    var(--surface-2);
+  border-left: 3px solid var(--alert);
+  border-radius: 4px;
+  padding: 0.4rem 0.7rem 0.45rem;
+  animation: slide-in var(--m-base) ease-out;
+  /* Lock each event to a fixed height so inserts don't ripple through the list */
+  flex: 0 0 auto;
+  height: 3.6rem;
+  overflow: hidden;
+}
+@keyframes slide-in {
+  /* Opacity-only fade — no horizontal slide that visually nudges the column */
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.event.queued { border-left-color: var(--replay); }
+
+.event-row1 {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: var(--t-body);
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+.event-row1 .yolo {
+  font-size: var(--t-body-lg);
+  color: var(--text);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
+  margin-right: 0.5em;
+}
+.event-row1 .ts { white-space: nowrap; flex-shrink: 0; }
+.event-desc {
+  font-size: var(--t-body);
+  color: var(--text);
+  margin-top: 0.25rem;
+  font-style: italic;
+  /* Single-line clamp keeps event height predictable */
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.event-desc.local { color: var(--text-dim); font-style: normal; }
+.event-sig {
+  margin-top: 0.3rem;
+  font-size: var(--t-caption);
+  color: var(--text-mono);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  letter-spacing: 0.02em;
+}
+
+/* ── Expanso platform tile ────────────────────────────────────────── */
+
+.platform {
+  background:
+    linear-gradient(180deg, rgba(127,184,220,0.04), transparent 30%),
+    var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.85rem;
+  /* Stack label above jobs so all 4 job pills fit on a single row beneath. */
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.4rem;
+  height: 100%;
+  overflow: hidden;
+  min-height: 0;
+}
+.platform-header-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  min-width: 0;
+}
+.platform-label {
+  font-size: var(--t-caption);
+  color: var(--expanso);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  flex-shrink: 0;
+}
+.platform-tagline {
+  /* Inline with the label, separated by middot, so the 2×2 jobs grid below
+     gets the full row height it needs. Truncates with ellipsis if too long. */
+  font-size: var(--t-caption);
+  color: var(--text-dim);
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0.01em;
+  min-width: 0;
+}
+.platform-tagline::before {
+  content: "·  ";
+  color: var(--text-mono);
+  font-style: normal;
+  margin-right: 0.1em;
+}
+.platform-jobs {
+  /* 2×2 grid of jobs — matches the design spec's layout (DEMO_UI_SPEC.md §2)
+     and avoids horizontal clipping when 4 pills > column width at laptop scale. */
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.3rem 0.4rem;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  align-content: start;
+}
+.job-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  font-size: var(--t-body);
+  padding: 0.25em 0.75em;
+  border-radius: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.job-dot {
+  width: 0.55em; height: 0.55em;
+  border-radius: 50%;
+  background: var(--text-mono);
+  flex-shrink: 0;
+}
+.job-pill.running .job-dot { background: var(--ok); box-shadow: 0 0 0.4em var(--ok); }
+.job-pill.pending .job-dot { background: var(--alert); }
+.job-pill.failed  .job-dot { background: var(--critical); }
+.job-pill.failed { border-color: var(--critical); }
+
+/* ── Footer ───────────────────────────────────────────────────────── */
+
+.footer {
+  font-size: var(--t-body);
+  color: var(--text-dim);
+  padding: 0.4rem var(--pad);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+.footer .left { color: var(--expanso); font-weight: 500; }
+.footer .right { display: flex; gap: 1.2rem; }
+.footer .right .stat { display: inline-flex; align-items: baseline; gap: 0.4em; min-width: 6.5rem; justify-content: flex-end; }
+.footer .right .stat .label { color: var(--text-mono); margin-right: 0; }
+
+/* ── Cloud DOWN full-width banner ─────────────────────────────────── */
+
+.cloud-banner {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  background: var(--critical);
+  color: #fff;
+  padding: 1rem 2rem;
+  font-size: var(--t-display);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 900;
+  animation: slide-down var(--m-slow) ease-out;
+}
+@keyframes slide-down {
+  from { transform: translateY(-100%); }
+  to   { transform: translateY(0); }
+}
+.cloud-banner.show { display: flex; }
+.cloud-banner .label {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+}
+.cloud-banner .dot-pulse {
+  width: 0.6em; height: 0.6em;
+  border-radius: 50%;
+  background: #fff;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.5; transform: scale(0.85); }
+}
+.cloud-banner .queue {
+  font-size: var(--t-body-lg);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.95;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+body.cloud-down .app {
+  outline: 4px solid var(--critical);
+  outline-offset: -4px;
+  animation: border-pulse 1.6s ease-in-out infinite;
+}
+@keyframes border-pulse {
+  0%, 100% { outline-color: rgba(255, 77, 79, 0.6); }
+  50%      { outline-color: rgba(255, 77, 79, 1.0); }
+}
+
+/* ── Fused alert full-screen takeover ─────────────────────────────── */
+
+/* Fused alert overlay — DISABLED. Replaced by .fusion-tile (always-visible
+   strip in row 4). Kept hidden so legacy markup doesn't render. */
+.fused-overlay {
+  display: none !important;
+}
+.fused-overlay.show {
+  display: none !important;
+}
+/* Legacy keyframe kept so any orphaned animation references don't error */
+@keyframes fused-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+/* Old .fused-overlay variant — superseded but keep below for any legacy refs */
+.fused-overlay-legacy {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 13, 16, 0.45);
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  pointer-events: none;
+}
+@keyframes fused-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+/* Inner card sized to be readable but not dominate. */
+.fused-overlay::before {
+  /* No-op — placeholder so future variants can stack effects */
+  content: none;
+}
+.fused-headline,
+.fused-contacts,
+.fused-meta {
+  background: var(--surface);
+  border: 2px solid var(--alert);
+  pointer-events: auto;
+}
+.fused-headline {
+  font-size: var(--t-h);
+  font-weight: 700;
+  color: var(--alert);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.6rem 1.2rem;
+  border-bottom: none;
+  border-radius: var(--radius) var(--radius) 0 0;
+  margin: 0;
+  width: 36rem;
+  max-width: calc(100vw - 2rem);
+  justify-content: center;
+}
+.fused-headline .icon { font-size: 0.85em; }
+.fused-contacts {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.8rem 1rem;
+  border-top: none;
+  border-bottom: none;
+  margin: 0;
+  width: 36rem;
+  max-width: calc(100vw - 2rem);
+}
+.fused-contact {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.5rem 0.7rem;
+  flex: 1;
+  min-width: 0;
+}
+.fused-contact .sector {
+  font-size: var(--t-caption);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  margin-bottom: 0.2rem;
+}
+.fused-contact .hits {
+  font-size: var(--t-body-lg);
+  color: var(--alert);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.fused-contact .desc {
+  font-size: var(--t-caption);
+  color: var(--text);
+  margin-top: 0.25rem;
+  font-style: italic;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.fused-meta {
+  font-size: var(--t-caption);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  padding: 0.4rem 1.2rem;
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  margin: 0;
+  width: 36rem;
+  max-width: calc(100vw - 2rem);
+  text-align: center;
+}
+
+/* ── Cloud egress / S3 archive tile ───────────────────────────────── */
+
+.egress {
+  /* Linear gradient surface adds a subtle vertical lift — feels like a
+     tactical card, not a Tailwind stub. */
+  background:
+    linear-gradient(180deg, rgba(127,184,220,0.04), transparent 30%),
+    var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-height: 0;
+  /* Match platform tile height when no S3 data — same row, same height */
+  height: 100%;
+  overflow: hidden;
+}
+.egress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.egress-label {
+  font-size: var(--t-caption);
+  color: var(--expanso);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+.egress-state {
+  font-size: var(--t-caption);
+  padding: 0.15em 0.6em;
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  font-weight: 500;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  white-space: nowrap;
+}
+.egress-state.live    { color: var(--ok);       border-color: var(--ok);       background: rgba(61,220,132,0.10); }
+.egress-state.stalled { color: var(--alert);    border-color: var(--alert);    background: rgba(255,167,38,0.12); }
+.egress-state.error   { color: var(--critical); border-color: var(--critical); background: rgba(255,77,79,0.12); }
+.egress-state.offline { color: var(--text-mono); }
+
+.egress-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7rem;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+.egress-count .value {
+  font-size: var(--t-h);
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  transition: color var(--m-fast);
+}
+.egress-count.bumped .value {
+  color: var(--ok);
+  animation: count-bump var(--m-slow) ease-out;
+}
+@keyframes count-bump {
+  0%   { transform: scale(1.0); }
+  40%  { transform: scale(1.18); }
+  100% { transform: scale(1.0); }
+}
+.egress-count .unit {
+  margin-left: 0.4em;
+  font-size: var(--t-body);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.egress-meta {
+  display: flex;
+  flex-direction: column;
+  font-size: var(--t-caption);
+  color: var(--text-dim);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  line-height: 1.5;
+}
+
+.egress-recent {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  overflow: hidden;
+  /* Cap height so the grid row doesn't grow as new uploads arrive */
+  max-height: 6rem;
+}
+.egress-recent li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  font-size: var(--t-caption);
+  color: var(--text-dim);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  cursor: pointer;
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  transition: background var(--m-fast), color var(--m-fast);
+}
+.egress-recent li:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.egress-recent li .key {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;        /* keep the most-specific tail visible when truncated */
+  text-align: left;
+}
+.egress-recent li .ts { color: var(--text-mono); white-space: nowrap; }
+
+/* ── S3 object viewer modal ───────────────────────────────────────── */
+
+.s3-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 13, 16, 0.86);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+  padding: 4rem;
+}
+.s3-modal.show {
+  display: flex;
+  animation: fused-in var(--m-base) ease-out;
+}
+.s3-modal-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  width: 70vw;
+  max-width: 80rem;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.s3-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem var(--pad);
+  border-bottom: 1px solid var(--border);
+}
+.s3-modal-title {
+  font-size: var(--t-body-lg);
+  color: var(--expanso);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  word-break: break-all;
+}
+.s3-modal-close {
+  background: none;
+  border: 0;
+  color: var(--text-dim);
+  font-size: 2rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 0.5rem;
+}
+.s3-modal-close:hover { color: var(--text); }
+.s3-modal-body {
+  flex: 1;
+  margin: 0;
+  padding: var(--pad);
+  overflow: auto;
+  font-size: var(--t-body);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: var(--surface-2);
+}
+
+/* ── Topology mini ────────────────────────────────────────────────── */
+
+.topology {
+  /* Hidden by default — added clutter without informational value beyond
+     what the event stream already shows. Toggle via body.show-topology
+     to bring it back. Was overlapping the egress tile. */
+  display: none;
+  position: fixed;
+  bottom: 5rem;
+  right: 1.5rem;
+  width: 14rem;
+  height: 8rem;
+  background: rgba(11, 13, 16, 0.92);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  z-index: 50;
+  pointer-events: none;
+}
+body.show-topology .topology { display: block; }
+
+/* ── ARCH view (alternate tab) ────────────────────────────────────── */
+/* Layout: control plane (Expanso Cloud) on top, data plane below.
+   The data plane shows Camera → Jetson → 3-way fan-out (local / Gemini / S3).
+   Animated dots travel along arrow stems to make data flow visible. */
+
+.arch-view {
+  /* Replaces all OPS rows when active. Internal layout is its own grid.
+     Row 1 = control plane (Cloud + vertical-arrow region, with breathing room).
+     Row 2 = data plane (centered, the visual heart).
+     Row 3 = footer tagline. */
+  grid-template-rows: auto 1fr auto;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+  padding: 1.2rem 0.8rem 0.5rem;
+  background:
+    radial-gradient(ellipse 70% 50% at 50% 0%, rgba(127,184,220,0.05), transparent 60%),
+    var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  align-items: center;
+  justify-items: center;
+}
+
+/* ── Boxes (display-rectangle primitive) ──────────────────────────── */
+.arch-box {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.55rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 11rem;
+  position: relative;
+}
+.arch-box__head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+.arch-box__label {
+  font-size: var(--t-body-lg);
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+  font-family: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
+}
+.arch-box__sub {
+  font-size: var(--t-caption);
+  color: var(--text-dim);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  letter-spacing: 0.04em;
+}
+
+/* Box variants — subtle accent on top edge to differentiate roles */
+.arch-box--cloud   { border-top: 2px solid var(--expanso); }
+.arch-box--camera  { border-top: 2px solid var(--text-mono); }
+.arch-box--jetson  { border-top: 2px solid var(--ok); min-width: 14rem; }
+.arch-box--local   { border-top: 2px solid var(--ok); }
+.arch-box--gemini  { border-top: 2px solid var(--alert); }
+.arch-box--s3      { border-top: 2px solid var(--expanso); }
+
+/* ── Pills (bracket-label primitive — keeps with the operational vocab) ── */
+.arch-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.arch-pill {
+  font-size: var(--t-caption);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  color: var(--text-dim);
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.15em 0.55em;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.arch-pill::before { content: "[ "; color: var(--text-mono); }
+.arch-pill::after  { content: " ]"; color: var(--text-mono); }
+.arch-pill--accent {
+  color: var(--expanso);
+  border-color: rgba(127,184,220,0.45);
+  background: rgba(127,184,220,0.08);
+}
+
+/* ── Arrows (stem + animated flow dot + counter meta) ──────────────── */
+.arch-arrow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  flex-shrink: 0;
+}
+.arch-arrow--horizontal {
+  /* Stem horizontal */
+}
+.arch-arrow-stem {
+  position: relative;
+  height: 2px;
+  width: 5rem;
+  background: var(--border);
+  border-radius: 1px;
+}
+.arch-arrow-stem::after {
+  /* Arrowhead at the right end */
+  content: "";
+  position: absolute;
+  right: -1px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-left: 6px solid var(--text-mono);
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+}
+.arch-arrow-stem--vertical {
+  width: 2px;
+  height: 6rem;
+}
+.arch-arrow-stem--vertical::after {
+  /* Arrowhead at the bottom */
+  right: 50%;
+  bottom: -1px;
+  top: auto;
+  transform: translateX(50%);
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 6px solid var(--text-mono);
+  border-bottom: 0;
+}
+
+/* Animated data-flow dot traveling along the arrow stem */
+.arch-arrow-flow {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 6px;
+  height: 6px;
+  background: var(--ok);
+  border-radius: 50%;
+  box-shadow: 0 0 0.5em var(--ok);
+  transform: translateY(-50%);
+  animation: arch-flow 1.8s linear infinite;
+}
+@keyframes arch-flow {
+  0%   { left: 0%; opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { left: calc(100% - 6px); opacity: 0; }
+}
+.arch-arrow-flow--vertical {
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  animation: arch-flow-vertical 2.2s linear infinite;
+}
+@keyframes arch-flow-vertical {
+  0%   { top: 0%; opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { top: calc(100% - 6px); opacity: 0; }
+}
+
+/* Branch arrows (smaller, dim until activity). Same visual shape, tighter. */
+.arch-arrow--branch .arch-arrow-stem { width: 4rem; }
+.arch-arrow--branch .arch-arrow-flow { animation-duration: 1.4s; background: var(--alert); box-shadow: 0 0 0.4em var(--alert); }
+
+.arch-arrow-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.05rem;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+}
+.arch-arrow-counter {
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+.arch-arrow-label {
+  color: var(--text-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.65rem;
+}
+
+/* ── Control plane (top: Expanso Cloud + perpendicular arrow down) ── */
+.arch-control-plane {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+.arch-control-arrow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.3rem;
+}
+.arch-control-arrow .arch-arrow-meta {
+  flex-direction: row;
+  gap: 0.5rem;
+}
+
+/* ── Data plane (Camera → Jetson → 3-way fan-out) ──────────────────── */
+/* Restructured: Camera+Jetson are wrapped in `.arch-data-trunk` which flows
+   horizontally; the trunk and the 3-row fan-out are siblings inside the data
+   plane and vertically centered, so the fan-out's MIDDLE row (Gemini) sits
+   level with the Jetson. */
+.arch-data-plane {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+.arch-data-trunk {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.6rem;
+  flex-shrink: 0;
+}
+.arch-fanout {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  flex-shrink: 0;
+  /* Each fan-out row is the same height as the Jetson box, so 3 rows is
+     ~3× the Jetson height. Vertically center the trunk against this. */
+}
+.arch-fanout-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* ── Footer line of arch view ──────────────────────────────────────── */
+.arch-footer {
+  font-size: var(--t-caption);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  color: var(--text-dim);
+  letter-spacing: 0.06em;
+  text-align: center;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--border);
+  width: 100%;
+}

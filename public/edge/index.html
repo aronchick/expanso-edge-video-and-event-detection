@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Edge ISR · Expanso</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter+Tight:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Cloud DOWN banner — pinned to top, hidden by default -->
+<div id="cloud-banner" class="cloud-banner">
+  <div class="label">
+    <span class="dot-pulse"></span>
+    <span>CLOUD LINK · DOWN</span>
+  </div>
+  <div class="queue"><span id="queue-count">0</span> events queued · YOLO still firing</div>
+</div>
+
+<!-- Fused alert overlay -->
+<div id="fused-overlay" class="fused-overlay">
+  <div class="fused-headline">
+    <span class="icon">⚠</span>
+    <span>MULTI-SECTOR CORRELATION</span>
+    <span class="icon">⚠</span>
+  </div>
+  <div id="fused-contacts" class="fused-contacts"></div>
+  <div id="fused-meta" class="fused-meta"></div>
+</div>
+
+<!-- Topology mini canvas -->
+<canvas id="topology" class="topology" width="280" height="160"></canvas>
+
+<div class="app">
+
+  <header class="header">
+    <div class="brand">
+      <span class="dot"></span>
+      <span>Edge ISR · Expanso</span>
+    </div>
+    <div class="tab-switcher" role="tablist" aria-label="View">
+      <button class="tab is-active" data-tab="ops" role="tab" aria-selected="true">OPS</button>
+      <button class="tab" data-tab="arch" role="tab" aria-selected="false">ARCH</button>
+    </div>
+    <div class="header-right">
+      <div class="metric-pill">
+        <span class="label">events/min</span>
+        <span class="value" id="metric-epm">0</span>
+      </div>
+      <div class="metric-pill">
+        <span class="label">fused</span>
+        <span class="value" id="metric-fused">0</span>
+      </div>
+      <div class="metric-pill" id="metric-gemini-pill">
+        <span class="label">Gemini reachback</span>
+        <span class="value" id="metric-gemini">0</span>
+      </div>
+      <div id="cloud-pill" class="cloud-pill">CLOUD LINK · UP</div>
+    </div>
+  </header>
+
+  <section class="tier-strip" aria-label="Architecture tiers">
+    <div class="tier"><span class="tier-dot" id="tier-edge"></span><span class="tier-label">EDGE</span></div>
+    <div class="tier-sep">·</div>
+    <div class="tier"><span class="tier-dot" id="tier-fusion"></span><span class="tier-label">FUSION</span></div>
+    <div class="tier-sep">·</div>
+    <div class="tier"><span class="tier-dot" id="tier-cloud"></span><span class="tier-label">CLOUD</span></div>
+  </section>
+
+  <section class="triggers-bar">
+    <h2>Trigger classes</h2>
+    <div id="trigger-chips" class="trigger-chips"></div>
+  </section>
+
+  <!-- Fusion tile — always visible, replaces the old full-screen modal.
+       STANDBY when no recent multi-sector correlation; ACTIVE when one fires
+       (pulses for 6s, then collapses back to STANDBY with a "last:" timestamp). -->
+  <section class="fusion-tile" id="fusion-tile">
+    <div class="fusion-light" id="fusion-light"></div>
+    <div class="fusion-label">FUSION</div>
+    <div class="fusion-state" id="fusion-state">STANDBY</div>
+    <div class="fusion-detail" id="fusion-detail">no multi-sector correlation</div>
+    <div class="fusion-meta" id="fusion-meta">last: —</div>
+  </section>
+
+  <section class="sector sector-north">
+    <div class="sector-head">
+      <div class="sector-title-group">
+        <div class="sector-title">Sector north</div>
+        <div class="sector-subtitle">Tier 1 Analyst · YOLO+Gemini cascade</div>
+      </div>
+      <div id="status-sensor-north" class="sector-status">connecting</div>
+    </div>
+    <div class="sector-feed">
+      <img id="feed-sensor-north" src="/snapshot/sensor-north" alt="">
+      <div class="sector-overlay">
+        <span id="overlay-north-label">awaiting motion</span>
+        <span id="overlay-north-ts">–</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="sector sector-south">
+    <div class="sector-head">
+      <div class="sector-title-group">
+        <div class="sector-title">Sector south</div>
+        <div class="sector-subtitle">Tier 1 Analyst · YOLO+Gemini cascade</div>
+      </div>
+      <div id="status-sensor-south" class="sector-status">connecting</div>
+    </div>
+    <div class="sector-feed">
+      <img id="feed-sensor-south" src="/snapshot/sensor-south" alt="">
+      <div class="sector-overlay">
+        <span id="overlay-south-label">awaiting motion</span>
+        <span id="overlay-south-ts">–</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="events-panel events-north">
+    <h2>Recent · sector north</h2>
+    <div id="events-sensor-north" class="events-list"></div>
+  </section>
+
+  <section class="events-panel events-south">
+    <h2>Recent · sector south</h2>
+    <div id="events-sensor-south" class="events-list"></div>
+  </section>
+
+  <section class="platform">
+    <div class="platform-header-row">
+      <div class="platform-label">Expanso platform</div>
+      <div class="platform-tagline">0 new hardware · runs on the camera + cloud you already have</div>
+    </div>
+    <div id="platform-jobs" class="platform-jobs"></div>
+  </section>
+
+  <section id="egress-tile" class="egress">
+    <div class="egress-head">
+      <div class="egress-label">Cloud egress · S3 archive</div>
+      <div id="egress-state" class="egress-state offline">awaiting first upload</div>
+    </div>
+    <div class="egress-row">
+      <div class="egress-count">
+        <span class="value" id="egress-count">0</span>
+        <span class="unit">objects</span>
+      </div>
+      <div class="egress-meta">
+        <div class="egress-bucket" id="egress-bucket">bucket: —</div>
+        <div class="egress-last" id="egress-last">last upload: —</div>
+      </div>
+    </div>
+    <ul id="egress-recent" class="egress-recent"></ul>
+  </section>
+
+  <!-- S3 object viewer modal -->
+  <div id="s3-modal" class="s3-modal" role="dialog" aria-modal="true">
+    <div class="s3-modal-card">
+      <div class="s3-modal-head">
+        <div class="s3-modal-title" id="s3-modal-title">—</div>
+        <button class="s3-modal-close" id="s3-modal-close" aria-label="Close">×</button>
+      </div>
+      <pre class="s3-modal-body" id="s3-modal-body">loading…</pre>
+    </div>
+  </div>
+
+  <!-- ARCH view — alternative to OPS dashboard. Hidden by default; tab toggles
+       body.tab-arch to show. Spans rows 2-7 (everything below the header). -->
+  <section class="arch-view" aria-label="Architecture and data flow">
+    <!-- Control plane: Expanso Cloud (perpendicular to data flow) -->
+    <div class="arch-control-plane">
+      <div class="arch-box arch-box--cloud">
+        <div class="arch-box__head">
+          <div class="arch-box__label">Expanso Cloud</div>
+          <div class="arch-box__sub">control plane · orchestration</div>
+        </div>
+        <div class="arch-pills">
+          <span class="arch-pill">job deploy</span>
+          <span class="arch-pill">triggers config</span>
+          <span class="arch-pill">live updates</span>
+        </div>
+      </div>
+      <div class="arch-control-arrow">
+        <div class="arch-arrow-stem arch-arrow-stem--vertical">
+          <span class="arch-arrow-flow arch-arrow-flow--vertical"></span>
+        </div>
+        <div class="arch-arrow-meta">
+          <span class="arch-arrow-counter" id="arch-counter-jobs">— jobs</span>
+          <span class="arch-arrow-label">deploy</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Data plane: Camera → Jetson → 3-way fan-out -->
+    <div class="arch-data-plane">
+
+      <!-- Trunk: camera and jetson on a single horizontal line, centered against the fan-out. -->
+      <div class="arch-data-trunk">
+        <div class="arch-box arch-box--camera">
+          <div class="arch-box__head">
+            <div class="arch-box__label">Camera</div>
+            <div class="arch-box__sub">existing infra · 2× EO/IR</div>
+          </div>
+          <div class="arch-pills">
+            <span class="arch-pill">north</span>
+            <span class="arch-pill">south</span>
+          </div>
+        </div>
+
+        <div class="arch-arrow arch-arrow--horizontal">
+          <div class="arch-arrow-stem">
+            <span class="arch-arrow-flow"></span>
+          </div>
+          <div class="arch-arrow-meta">
+            <span class="arch-arrow-counter" id="arch-counter-rtsp">RTSP</span>
+            <span class="arch-arrow-label">stream</span>
+          </div>
+        </div>
+
+        <div class="arch-box arch-box--jetson">
+          <div class="arch-box__head">
+            <div class="arch-box__label">Jetson</div>
+            <div class="arch-box__sub">edge runtime</div>
+          </div>
+          <div class="arch-pills">
+            <span class="arch-pill arch-pill--accent">Expanso Edge</span>
+            <span class="arch-pill">YOLO v8</span>
+            <span class="arch-pill">event router</span>
+            <span class="arch-pill">DBOM sign</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="arch-fanout">
+        <div class="arch-fanout-row">
+          <div class="arch-arrow arch-arrow--horizontal arch-arrow--branch">
+            <div class="arch-arrow-stem">
+              <span class="arch-arrow-flow"></span>
+            </div>
+            <div class="arch-arrow-meta">
+              <span class="arch-arrow-counter" id="arch-counter-local">— /min</span>
+              <span class="arch-arrow-label">fused</span>
+            </div>
+          </div>
+          <div class="arch-box arch-box--local">
+            <div class="arch-box__head">
+              <div class="arch-box__label">Local Decision</div>
+              <div class="arch-box__sub">stays on edge</div>
+            </div>
+            <div class="arch-pills">
+              <span class="arch-pill">correlator (5s)</span>
+              <span class="arch-pill">fused alerts</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="arch-fanout-row">
+          <div class="arch-arrow arch-arrow--horizontal arch-arrow--branch">
+            <div class="arch-arrow-stem">
+              <span class="arch-arrow-flow"></span>
+            </div>
+            <div class="arch-arrow-meta">
+              <span class="arch-arrow-counter" id="arch-counter-gemini-flow">— /min</span>
+              <span class="arch-arrow-label">reachback</span>
+            </div>
+          </div>
+          <div class="arch-box arch-box--gemini">
+            <div class="arch-box__head">
+              <div class="arch-box__label">Gemini</div>
+              <div class="arch-box__sub">cloud analyst</div>
+            </div>
+            <div class="arch-pills">
+              <span class="arch-pill">per-event</span>
+              <span class="arch-pill">descriptions</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="arch-fanout-row">
+          <div class="arch-arrow arch-arrow--horizontal arch-arrow--branch">
+            <div class="arch-arrow-stem">
+              <span class="arch-arrow-flow"></span>
+            </div>
+            <div class="arch-arrow-meta">
+              <span class="arch-arrow-counter" id="arch-counter-s3-flow">— obj</span>
+              <span class="arch-arrow-label">archive</span>
+            </div>
+          </div>
+          <div class="arch-box arch-box--s3">
+            <div class="arch-box__head">
+              <div class="arch-box__label">S3 Archive</div>
+              <div class="arch-box__sub">long-term storage</div>
+            </div>
+            <div class="arch-pills">
+              <span class="arch-pill">bloblang pipeline</span>
+              <span class="arch-pill">fan-out</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer of arch view: tagline matching the dashboard message -->
+    <div class="arch-footer">
+      0 new hardware · runs on the camera, the laptop, and the cloud you already have
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="left">Powered by Expanso · workload moves to the data</div>
+    <div class="right">
+      <div class="stat"><span class="label">jobs</span><span id="footer-jobs">–/–</span></div>
+      <div class="stat"><span class="label">events</span><span id="footer-events">0</span></div>
+      <div class="stat"><span class="label">DBOM signed</span><span id="footer-signed">0</span></div>
+      <div class="stat"><span class="label">fused</span><span id="footer-fused">0</span></div>
+    </div>
+  </footer>
+
+</div>
+
+<script src="ws_client.js"></script>
+</body>
+</html>

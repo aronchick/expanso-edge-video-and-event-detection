@@ -13,6 +13,8 @@ dependencies = [
     "uvicorn>=0.27.0",
     "lapx>=0.5.0",
     "clip @ git+https://github.com/ultralytics/CLIP.git",
+    "boto3>=1.34.0",
+    "wsproto>=1.2.0",
 ]
 
 [project.scripts]
@@ -24,6 +26,8 @@ esc-test-cameras = "expanso_security_camera.test_cameras:main"
 esc-diagnose = "expanso_security_camera.diagnose:main"
 esc-dataset = "expanso_security_camera.dataset:main"
 esc-finetune = "expanso_security_camera.finetune:main"
+edge-sensor = "expanso_security_camera.sensor.main:main"
+edge-orchestrator = "expanso_security_camera.orchestrator.api:main"
 
 [build-system]
 requires = ["hatchling"]
