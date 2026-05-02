@@ -62,10 +62,10 @@ def run_real(
 
     snapshot_path = Path(snapshot_dir) / f"{node_id}.jpg"
     snapshot_path.parent.mkdir(parents=True, exist_ok=True)
-    SNAPSHOT_INTERVAL_SEC = 0.4  # ≈2.5 FPS — dashboard polls every 2s, so 2.5 FPS is plenty
+    SNAPSHOT_INTERVAL_SEC = 0.4  # noqa: N806 — function-local constant
     last_snapshot_ts = 0.0
     last_event_for_overlay: object = None
-    LAST_EVENT_HOLD_SEC = 1.5  # keep the last detection's boxes visible for 1.5s
+    LAST_EVENT_HOLD_SEC = 1.5  # noqa: N806 — function-local constant
 
     print(f"[{node_id}] warmed up, entering main loop", flush=True)
     while True:

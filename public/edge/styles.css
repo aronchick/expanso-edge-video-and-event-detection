@@ -119,9 +119,9 @@ body {
 .tier-strip       { grid-row: 2; grid-column: 1 / span 2; }
 .triggers-bar     { grid-row: 3; grid-column: 1 / span 2; }
 .fusion-tile      { grid-row: 4; grid-column: 1 / span 2; }
-.sector-north     { grid-row: 5; grid-column: 1; }
+.sector-north     { grid-row: 5; grid-column: 1; margin-left: 0.6rem; margin-right: 0.4rem; }
 .events-north     { grid-row: 5; grid-column: 2; }
-.sector-south     { grid-row: 6; grid-column: 1; }
+.sector-south     { grid-row: 6; grid-column: 1; margin-left: 0.6rem; margin-right: 0.4rem; }
 .events-south     { grid-row: 6; grid-column: 2; }
 .platform-strip   { grid-row: 7; grid-column: 1 / span 2; }
 .arch-view        { grid-row: 2 / 8; grid-column: 1 / span 2; display: none; }
@@ -1396,7 +1396,12 @@ body.show-topology .topology { display: block; }
   border: 1px solid var(--border);
   border-radius: var(--radius);
   height: 2.6rem;
-  overflow: hidden;
+  /* Allow horizontal scroll if content overflows; never clip the wordmark. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  width: 100%;
+  min-width: 0;
 }
 .platform-wordmark {
   font-family: "IBM Plex Mono", ui-monospace, monospace;

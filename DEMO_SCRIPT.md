@@ -7,6 +7,14 @@ If a behavior isn't asked for here, it's not in scope for the demo.
 If it is asked for here and the implementation doesn't deliver it,
 that's a bug.
 
+**Narrative order matters.** This script opens with the **pain** and
+the **operator's wishlist**, NOT with a tour of the dashboard. Every
+demo moment after that maps to a wishlist item the audience asked
+for. Expanso is the *enabler that makes the solution possible* — not
+the subject of the demo. The deep tech tour is Beat 7 (optional, kept
+on screen during Q&A) — judges have to see the *outcome* before they
+can care about the implementation.
+
 Companion docs (read these alongside, but THIS file is the one we
 review when deciding what to build):
 - `STAGE_RUNBOOK.md` — printable operator cheat sheet (keystrokes + curl backups + recovery moves)
@@ -18,23 +26,102 @@ Practice these. The architectural punchline at the end is the line
 you cannot drop.
 
 **Operator setup**: dashboard fullscreen on the conference monitor
-(F11). All four operator controls are bound to function keys on the
-laptop's keyboard — see STAGE_RUNBOOK.md for the cheat sheet. Curl
-backups for every keystroke are also in the runbook in case keyboard
-focus drifts.
+(F11) but **on a black/blank slide or hidden behind another window
+during Beats 1-2** — the dashboard is a payoff, not a backdrop.
+Operator controls bound to function keys; see `STAGE_RUNBOOK.md`.
+Curl backups for every keystroke are also in the runbook in case
+keyboard focus drifts.
 
 ---
 
-## T = 0 — post-deploy hero shot (end of Beat 0)
+## Beat 1 — the pain (45s)
 
-What's on the screen once Beat 0's deploy completes — this is the
-state Beat 1 starts from:
+**Dashboard hidden / black slide.** Pure narration. The audience
+should be feeling the problem, not looking at a UI yet.
+
+*[Stand square to the audience. No screen distraction.]*
+
+> "Today's edge sensor architecture for ISR looks like this. A
+> camera is running constantly. Its only job is to ship video back
+> to the cloud, where someone — or something — eventually decides
+> whether what it saw matters. That video might be a blank parking
+> lot. It might be the same person standing in the same place for
+> three hours. It might be the threat that needs immediate action.
+> The camera doesn't know. So it ships everything.
+>
+> Shipping everything costs you four things. It costs **bandwidth**
+> you don't have on a contested link. It costs **time** — the
+> latency of the round-trip is the latency of your decision. It
+> makes you **visible** — every byte going up is an emission an
+> adversary can detect. And it gives you a **single point of
+> failure** the adversary will absolutely exploit.
+>
+> The cloud is good at things. Big models. Cross-mission analytics.
+> Long-horizon retention. We don't want to give those up. But we
+> can't be **dependent** on them to know whether the thing we're
+> looking at is a threat. The decision has to live where the data
+> lives — at the edge — and the cloud has to be a *bonus*, not a
+> precondition."
+
+*[Hold one beat. Transition.]*
+
+> "So — what would the operator on the ground actually want?"
+
+---
+
+## Beat 2 — what winning looks like (45s)
+
+**Dashboard still hidden.** State the wishlist as five outcomes the
+operator on the ground would name if you asked them. Each one becomes
+a delivered moment in the next three beats.
+
+*[Count off on fingers if it helps. The list is the spine of the
+rest of the demo.]*
+
+> "Five things. If I were that operator on the ground, here's what
+> I'd want from my sensor:
+>
+> **One.** Detection happens local. Always. Even when the link to
+> the cloud is gone, my sensor still tells me what it sees.
+>
+> **Two.** When the cloud *is* available, I get richer context for
+> free — the same big-model intelligence, but only on the events
+> that need it.
+>
+> **Three.** When two of my sensors see something at the same time,
+> they correlate locally. I don't wait for a TOC to fuse it for me.
+>
+> **Four.** When my mission changes — a new threat class, a new
+> classified target — I push the change once and every sensor on
+> the perimeter picks it up before I finish the sentence. No truck
+> rolls. No firmware push.
+>
+> **Five.** When the link drops — and it *will* drop — nothing is
+> lost. Events queue. Provenance is preserved. When the link comes
+> back, everything reconciles. End-to-end. Sub-second."
+
+*[Pause one beat. Transition into the demo proper.]*
+
+> "Let me show you all five of those, working, on this table, right
+> now."
+
+**Operator**: bring the dashboard to the foreground (F11 / Cmd-Tab
+to the browser tab). Transition into Beat 3.
+
+---
+
+## T = 0 — what the dashboard shows when Beat 3 begins
+
+This is the hero shot the judges see for the first time at the
+start of Beat 3. The dashboard was hidden during Beats 1-2; this is
+its reveal.
 
 - **Header**: green "● Edge ISR · Expanso" brand, live `events/min`
   and `fused` counters at 0, big green "CLOUD LINK · UP" pill.
+- **Tier strip**: EDGE / FUSION / CLOUD all green.
 - **Trigger bar**: chips showing `person`, `backpack`, `car`,
   `truck`, etc. — but **no `drone` and no `airplane`** (deliberate,
-  sets up Beat 3).
+  sets up Beat 4).
 - **Two sector tiles**: live camera feeds, each labeled SECTOR NORTH
   and SECTOR SOUTH, both with green "live" status badges.
 - **Recent events panels**: empty.
@@ -42,163 +129,60 @@ state Beat 1 starts from:
   `sensor-north`, `sensor-south`, `armyx-tech-event-archive`. All
   running.
 - **Cloud Egress tile** (right of platform): bucket name visible,
-  state badge green `live`, object count climbing (or stable from
-  rehearsal).
+  state badge green `live`, object count climbing.
 - **Footer**: "Powered by Expanso · workload moves to the data ·
   4/4 jobs · 0 events · 0 fused".
-- **Topology**: bottom-right corner shows N → O and S → O nodes,
+- **Topology**: bottom-right corner shows N → F and S → F nodes,
   idle.
 
-The hero shot. Don't move into Beat 1 until judges have seen all
-four green dots and both live sector feeds.
+The hero shot. Don't move into Beat 3 dialogue until judges have had
+1-2 seconds to take it in. *Then* start delivering wishlist items.
 
 ---
 
-## Beat 0 — start the workload from the cloud UI (30s)
+## Beat 3 — the solution in action (75s) — delivers wishlist items 1, 2, 3
 
-**This beat exists so the "pipeline IS the control plane" claim in
-Beat 1 lands as something judges literally watched happen, not as
-something they have to take on faith.** All four jobs are *already
-deployed* in Expanso Cloud's `armyx-tech` cluster. The fusion node —
-the local FastAPI process that serves this dashboard — is already
-running (it has to be: it's what's painting these pixels). The three
-**workload** jobs (two sensors and the S3 archive) are stopped.
-Operator brings them online from the cloud control-plane UI.
-Skippable under time pressure (see guardrail below).
-
-**Operator setup** — what's on the screen at lights-up, BEFORE Beat 0:
-
-- **Conference monitor**: dashboard fullscreen.
-- **Operator's laptop screen** (judges see this on the conference
-  monitor too, briefly): a second browser tab open to **Expanso
-  Cloud UI**, the `armyx-tech` cluster, jobs view — showing
-  `fusion-node` in **Running** state and the three workload jobs
-  (`sensor-north`, `sensor-south`, `armyx-tech-event-archive`) in
-  **Stopped** state. Operator has the Start (or Rerun) control
-  visible without scrolling.
-- **Dashboard state on the conference monitor**:
-  - **Header**: brand dot gray. `events/min` and `fused` at 0. Cloud
-    pill **green** "CLOUD LINK · UP" (the Mac's internet is up —
-    only the workload is paused).
-  - **Tier strip**: EDGE dot **gray** (no sensors connected yet),
-    FUSION dot **green** (this dashboard is rendering — proof of
-    life), CLOUD dot **green** (Expanso Cloud reachable — that's
-    how we're about to start the workload).
-  - **Trigger bar**: chips already populated with the fusion node's
-    default trigger classes (`person`, `backpack`, vehicles — but
-    **no `drone`/`airplane`**, that's Beat 3's surprise). The fusion
-    node is up, so its config is up; the chips show "what the
-    sensors *will* look for once they're running."
-  - **Two sector tiles**: badge reads "stopped" (gray, calmer than
-    "offline" — stopped is intentional). Snapshot endpoint returns
-    a flat-gray "AWAITING START · SENSOR · NORTH" placeholder frame
-    (no reticle, no scan-line, no REC pulse — just the sensor's
-    identity card and a single line saying it hasn't been started).
-  - **Recent events panels**: empty.
-  - **EXPANSO PLATFORM tile**: **1/4 running** — `fusion-node` is
-    the lone green dot ("fusion-node · running"); the three
-    workload jobs (`sensor-north`, `sensor-south`,
-    `armyx-tech-event-archive`) are gray and read "name · stopped".
-  - **Cloud Egress tile**: bucket name visible, badge **gray "idle"**,
-    object count 0.
-  - **Footer**: "Powered by Expanso · workload moves to the data ·
-    1/4 jobs · 0 events · 0 fused".
-  - **Topology**: gray, no arrows lit.
-
-*[Stand at the laptop. Gesture at the dashboard, then at the cloud
-UI on your screen.]*
-
-> "Before I start: every Expanso job for this demo — sensors,
-> archive, and the fusion node you're watching this dashboard
-> through — is already provisioned in the `armyx-tech` cluster
-> on Expanso Cloud. The fusion node is running. Look at the
-> bottom of the screen: one of four jobs running. The other
-> three — both sensors and the cloud archive pipeline — are
-> stopped, waiting."
-
-*[Pause one beat. Let judges see the 1/4 and the three gray dots.]*
-
-> "Everything is one click away. From this cloud control plane,
-> right now, I'm going to start the three stopped workload jobs
-> — sensor-north, sensor-south, and the S3 archive — and watch
-> what comes alive on the dashboard."
-
-**Operator**: switch focus to the Expanso Cloud UI tab. Click **Start**
-(or **Rerun**) on each of the three stopped jobs in order:
-`sensor-north` → `sensor-south` → `armyx-tech-event-archive`. *(If the
-UI offers a "start all" bulk action, use it — the per-job clicks are
-the unbulked fallback.)*
-
-*[Switch focus back to the dashboard. The EXPANSO PLATFORM tile dots
-flip green one-by-one as each Expanso execution reports Running. The
-"1/4" counter ticks up: 2/4 … 3/4 … 4/4. Tier strip's EDGE dot goes
-green as the first sensor attaches. Sector tiles light up with live
-camera feed. Trigger bar populates from the fusion node's default
-config.]*
-
-> "Four jobs. Same control plane. Same spec format. The fusion node
-> hosting this dashboard, two sensors on the Jetson, and the archive
-> pipeline that's about to ship every event to S3. Started from the
-> cloud, executing on the edge. Now we're live."
-
-*[Hold on the fully-green dashboard for one beat. Transition into
-Beat 1.]*
-
-**Drop-rule**: if any of the three workload jobs hasn't flipped
-Running by ~10s after the click, the operator says **"…and we'll
-come back to that"** and advances straight to Beat 1, narrating *as
-if* the start completed (the dashboard catches up in the background,
-usually before Beat 2 ends). CLI fallback if the UI is slow or
-wedged: drop to a terminal and run `expanso-cli job rerun <name>`
-for whichever job is still gray. Reset between rehearsals with
-`./scripts/demo_reset.sh` (stops the three workload jobs without
-touching the fusion node, so the next rehearsal starts from the
-same Beat 0 lights-up state with the dashboard still alive).
-
----
-
-## Beat 1 — pain point (40s)
-
-*[Stand still next to the screen. Both sectors are quiet. Let them look.]*
-
-> "Today's edge sensor architecture for ISR looks like this. A
-> camera is running constantly and its only motion is to ship that video to the cloud. It may be a blank space. It might be the same person standing around, or it could be a threat that needs immediate action. Now, thanks to the advent of AI, we have more and better detection once that video does hit the cloud. Shipping data naively costs your time, costs your response time, makes you more obvious to adversaries, and ultimately can choke your bandwidth, even in the best possible scenarios.
-> 
-> You can't be treating decision making on the cloud as the only place to go and take these actions. You have to think about multi level intelligence, taking advantage of every resource you have, at every level. This both makes you more responsive, as well as removes single points of failure adversaries will
-> absolutely exploit.
-> 
->What I'm going to show you is the inversion. Every sensor is its
-> own "junior" analyst. The cloud is reachback for richer context, not a
-> precondition for the system working at all. Every component you
-> see — the sensors, the correlator, the audit pipeline — is the
-> same kind of Expanso job, on the same control plane.  The best part about it is that this is a pure augmentation overlay. The same cloud-like intelligence you have in the cloud still works. You're just layering these solutions over the cloud and reusing them as if they had been plugged in without installing any new physical devices. 
-> 
-> Let's start by looking at the bottom of the screen: those four jobs we just brought online — fusion node, two sensors, archive — all running on the same control plane. "
-
----
-
-## Beat 2 — happy path, single sector (45s)
+This is the first time judges see the dashboard. Each visual moment
+explicitly maps back to one of the five wishlist items they just
+heard.
 
 *[Walk through sector north — empty-handed.]*
 
 > "Person, sector north. Local YOLO on the Jetson. Sub-50
-> millisecond inference. The event landed on the dashboard as it
-> happened, signed with a DBOM signature you can see in the corner
-> of the event card. Nothing reached out to the cloud."
+> millisecond inference. The event landed on the dashboard the
+> moment it happened — signed with a DBOM signature you can see
+> in the corner of the event card. Nothing reached out to the
+> cloud. **Wishlist item one — local detection — delivered.**"
 
 *[Walk through north again, this time wearing or carrying a backpack.]*
 
-> "Person, sector north, carrying a pack. The local sensor decided
-> this one was worth richer context — so it called Gemini Flash. You
-> see the description appear in the event panel, italicized, with
-> the model version that produced it. That's a choice the edge
-> made, not the cloud. Watch the topology indicator in the corner —
-> that arrow lit up the moment the event left the Jetson and arrived
-> at the fusion node."
+> "Same sensor. Now I'm carrying something. The local sensor decided
+> *this one* deserves richer context — so it called Gemini Flash.
+> You see the description appear in the event panel, italicized,
+> with the model version that produced it. That's a choice the
+> *edge* made, not the cloud. The cloud is augmentation. **Wishlist
+> item two — cloud as bonus — delivered.**"
+
+*[With a partner if possible: walk through north while a drone flies
+through south, simultaneously. If solo: trigger drone first, then
+immediately walk through north — within a 5-second window.]*
+
+> "Person, sector north. Drone, sector south. Simultaneous. Watch."
+
+*[Pause one beat. The full-screen FUSED ALERT overlay takes over the
+dashboard with both contacts side-by-side in 60-pixel type, amber on
+black.]*
+
+> "Multi-sector correlation. Two sectors, two contact types, fused
+> locally on the fusion node. No human did that correlation. The
+> system did, in under five seconds, without anything reaching back
+> to a cloud. **Wishlist item three — local correlation — delivered.**"
+
+*[Overlay collapses after 3.5 seconds back to the live dashboard.]*
 
 ---
 
-## Beat 3 — second sector + live class update (50s)
+## Beat 4 — the fleet adapts in seconds (40s) — delivers wishlist item 4
 
 **Operator**: have F4 ready. Backup curl printed in the runbook.
 
@@ -212,74 +196,40 @@ same Beat 0 lights-up state with the dashboard still alive).
 
 *[Hold one beat. Walk back to the laptop.]*
 
-> "Changing mission parameters today often means redeploying brand
-> new pipelines, sometimes brand new firmware, sometimes brand new
-> hardware. Hours to days. What if you could change what the fleet
-> is *looking for* right now, while every sensor stays running?
->
-> The fusion node holds the active trigger list. Every sensor
-> polls it once a second. I push one config update — and every
-> sensor on the network picks it up before I finish the sentence."
+> "Changing what the fleet is *looking for*, in the field, today —
+> that's hours to days. New pipelines. Sometimes new firmware.
+> Sometimes new hardware. What if you could change it right now,
+> while every sensor stays running?"
 
 **Operator**: press **F4**.
 
 *[The trigger bar animates: a new chip scales in with a green pulse.
 The chip says `drone`.]*
 
-> "There. The trigger panel just gained a class — every sensor on
-> the network picked that up in under a second. No restart, no
-> redeploy, no service interruption."
+> "There. The fusion node holds the active trigger list. Every
+> sensor polls it once a second. That config update I just pushed —
+> every sensor on the network has it now. No restart. No redeploy.
+> No service interruption."
 
 *[Fly the drone through south again.]*
 
-> "Drone, sector south. Surfaces immediately, signed, with the model
-> version that produced the detection. This is what 'updating an edge
-> fleet in the field' actually looks like when the workload lives
-> next to the data. No truck rolls. No firmware push. One config
-> flip and every sensor on the perimeter is now watching for a new
-> thing."
+> "Drone, sector south. Surfaces immediately, signed, with the
+> model version that produced the detection. **Wishlist item four —
+> the fleet adapts in seconds — delivered.**"
 
 ---
 
-## Beat 4 — cross-sensor fusion (40s)
+## Beat 5 — surviving reality (90s, four sub-beats A/B/C/D) — delivers wishlist item 5
 
-*[With a partner if possible: walk through north while a drone flies
-through south, simultaneously. If solo: trigger drone first, then
-immediately walk through north — within a 5-second window.]*
+This is the demo's hardest beat to land — and the one that proves
+wishlist item 5: zero loss, provenance preserved, end-to-end
+reconciliation when the link comes back.
 
-> "Person, sector north. Drone, sector south. Simultaneous. Watch."
-
-*[Pause one beat. The full-screen FUSED ALERT overlay takes over the
-dashboard with both contacts side-by-side in 60-pixel type, amber on
-black.]*
-
-> "Multi-sector correlation. Two sectors, two contact types, fused
-> locally on the fusion node — no human did that correlation. The
-> system did, in under five seconds, without anything reaching back
-> to a cloud. This is the fusion problem that almost nothing in
-> production solves today."
-
-*[The overlay collapses after 3.5 seconds back to the live dashboard.]*
-
----
-
-## Beat 5 — DDIL + cloud control plane (90s, four sub-beats A/B/C/D)
-
-This beat replaces the original "WAN-yank, sensors degrade
-gracefully" demo with a real, end-to-end control-plane story:
-
-1. **A** — take the cluster offline, prove edge keeps working.
-2. **B** — update the pipeline in Expanso Cloud *while* offline;
-   cluster keeps doing the OLD thing because it can't see the change.
-3. **C** — bring the cluster back online; new pipeline applies, queue
-   drains.
-4. **D** — show the S3 archive growing along the way, with
-   independently verifiable data.
-
-The 4-beat flow is what the demo is built around: the Mac retains
-its own internet path the entire time, so the Cloud Egress tile and
-the AWS S3 console both keep showing truth even while the Jetson is
-off the world.
+The 4-sub-beat flow: **A** offline, **B** edit pipeline while
+offline, **C** reconnect + drain, **D** show the S3 archive
+independently. The Mac retains its own internet path the entire
+time, so the Cloud Egress tile keeps showing truth even while the
+Jetson is off the world.
 
 **Operator setup**: Cloud Egress tile (right of Expanso Platform
 tile) should show **`live`** with a non-zero object count — events
@@ -289,11 +239,11 @@ second browser tab is open to the Expanso Cloud UI with the
 
 ### Beat 5A — take the cluster offline (15s)
 
-> "Two cameras, sensors firing locally, AND every event is also being
-> shipped to S3 in real time through a dedicated Expanso pipeline —
-> the cloud tier is doing exactly the job it's good at. Watch the
-> bottom-right tile: that count climbs every time something hits a
-> sector."
+> "Two cameras, sensors firing locally, AND every event is also
+> being shipped to S3 in real time through a dedicated pipeline —
+> the cloud tier doing exactly what it's good at. Watch the
+> bottom-right tile: that count climbs every time something hits
+> a sector."
 
 *[Pause one beat so judges see the count tick.]*
 
@@ -301,7 +251,7 @@ second browser tab is open to the Expanso Cloud UI with the
 > to test for you: what happens when the link to the cloud tier
 > goes away?"
 
-**Operator**: press **F1**.  *(Mac SSHes the Jetson and runs
+**Operator**: press **F1**. *(Mac SSHes the Jetson and runs
 `sudo nmcli radio wifi off`.)*
 
 *[Full-width red banner slams in from the top: CLOUD LINK · DOWN.
@@ -310,23 +260,22 @@ state badge to amber: **stalled · queued at edge**. Object count
 plateaus.]*
 
 > "Jetson lost its Wi-Fi. It can't see Expanso Cloud, it can't see
-> AWS. The cloud tier — which was doing real work a second ago — is
-> simply *not reachable* from this Jetson right now. But — look at
-> the dashboard. Both cameras still live. Detections still happening.
-> The dashboard you're looking at is on the wired LAN between this
-> Mac and the Jetson, not on Wi-Fi. *That's intentional* — the
-> operator's tablet talks to the sensor over a private link, not
-> over the same uplink that's been cut."
+> AWS. The cloud tier — which was doing real work a second ago —
+> is simply *not reachable* from this Jetson right now. But — look
+> at the dashboard. Both cameras still live. Detections still
+> happening. The dashboard you're looking at is on the wired LAN
+> between this Mac and the Jetson, not on Wi-Fi. *That's
+> intentional* — the operator's tablet talks to the sensor over a
+> private link, not over the same uplink that's been cut."
 
 *[Walk through both sectors. Events surface as usual on the
 dashboard. The Cloud Egress count stays frozen.]*
 
 > "Events still detected. Still signed. Still landing in the local
-> archive on the Jetson. The Expanso pipeline that ships them to
-> S3 is *buffering at the edge* — that's what 'queued' means in the
+> archive on the Jetson. The pipeline that ships them to S3 is
+> *buffering at the edge* — that's what 'queued' means in the
 > egress tile. The cloud's job is on pause. The edge's job — which
-> never depended on the cloud being up — keeps going. Nothing is
-> lost. The pipeline will deliver, when it can."
+> never depended on the cloud being up — keeps going."
 
 ### Beat 5B — update the pipeline while the cluster is offline (25s)
 
@@ -348,34 +297,30 @@ dashboard. The Cloud Egress tile is still stalled, count still
 plateau.]*
 
 > "And notice — the Jetson is still capturing events with the *old*
-> pipeline definition. That's correct. You don't want a sensor that
-> silently changes behavior the second the link blinks. The new
-> pipeline is staged in the cloud, waiting for the cluster to come
-> back."
+> pipeline definition. That's correct. You don't want a sensor
+> that silently changes behavior the second the link blinks. The
+> new pipeline is staged in the cloud, waiting for the cluster to
+> come back."
 
 ### Beat 5C — back online, drain (20s)
 
-**Operator**: press **F2**.  *(Mac SSHes the Jetson and runs
+**Operator**: press **F2**. *(Mac SSHes the Jetson and runs
 `sudo nmcli radio wifi on`.)*
 
 *[Red banner slides up and out. Cloud Egress tile state flips back
 to **`live`**. Object count surges as the buffered events drain —
 the count tile pulses **bumped** with each batch.]*
 
-> "Wi-Fi back. The cluster reconnects to Expanso Cloud, *pulls the
-> new pipeline definition*, and applies it to everything in the
-> buffer. The drain is happening right now — every queued event is
-> leaving the edge, going through the new transformation, landing in
-> S3."
+> "Wi-Fi back. The cluster reconnects, *pulls the new pipeline
+> definition*, and applies it to everything in the buffer. The drain
+> is happening right now — every queued event leaving the edge,
+> going through the new transformation, landing in S3."
 
 *[Pause for the count to stabilize at its new total.]*
 
 > "Watch the egress count: it just jumped by every event captured
-> during the offline window. Zero data loss. The pipeline that
-> processed those events on the way out is the *new* pipeline, the
-> one with the classification marker my colleague added. The cloud
-> is the control plane. The edge is the workplane. They reconcile
-> when the link comes back."
+> during the offline window. **Wishlist item five — zero loss,
+> provenance preserved — delivered.**"
 
 ### Beat 5D — independent S3 verification (15s)
 
@@ -386,86 +331,114 @@ recent-keys list.
 the new `archive.classification = "DEMO/UNCLASSIFIED"` field that
 wasn't there pre-Beat-5B.]*
 
-> "And just to prove this isn't theatre — every key you're seeing is
-> a real S3 object in our AWS bucket, signed at the edge, archived
-> through the Expanso pipeline. Click any one and you see the JSON.
-> The newer ones have the field my colleague added. The older ones
-> don't."
-
-*[Optionally click an older key to show the schema difference.]*
-
-> "Same control plane managed both. Different pipeline versions
-> applied at different points in time, with the offline window
-> cleanly bracketed."
+> "And just to prove this isn't theatre — every key you're seeing
+> is a real S3 object in our AWS bucket, signed at the edge,
+> archived through the cloud pipeline. Click any one and you see
+> the JSON. The newer ones have the field my colleague added. The
+> older ones don't. Same control plane managed both — different
+> pipeline versions applied at different points in time, with the
+> offline window cleanly bracketed."
 
 ---
 
-## Beat 6 — the architectural punchline (30s)
+## Beat 6 — the punchline (30s)
 
 *[Step toward the judges. Calm, slow.]*
 
-> "What you just saw is two cameras and a Jetson on a table. Four
-> Expanso jobs on the same control plane. A live model-update beat.
-> An autonomous fusion event. A deliberate offline window where the
-> edge kept working, the cloud kept evolving, and they reconciled
-> cleanly when the link came back. And every event from that demo
-> is sitting in S3 right now, signed, with provenance.
+> "Five wishlist items, all delivered, on two cameras and a Jetson
+> on this table. Local detection. Cloud as bonus. Multi-sensor
+> correlation. Sub-second fleet config push. Zero-loss survival
+> through a deliberate offline window — with HQ pushing pipeline
+> updates the whole time and the edge picking them up on reconnect.
 >
-> Every component on the screen — the sensors, the fusion node,
-> the archive pipeline — is the same kind of job spec, managed by
-> the same control plane: Expanso Cloud. That spec, with no code changes, deploys
-> to the perimeter of a FOB. To a Reaper. To a JTAC's pack. To a
-> destroyer's CIC. Or all four at once. The sensor changes. The
-> pipeline doesn't.
+> What I just showed you is not a custom build. The same solution,
+> same job specs, no code changes — deploys to a FOB perimeter, to
+> a Reaper, to a JTAC's pack, to a destroyer's CIC. The sensor
+> changes. The solution doesn't.
 >
-> That's Expanso. Move the workload TO the data — without giving
-> up the cloud you already have. Questions."
+> That's possible because of **Expanso**. Expanso is the substrate
+> that makes the solution work — control plane in the cloud,
+> workplane on the edge, reconciliation when the link comes back,
+> same job spec from sensor to archive. Without that substrate,
+> you build all of this yourself. With it, you focus on the
+> mission, not the plumbing.
+>
+> Move the workload TO the data — without giving up the cloud you
+> already have. Questions."
+
+---
+
+## Beat 7 — optional deep tech tour (Q&A material — leave on screen)
+
+**Not part of the 4-minute timed demo.** Stays on the dashboard
+between Beat 6 and Q&A; pull this material out only if a judge asks
+"how does it actually work?" or "what's running where?"
+
+The dashboard is already showing it: four jobs on the EXPANSO
+PLATFORM tile, the tier strip showing EDGE/FUSION/CLOUD, the Cloud
+Egress tile with the running S3 archive pipeline, the topology
+canvas showing sensor → fusion-node arrows.
+
+If asked, walk through:
+
+- **The four jobs**, all the same kind of Expanso job spec:
+  `fusion-node` (this dashboard's backend, runs on the laptop),
+  `sensor-north` and `sensor-south` (YOLO + Gemini cascade on the
+  Jetson), `armyx-tech-event-archive` (the cloud-side Bloblang
+  pipeline that ships every signed event to S3 with offline buffer).
+- **The control plane**: Expanso Cloud at `cloud.expanso.io`. The
+  same UI used to start jobs in the demo, edit pipelines mid-DDIL,
+  and push the trigger config. Open the second browser tab.
+- **The DBOM signatures** in event cards — every event signed at
+  the edge so provenance survives the offline window.
+- **Why this matters**: same architectural pattern works for an RF
+  sensor (replace YOLO with classifier, replace camera tile with
+  spectrum waterfall), for a maritime sensor, for any edge ISR
+  modality. The substrate doesn't change.
+
+If a judge asks the deploy question ("how do you get the jobs
+running?") you can demonstrate live: open the Expanso Cloud UI,
+stop one of the workload jobs (e.g. `sensor-north`), watch the
+dashboard go to 3/4. Then click Start in the UI, watch it come
+back to 4/4. That's the same control plane managing the demo's
+state in real time.
 
 ---
 
 ## Time budget (target 4:00, hard ceiling 4:30)
 
-Beat 0 adds 30s to the script. Two postures depending on rehearsal
-state:
-
-### Option I — Beat 0 droppable (use for first 3 rehearsals)
-
 | Beat | Target | Cumulative | Drop priority |
 |------|--------|------------|---------------|
-| Beat 0 — start the pipelines from the cloud UI | 0:30 | 0:30 | **1st** (drop if any job hasn't flipped Running by 10s after click) |
-| Beat 1 — pain point | 0:40 | 1:10 | keep |
-| Beat 2 — single sector | 0:45 | 1:55 | keep |
-| Beat 3 — live trigger update | 0:50 | 2:45 | 2nd |
-| Beat 4 — fusion | 0:40 | 3:25 | keep |
-| Beat 5 (A+B+C+D) — DDIL + cloud control plane | 1:15 | 4:40 | keep |
-| Beat 6 — punchline | 0:30 | 5:10 | **never drop** |
+| Beat 1 — the pain | 0:45 | 0:45 | keep |
+| Beat 2 — wishlist | 0:45 | 1:30 | keep |
+| Beat 3 — solution in action (items 1-3) | 1:15 | 2:45 | keep |
+| Beat 4 — fleet adapts (item 4) | 0:40 | 3:25 | 1st (drop if behind here, fold "fleet adapts" into the punchline) |
+| Beat 5 (A+B+C+D) — surviving reality (item 5) | 1:30 | 4:55 | keep |
+| Beat 6 — punchline | 0:30 | 5:25 | **never drop** |
+| Beat 7 — deep tech tour | (Q&A only) | — | not in budget |
 
-5:10 cumulative is OVER the 4:30 ceiling — acceptable only if
-rehearsal proves Beat 0 reliably hits ≤0:25 AND Beat 1 trims to
-≤0:35 in delivery. If not: drop Beat 0 first, then Beat 3.
+5:25 is over the 4:30 ceiling. **Two trim levers** depending on
+rehearsal data:
 
-### Option II — Beat 0 included by trimming (after 5 clean rehearsals)
+- **Trim 1 (most flexible)**: Beat 5A narration tightens from 0:25
+  → 0:15 (the "private link" framing can become one sentence) and
+  Beat 5D from 0:15 → 0:10. Saves 0:15.
+- **Trim 2**: Beat 1 from 0:45 → 0:30 if the room is small enough
+  that the pain lands faster (drop the "four costs" enumeration,
+  just say "four ways naive shipping kills you"). Saves 0:15.
 
-| Beat | Target | Cumulative |
-|------|--------|------------|
-| Beat 0 — start the pipelines from the cloud UI | 0:30 | 0:30 |
-| Beat 1 — pain point + augmentation pitch (trimmed) | 0:25 | 0:55 |
-| Beat 2 — single sector | 0:45 | 1:40 |
-| Beat 3 — live trigger update | 0:45 | 2:25 |
-| Beat 4 — fusion | 0:40 | 3:05 |
-| Beat 5 (A+B+C+D) — DDIL + cloud control plane (trimmed 5D) | 1:10 | 4:15 |
-| Beat 6 — punchline | 0:25 | 4:40 |
-
-Lands at the absolute hard ceiling. Requires sharp execution and a
-demonstrated ≤25s "click-to-all-green" in the Expanso Cloud UI over
-5 cold runs (rehearse with `./scripts/demo_reset.sh` between runs to
-return to the deployed-but-stopped Beat 0 state).
+With both trims: 4:55 cumulative. With Beat 4 dropped (fold its
+content into Beat 6): 4:15. Always-budget for ~10s of unscripted
+beats between sections (transitions take real time on stage).
 
 ### Drop-rule (live, on stage)
 
-- If you hit **1:55** cumulative and haven't started Beat 2: drop
-  Beat 0's narrative recap line ("four jobs we just deployed") and
-  accelerate.
-- If you hit **3:30** and haven't done DDIL: drop Beat 3 immediately
-  and go Beat 4 → 5 → 6.
-- The architectural punchline (Beat 6) absolutely cannot be cut.
+- If you hit **2:45** cumulative and haven't started Beat 4: skip
+  Beat 4, fold "fleet adapts in seconds" as a one-line callout in
+  Beat 6's punchline ("…sub-second fleet config push, zero-loss
+  DDIL survival…").
+- If you hit **4:00** and haven't done DDIL drain (Beat 5C): cut
+  Beat 5D entirely, narrate the drain, jump to Beat 6.
+- The punchline (Beat 6) absolutely cannot be cut — it's where the
+  Expanso credit lands and where transferability becomes the
+  takeaway.

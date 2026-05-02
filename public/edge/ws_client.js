@@ -97,9 +97,29 @@ function refreshGeminiPill(flash = false) {
 // rolls off after 60s on its own.
 setInterval(() => refreshGeminiPill(false), 1000);
 
+// De-dup events: same sector + same ts + same yolo signature should only render once.
+// (Backfill on WS reconnect can otherwise re-emit events that the live stream
+//  also delivers, producing the "person 87% · person 87%" double-render bug.)
+const _seenEvents = new Map();  // node -> Set of dedup keys
+function _dedupKey(e) {
+  const labels = (e.yolo_hits || []).map((h) => `${h.label}:${(h.confidence || 0).toFixed(2)}`).join('|');
+  return `${e.ts || 0}:${labels}`;
+}
+
 function renderEvent(e) {
   const container = document.getElementById(`events-${e.node}`);
   if (!container) return;
+
+  let seen = _seenEvents.get(e.node);
+  if (!seen) { seen = new Set(); _seenEvents.set(e.node, seen); }
+  const key = _dedupKey(e);
+  if (seen.has(key)) return;  // already rendered, skip
+  seen.add(key);
+  // Cap memory — keep only last 50 keys per node
+  if (seen.size > 50) {
+    const first = seen.values().next().value;
+    seen.delete(first);
+  }
 
   const root = document.createElement('div');
   root.className = 'event' + (e.queued_offline ? ' queued' : '');

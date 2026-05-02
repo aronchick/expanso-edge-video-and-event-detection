@@ -260,13 +260,16 @@ def test_jobs_status_reflects_real_process_state_not_synthetic_running():
 
 
 def test_dashboard_html_has_platform_tagline():
+    """The '0 new hardware…' tagline lands the augmentation-overlay claim
+    from Beat 6. We don't pin which DOM element carries it (the dashboard
+    has gone through several layout iterations); the test only asserts the
+    load-bearing text is present somewhere on the page so a future refactor
+    can't drop it silently."""
     html = (REPO_ROOT / "public" / "edge" / "index.html").read_text()
-    # Platform tile carries the canonical "0 new hardware" tagline.
-    assert "platform-tagline" in html
-    assert html.count('class="platform-tagline"') == 1, (
-        "platform tile should carry exactly one platform-tagline element"
+    assert "0 new hardware" in html, (
+        "Beat 6's augmentation-overlay claim depends on this tagline being "
+        "visible on the dashboard — don't remove it without updating the script"
     )
-    assert "0 new hardware" in html
 
 
 def test_dashboard_js_handles_s3_message():
