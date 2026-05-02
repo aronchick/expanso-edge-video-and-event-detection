@@ -856,9 +856,9 @@ async function startWebRTCFor(sectorEl) {
 }
 
 function _drawTrackGate(ctx, x1, y1, x2, y2, color) {
-  const leg = Math.max(12, Math.min((x2 - x1) / 5, (y2 - y1) / 5, 24));
+  const leg = Math.max(14, Math.min((x2 - x1) / 4, (y2 - y1) / 4, 32));
   ctx.strokeStyle = color;
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 3;
   ctx.lineJoin = 'miter';
   // 4 corner brackets
   ctx.beginPath(); ctx.moveTo(x1, y1 + leg); ctx.lineTo(x1, y1); ctx.lineTo(x1 + leg, y1); ctx.stroke();
@@ -912,15 +912,15 @@ function drawBboxOverlay(sector, hits) {
   }
 }
 
-// Hook: every WS event with yolo_hits triggers an overlay redraw, with a
-// 1.5s hold-then-clear so boxes don't strobe between frames.
+// Hook: every WS event with yolo_hits triggers an overlay redraw. Hold for 3.5s
+// so boxes stay visible between sparse events (typical 1–2 events/sec/sector).
 function pushBboxOverlay(e) {
   if (!e || !e.node || !e.yolo_hits) return;
   drawBboxOverlay(e.node, e.yolo_hits);
   if (_bboxClearTimers[e.node]) clearTimeout(_bboxClearTimers[e.node]);
   _bboxClearTimers[e.node] = setTimeout(() => {
     drawBboxOverlay(e.node, []);
-  }, 1500);
+  }, 3500);
 }
 
 // Boot WebRTC for every .sector-feed[data-stream] (after page load so DOM exists).

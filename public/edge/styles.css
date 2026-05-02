@@ -463,13 +463,13 @@ body.tier-edge-down #tier-edge {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  /* Native 16:9 to match the WebRTC sub-stream — no cropping, no letterbox.
-     `align-self: start` so the grid row doesn't stretch the tile beyond
-     its natural aspect-ratio height. */
+  /* Fill the grid row height; column width is sized so 16:9 fits within it.
+     We don't set aspect-ratio here — see the 16:9 width constraint on
+     .sector-feed below, which keeps the *video area* at 16:9 regardless of
+     header height. Letting .sector stretch to row height removes the
+     `max-height` clip that was producing 718×320 (2.24:1) tiles. */
   width: 100%;
-  aspect-ratio: 16 / 9;
-  align-self: start;
-  max-height: 100%;
+  height: 100%;
 }
 .sector-head {
   display: flex;
@@ -519,6 +519,15 @@ body.tier-edge-down #tier-edge {
   position: relative;
   overflow: hidden;
   background: #000;
+  /* Keep the camera area at native 16:9 (matches sub-stream 640×360). The
+     parent .sector fills the row; this child stays 16:9 and centers within
+     whatever vertical space remains after .sector-head. Black bars appear
+     above/below if the row is taller than 16:9 of width allows — that's
+     correct behavior, since otherwise object-fit:cover crops the video. */
+  aspect-ratio: 16 / 9;
+  margin: auto;
+  width: 100%;
+  max-height: 100%;
 }
 /* WebRTC layered camera tile: video on top, canvas overlay above for
    bbox overlays, fallback img underneath for when WebRTC fails. */
@@ -527,7 +536,10 @@ body.tier-edge-down #tier-edge {
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  /* contain (not cover) so the video isn't cropped — the canvas-feed area
+     is itself 16:9 so contain == cover when video is also 16:9, but if a
+     stream returns a different ratio we letterbox instead of crop. */
+  object-fit: contain;
   display: block;
   background: #000;
   z-index: 1;
@@ -545,7 +557,7 @@ body.tier-edge-down #tier-edge {
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
   background: #000;
   z-index: 0;
@@ -1189,7 +1201,15 @@ body.show-topology .topology { display: block; }
   justify-content: center;
 }
 .arch-col--cameras   { grid-column: 1; grid-row: 1; gap: 1.2rem; align-self: center; }
-.arch-col--cam-arrow { grid-column: 2; grid-row: 1; align-self: center; }
+.arch-col--cam-arrow {
+  grid-column: 2; grid-row: 1;
+  align-self: stretch;        /* match the row height so the SVG can span cameras top→bottom */
+  position: relative;
+  width: 11rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 .arch-col--center    { grid-column: 3; grid-row: 1; gap: 0; align-self: center; }
 .arch-col--fanout    { grid-column: 4; grid-row: 1; gap: 1rem; align-self: center; }
 .arch-view > .arch-legend { grid-column: 1 / -1; grid-row: 2; align-self: end; }
@@ -1693,6 +1713,37 @@ body.show-topology .topology { display: block; }
 }
 .arch-arrow-meta--control .arch-arrow-counter { color: var(--expanso) !important; }
 
+/* ── Camera → Edge converging curves (SVG) ────────────────────────── */
+/* Two cubic Beziers from each camera's right side, meeting at the Edge box's
+   left-middle. Sized to fill the cam-arrow column. Animated <circle>s travel
+   the path so per-stream data flow is visible, not just inferred. */
+.arch-cam-curves {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+.arch-cam-curve__path {
+  stroke: rgba(61, 220, 132, 0.55);
+  stroke-width: 2;
+  fill: none;
+}
+.arch-cam-curve__dot {
+  fill: var(--ok);
+  filter: drop-shadow(0 0 0.35em var(--ok));
+}
+
+/* The aggregate ev/min meta chip floats centered over the convergence point.
+   Position relative to the cam-arrow column (which is position: relative). */
+.arch-arrow-meta--cam {
+  position: relative;
+  z-index: 2;
+  /* Shift slightly left of center so the chip doesn't cover the arrowhead */
+  transform: translateX(-1.2rem);
+}
+
 /* Boost data-plane flow dot visibility — the reference diagram has chunky,
    eye-catching dots. Our 6px nubs were forgettable. Keep the gradient stem
    subtle so the dot does the visual work. */
@@ -1948,3 +1999,239 @@ body.tier-edge-down .platform-strip #tier-edge {
   background: var(--text-mono);
   box-shadow: none;
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   ARCH TAB · LIGHT THEME OVERRIDES
+   ════════════════════════════════════════════════════════════════════
+   Per user direction: the ARCH page is reference-style architecture
+   marketing art and reads better on white. Scoped to body.tab-arch only;
+   OPS and ARCHIVE keep the dark stage theme. Strategy:
+     1. Override CSS custom properties on body.tab-arch — anything that
+        already uses `var(--surface)`, `var(--text)` etc. flips automatically.
+     2. Then patch the handful of places that hardcoded dark hex/rgba values
+        (arch-livestat row backgrounds, list item tints, SVG strokes,
+        arrow stem gradients, atmospheric body gradient).
+   ════════════════════════════════════════════════════════════════════ */
+
+body.tab-arch {
+  --bg:         #f6f8fb;     /* page background, very light cool gray */
+  --surface:    #ffffff;     /* card surface, pure white */
+  --surface-2:  #f1f5f9;     /* subtle secondary surface */
+  --border:     #d8e0ea;     /* light border */
+  --text:       #0f172a;     /* primary text */
+  --text-dim:   #475569;     /* secondary text */
+  --text-mono:  #64748b;     /* tertiary mono text */
+
+  /* Accent colors darkened for legibility on white. Same hue family as
+     the dark theme so the brand identity stays consistent. */
+  --ok:         #10b981;
+  --alert:      #d97706;
+  --critical:   #dc2626;
+  --expanso:    #2563eb;
+
+  /* Replace the dark atmospheric gradient with a bright, soft one */
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(37,99,235,0.06), transparent 70%),
+    radial-gradient(ellipse 80% 50% at 50% 110%, rgba(16,185,129,0.04), transparent 70%),
+    var(--bg);
+}
+
+/* Header / footer / platform-strip on light bg */
+body.tab-arch .header,
+body.tab-arch .platform-strip {
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+}
+body.tab-arch .footer { color: var(--text-dim); }
+body.tab-arch .footer .left { color: var(--expanso); }
+body.tab-arch .brand { color: var(--text); }
+body.tab-arch .brand .dot { background: var(--ok); box-shadow: 0 0 0.5em rgba(16,185,129,0.5); }
+
+/* Tab switcher on light bg */
+body.tab-arch .tab-switcher { background: var(--surface-2); border-color: var(--border); }
+body.tab-arch .tab { color: var(--text-mono); border-right-color: var(--border); }
+body.tab-arch .tab:hover { background: rgba(37,99,235,0.05); color: var(--text-dim); }
+body.tab-arch .tab.is-active {
+  color: var(--expanso);
+  background: rgba(37,99,235,0.10);
+  box-shadow: inset 0 -2px 0 var(--expanso);
+}
+
+/* Header pills on light bg */
+body.tab-arch .metric-pill { background: var(--surface-2); border-color: var(--border); color: var(--text); }
+body.tab-arch .metric-pill .label { color: var(--text-dim); }
+body.tab-arch .cloud-pill {
+  background: rgba(16,185,129,0.10);
+  color: var(--ok);
+  border-color: var(--ok);
+}
+body.tab-arch .cloud-pill.down {
+  background: rgba(220,38,38,0.10);
+  color: var(--critical);
+  border-color: var(--critical);
+}
+
+/* Arch view canvas — soft white card with subtle blue wash */
+body.tab-arch .arch-view {
+  background:
+    radial-gradient(ellipse 70% 50% at 50% 0%, rgba(37,99,235,0.05), transparent 60%),
+    var(--surface);
+  border-color: var(--border);
+  box-shadow: 0 2px 8px rgba(15,23,42,0.04);
+}
+
+/* Group containers (SENSOR FIELD, DESTINATIONS) on light bg */
+body.tab-arch .arch-group {
+  background:
+    linear-gradient(180deg, rgba(37,99,235,0.04), transparent 30%),
+    var(--surface);
+  border-color: rgba(37,99,235,0.22);
+  box-shadow: 0 1px 3px rgba(15,23,42,0.04);
+}
+body.tab-arch .arch-group__head {
+  background: rgba(37,99,235,0.08);
+  border-bottom-color: rgba(37,99,235,0.18);
+  color: var(--expanso);
+}
+body.tab-arch .arch-group__caption { color: var(--text-mono); }
+
+/* Group sub-tiles */
+body.tab-arch .arch-tile {
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+}
+body.tab-arch .arch-tile__label { color: var(--text); }
+body.tab-arch .arch-tile__sub   { color: var(--text-dim); }
+body.tab-arch .arch-tile--dest  { border-left-color: var(--ok); }
+
+/* Cloud + Edge boxes */
+body.tab-arch .arch-box {
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: 0 1px 3px rgba(15,23,42,0.05);
+}
+body.tab-arch .arch-box--cloud  { border-top-color: var(--expanso); }
+body.tab-arch .arch-box--jetson { border-top-color: var(--ok); }
+body.tab-arch .arch-box__label  { color: var(--text); }
+body.tab-arch .arch-box__sub    { color: var(--text-dim); }
+
+/* Box tag headers — keep gradient identity, just light-bg-tuned */
+body.tab-arch .arch-box__tag {
+  border-bottom-color: var(--border);
+}
+body.tab-arch .arch-box__tag--cloud {
+  background: linear-gradient(90deg, rgba(37,99,235,0.18), rgba(37,99,235,0.04));
+  color: var(--expanso);
+  border-bottom-color: rgba(37,99,235,0.28);
+}
+body.tab-arch .arch-box__tag--edge {
+  background: linear-gradient(90deg, rgba(16,185,129,0.18), rgba(16,185,129,0.04));
+  color: var(--ok);
+  border-bottom-color: rgba(16,185,129,0.28);
+}
+body.tab-arch .arch-box__tag-host { color: var(--text-mono); }
+body.tab-arch .arch-box__caption  { color: var(--text-mono); }
+
+/* Box content lists — recolor the rgba tints (were 127,184,220 / 61,220,132
+   alpha values designed for dark bg; on white they need higher alpha + the
+   light-theme accent palette) */
+body.tab-arch .arch-box__list li {
+  background: rgba(37,99,235,0.07);
+  border-color: rgba(37,99,235,0.20);
+  color: var(--text);
+}
+body.tab-arch .arch-box__list--steps li {
+  background: rgba(16,185,129,0.07);
+  border-color: rgba(16,185,129,0.22);
+}
+body.tab-arch .arch-box__list .step-meta { color: var(--text-mono); }
+
+/* Live stat instrument cluster — dark inset wells were `rgba(11,13,16,0.45)`,
+   way too dark for light bg. Flip to a soft neutral inset. */
+body.tab-arch .arch-livestat {
+  border-top-color: var(--border);
+}
+body.tab-arch .arch-livestat-row {
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+body.tab-arch .arch-livestat-label { color: var(--text-mono); }
+body.tab-arch .arch-livestat-val   { color: var(--text); }
+
+/* Arrow meta chips — were dark-rgba(11,13,16) inset; flip to light */
+body.tab-arch .arch-arrow-meta {
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: 0 1px 2px rgba(15,23,42,0.06);
+  color: var(--text);
+}
+body.tab-arch .arch-arrow-counter { color: var(--text); }
+body.tab-arch .arch-arrow-label   { color: var(--text-mono); }
+
+/* Control-plane (dashed) line + meta pill — keep teal but darker */
+body.tab-arch .arch-arrow-stem--control {
+  border-left-color: var(--expanso) !important;
+}
+body.tab-arch .arch-arrow-stem--control::after {
+  border-top-color: var(--expanso) !important;
+}
+body.tab-arch .arch-arrow-meta--control {
+  border-color: rgba(37,99,235,0.45) !important;
+  background: rgba(37,99,235,0.08) !important;
+}
+body.tab-arch .arch-arrow-meta--control .arch-arrow-counter { color: var(--expanso) !important; }
+
+/* Horizontal arrow stems (data plane between Edge and fan-out boxes) —
+   the gradient was teal-on-dark; on light bg use a darker green→neutral. */
+body.tab-arch .arch-arrow-stem {
+  background: linear-gradient(90deg,
+    var(--border) 0%,
+    rgba(16,185,129,0.6) 50%,
+    var(--text-mono) 100%);
+}
+body.tab-arch .arch-arrow-stem::after {
+  border-left-color: var(--text-mono);
+}
+body.tab-arch .arch-arrow-stem--vertical {
+  background: linear-gradient(180deg,
+    var(--border) 0%,
+    rgba(16,185,129,0.6) 50%,
+    var(--text-mono) 100%);
+}
+
+/* SVG converging camera curves — stroke needs more opacity on light bg */
+body.tab-arch .arch-cam-curve__path {
+  stroke: rgba(16, 185, 129, 0.75);
+}
+body.tab-arch .arch-cam-curve__dot {
+  fill: var(--ok);
+  filter: drop-shadow(0 0 0.35em rgba(16,185,129,0.8));
+}
+
+/* Legend strip on light bg */
+body.tab-arch .arch-legend { color: var(--text-dim); border-top-color: var(--border); }
+body.tab-arch .arch-legend__line {
+  background: linear-gradient(90deg, var(--border) 0%, var(--ok) 50%, var(--text-mono) 100%);
+}
+body.tab-arch .arch-legend__line--control {
+  background: none;
+  border-top-color: var(--expanso);
+}
+body.tab-arch .arch-footer { color: var(--text-dim); border-top-color: var(--border); }
+
+/* Platform-strip elements (always visible, even on ARCH) — light variant */
+body.tab-arch .platform-wordmark {
+  color: var(--expanso);
+  border-color: rgba(37,99,235,0.4);
+  background: rgba(37,99,235,0.06);
+}
+body.tab-arch .tier-strip-inline { color: var(--text-dim); }
+body.tab-arch .platform-strip .tier-dot { background: var(--ok); box-shadow: 0 0 0.5em rgba(16,185,129,0.45); }
+body.tab-arch .platform-strip-divider { background: var(--border); }
+body.tab-arch .platform-jobs-inline .job-inline-name   { color: var(--text); }
+body.tab-arch .platform-jobs-inline .job-inline-status { color: var(--text-mono); }
+body.tab-arch .platform-jobs-inline .job-inline-led    { background: var(--text-mono); }
+body.tab-arch .platform-jobs-inline .job-inline.running .job-inline-led { background: var(--ok); }
+body.tab-arch .platform-jobs-inline .job-inline.failed  .job-inline-led { background: var(--critical); }
