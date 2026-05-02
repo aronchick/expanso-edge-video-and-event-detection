@@ -418,8 +418,8 @@ function renderMetrics(m) {
   setFlowRate('arch-flow-local', fpm);
   // Live-stat block on the Jetson box: real numbers describing the node.
   setText('arch-jet-epm', String(epm));
-  setText('arch-jet-fps', archFpsString());
-  setText('arch-jet-age', archLastFrameAgeString());
+  setText('arch-jet-fps', archFpsString(epm));
+  setText('arch-jet-age', archLastFrameAgeString(epm));
   setText('arch-jet-queued', String(m.queued_offline || 0));
 }
 
@@ -517,22 +517,32 @@ for (const id of ['feed-sensor-north', 'feed-sensor-south']) {
   const img = document.getElementById(id);
   if (img) img.addEventListener('load', _onMjpegFrame);
 }
-function archFpsString() {
+function archFpsString(eventsPerMin) {
   const now = Date.now();
   while (_archFrameStamps.length && now - _archFrameStamps[0] > 5000) {
     _archFrameStamps.shift();
   }
   const fps = _archFrameStamps.length / 5;
-  if (fps <= 0) return '—';
-  return fps.toFixed(1);
+  if (fps > 0) return fps.toFixed(1);
+  // Fallback when on ARCH tab (cameras hidden, MJPEG not loading): derive
+  // a coarse fps from events/min — each event corresponds to ~1 detection
+  // frame from one of two sensors, so total frames ~ epm/60 * 2 (rough).
+  const proxy = (Number(eventsPerMin) || 0) / 30;
+  if (proxy > 0) return `~${proxy.toFixed(1)}`;
+  return '—';
 }
-function archLastFrameAgeString() {
-  if (!_archFrameStamps.length) return '—';
-  const last = _archFrameStamps[_archFrameStamps.length - 1];
-  const ageS = (Date.now() - last) / 1000;
-  if (ageS < 1) return '<1s';
-  if (ageS < 60) return `${Math.round(ageS)}s`;
-  return `${Math.round(ageS / 60)}m`;
+function archLastFrameAgeString(eventsPerMin) {
+  if (_archFrameStamps.length) {
+    const last = _archFrameStamps[_archFrameStamps.length - 1];
+    const ageS = (Date.now() - last) / 1000;
+    if (ageS < 1) return '<1s';
+    if (ageS < 60) return `${Math.round(ageS)}s`;
+    return `${Math.round(ageS / 60)}m`;
+  }
+  // No MJPEG load → if events are flowing, frames are arriving on the
+  // sensor side too. Show the live-events freshness as a proxy.
+  if ((Number(eventsPerMin) || 0) > 0) return 'live';
+  return '—';
 }
 
 // Poll metrics + jobs + S3 every 2s
