@@ -22,6 +22,7 @@ Run with:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import time
 from pathlib import Path
 
@@ -152,7 +153,13 @@ def create_app(
 
     @app.get("/jobs")
     async def get_jobs() -> dict:
-        return {"jobs": jobs.get()}
+        # JobsStatus.get() shells out to `expanso-cli job list` (sync subprocess
+        # with a timeout). When the Jetson loses WAN, that subprocess blocks
+        # for the full timeout waiting for a TCP connect to Expanso Cloud —
+        # which would starve the FastAPI event loop and freeze the WS feed +
+        # snapshot endpoints. Push it onto a worker thread so the loop keeps
+        # spinning. (Bug seen during Beat 5A: dashboard appeared frozen.)
+        return {"jobs": await asyncio.to_thread(jobs.get)}
 
     @app.get("/snapshot/{sector}")
     async def get_snapshot(sector: str) -> Response:

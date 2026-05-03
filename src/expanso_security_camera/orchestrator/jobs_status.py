@@ -114,7 +114,11 @@ class JobsStatus:
                 [cli, "job", "list", "--format", "json"],
                 capture_output=True,
                 text=True,
-                timeout=3,
+                # 1s — when WAN is up this completes in <100ms; when WAN is
+                # down we'd rather give up fast than have a long subprocess
+                # hold its worker thread (and trigger any callers that have
+                # their own short timeouts to also fail). 3s was overkill.
+                timeout=1,
             )
             if result.returncode != 0 or not result.stdout.strip():
                 return []
