@@ -146,11 +146,27 @@ function renderEvent(e) {
 
   const yolo = document.createElement('span');
   yolo.className = 'yolo' + (isEmpty ? ' empty' : '');
-  yolo.textContent = isEmpty
-    ? 'empty'
-    : hits
-        .map((h) => `${displayLabel(h.label)} ${(h.confidence * 100).toFixed(0)}%`)
-        .join(' · ');
+  if (isEmpty) {
+    yolo.textContent = 'empty';
+  } else {
+    // Each label gets its own span so we can color them per class
+    // (person = cyan, backpack = amber, drone = red). Confidence
+    // floats inline next to the label.
+    hits.forEach((h, i) => {
+      if (i > 0) {
+        const sep = document.createElement('span');
+        sep.className = 'yolo-sep';
+        sep.textContent = ' · ';
+        yolo.appendChild(sep);
+      }
+      const display = displayLabel(h.label);
+      const cls = String(display).toLowerCase();
+      const span = document.createElement('span');
+      span.className = `yolo-label yolo-label--${cls}`;
+      span.textContent = `${display} ${(h.confidence * 100).toFixed(0)}%`;
+      yolo.appendChild(span);
+    });
+  }
   row1.appendChild(yolo);
 
   // Gemini-Augmented pill — sits inline next to the labels so it's

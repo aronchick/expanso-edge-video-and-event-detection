@@ -658,14 +658,32 @@ body.tier-edge-down #tier-edge {
   order: -1;  /* timestamp first */
 }
 .event-row1 .yolo {
-  font-size: var(--t-body);
+  /* Bumped up from --t-body so detections read clearly at stage
+     distance. Each .yolo-label inside picks up its per-class hue. */
+  font-size: 1.15rem;
   color: var(--text);
-  font-weight: 600;
+  font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
   flex-shrink: 0;
+  letter-spacing: -0.005em;
+}
+/* Per-class label colors. Each detection in the row gets its own span
+   so the audience can see, at a glance, what class fired. */
+.event-row1 .yolo-label {
+  font-weight: 700;
+}
+.event-row1 .yolo-label--person   { color: var(--ok); }       /* cyan-green */
+.event-row1 .yolo-label--backpack { color: var(--alert); }    /* amber */
+.event-row1 .yolo-label--drone    { color: var(--critical); } /* red */
+/* Mid-dot separator dimmer than the labels so the eye groups each
+   <label, conf> pair instead of reading them as a flat bullet list. */
+.event-row1 .yolo-sep {
+  color: var(--text-mono);
+  opacity: 0.6;
+  font-weight: 400;
 }
 .event-desc {
   font-size: var(--t-body);
