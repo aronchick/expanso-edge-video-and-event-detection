@@ -357,11 +357,12 @@ function renderTriggers(list) {
   container.replaceChildren();
   for (const t of (list || [])) {
     const chip = document.createElement('span');
-    chip.className = 'chip';
+    const display = displayLabel(t);
+    chip.className = `chip chip--${String(display).toLowerCase()}`;
     if (!firstTriggerLoad && !previous.has(t)) {
       chip.classList.add('added');
     }
-    chip.textContent = displayLabel(t);
+    chip.textContent = display;
     container.appendChild(chip);
   }
 

@@ -455,6 +455,24 @@ body.tier-edge-down #tier-edge {
   transition: transform var(--m-base), background var(--m-base);
   white-space: nowrap;
 }
+/* Per-class chip palette — same hues as .yolo-label--* in the event
+   panel, so the audience reads "the trigger up here = the colored
+   detection down there." */
+.chip.chip--person {
+  color: var(--ok);
+  background: rgba(61, 220, 132, 0.12);
+  border-color: rgba(61, 220, 132, 0.45);
+}
+.chip.chip--backpack {
+  color: var(--alert);
+  background: rgba(255, 167, 38, 0.12);
+  border-color: rgba(255, 167, 38, 0.45);
+}
+.chip.chip--drone {
+  color: var(--critical);
+  background: rgba(255, 77, 79, 0.12);
+  border-color: rgba(255, 77, 79, 0.45);
+}
 .chip.added {
   animation: chip-pulse 1.5s ease-out;
 }
