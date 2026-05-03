@@ -3,9 +3,11 @@
 The dashboard's RED ALERT banner only fires under explicit conditions —
 not on every quiet co-occurrence. Three rules:
 
-    1. person_with_backpack    — person + backpack in a single frame on
-                                 either sensor. Fires before AND after
-                                 the operator's pipeline update.
+    1. backpack_detected       — any backpack hit on either sensor,
+                                 whether or not a person is in frame.
+                                 Backpack is the high-value object —
+                                 anyone carrying one near the perimeter
+                                 deserves an alert.
     2. person_cross_sector     — person on north AND south within
                                  WINDOW_SEC, neither replayed.
     3. drone_after_update      — a drone detection on either sensor,
@@ -59,9 +61,13 @@ class Correlator:
         if now - self._last_alert_ts < COOLDOWN_SEC:
             return None
 
-        # ── Rule 1: person + backpack on a single frame ──────────────
-        if _has_label(latest_event, "person") and _has_label(latest_event, "backpack"):
-            return self._fire(now, "person_with_backpack",
+        # ── Rule 1: any backpack hit ─────────────────────────────────
+        # Backpack alone is enough — the value of the alert is "someone
+        # is carrying something into the perimeter," and that should
+        # trip whether or not YOLO also matched the person who's
+        # carrying it (occluded, partially out of frame, etc.).
+        if _has_label(latest_event, "backpack"):
+            return self._fire(now, "backpack_detected",
                               [latest_event["node"]],
                               [latest_event])
 

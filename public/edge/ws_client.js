@@ -278,7 +278,11 @@ function enqueueAlert(f) {
 // Human-readable label for each correlator rule. Falls back to the raw
 // rule string for any new rule wired up server-side without a label here.
 const ALERT_RULE_LABELS = {
-  person_with_backpack: 'PERSON + BACKPACK',
+  backpack_detected:    'BACKPACK DETECTED',
+  // Legacy name from the prior rule definition; kept so a degraded
+  // rolling deploy where the orchestrator hasn't been respawned yet
+  // doesn't display the raw snake_case string.
+  person_with_backpack: 'BACKPACK DETECTED',
   person_cross_sector:  'PERSON · BOTH SECTORS',
   drone_after_update:   'DRONE DETECTED',
   synthetic:            'SYNTHETIC (REHEARSAL)',
