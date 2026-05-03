@@ -98,7 +98,14 @@ class Detector:
         self.model_name = os.path.basename(model_path).split(".")[0]
 
     def detect(self, frame: np.ndarray, ts: float) -> Optional[Event]:
-        results = self.model(frame, verbose=False)[0]
+        # COCO class indices for the only labels we care about. Passing this to
+        # ultralytics short-circuits NMS + box score sorting on the other 77
+        # classes, which on a TRT engine is a measurable cut in post-process
+        # time. (The DFL/conv head still scores all 80, but the heavy work
+        # downstream collapses to these 3.)
+        #   0 = person, 4 = airplane (used as drone proxy by upstream
+        #   triggers config), 24 = backpack
+        results = self.model(frame, verbose=False, classes=[0, 4, 24])[0]
         hits: list[Detection] = []
         for cls_idx, conf, box in zip(results.boxes.cls, results.boxes.conf, results.boxes.xyxy):
             label = self.model.names[int(cls_idx)]
