@@ -30,6 +30,19 @@
   <div id="alert-meta" class="alert-meta"></div>
 </div>
 
+<!-- "Pipeline updated" big-signal overlay. Fires when a new class lands
+     in the live trigger set (e.g. operator hits F4 → drone is added).
+     Visually distinct from the red ALERT — this is a *positive* event
+     ("we are now detecting drone") so it leans on the brand blue. -->
+<div id="pipeline-update-overlay" class="pipeline-update-overlay" aria-hidden="true">
+  <div class="pipeline-update-icon">⬢</div>
+  <div class="pipeline-update-eyebrow">PIPELINE UPDATED</div>
+  <div class="pipeline-update-headline">
+    NOW DETECTING <span class="pipeline-update-class">DRONE</span>
+  </div>
+  <div class="pipeline-update-sub">all sensors picked up the new class · live</div>
+</div>
+
 <!-- Topology mini canvas -->
 <canvas id="topology" class="topology" width="280" height="160"></canvas>
 

@@ -348,7 +348,34 @@ function renderTriggers(list) {
     chip.textContent = displayLabel(t);
     container.appendChild(chip);
   }
+
+  // Big-signal moment: the operator just rolled out drone detection.
+  // Skip on first load (initial WS payload would otherwise fire the
+  // overlay every page refresh).
+  if (!firstTriggerLoad && !previous.has('drone') && knownTriggers.has('drone')) {
+    showPipelineUpdateOverlay('drone');
+  }
+
   firstTriggerLoad = false;
+}
+
+// Full-viewport "PIPELINE UPDATED" takeover. Fires the moment the active
+// trigger set transitions to include `drone` (or, generally, any class
+// passed in). Pulses for ~6s, then collapses back. Audience sees: the
+// operator rolled out the new class, the cluster picked it up, sensors
+// will now flag it.
+function showPipelineUpdateOverlay(newClass) {
+  const overlay = document.getElementById('pipeline-update-overlay');
+  if (!overlay) return;
+  const subjectEl = overlay.querySelector('.pipeline-update-class');
+  if (subjectEl) subjectEl.textContent = displayLabel(newClass).toUpperCase();
+  overlay.classList.remove('show');
+  void overlay.offsetWidth; // restart entry animation
+  overlay.classList.add('show');
+  clearTimeout(showPipelineUpdateOverlay._timer);
+  showPipelineUpdateOverlay._timer = setTimeout(() => {
+    overlay.classList.remove('show');
+  }, 6000);
 }
 
 // COCO doesn't have a "drone" class — YOLO classifies drones as "airplane".
