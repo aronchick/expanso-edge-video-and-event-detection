@@ -30,6 +30,32 @@ from expanso_security_camera.sensor.schema import Detection, Event
 from expanso_security_camera.sensor.triggers_client import TriggerClient
 
 CONF_THRESHOLD = 0.55
+# Per-class overrides. The 3-class fine-tune trained to mAP50=0.995 on
+# `person` (we can lower its bar safely: virtually no false positives).
+# `drone` only got mAP50=0.193 from sparse footage, so we also lower its bar
+# to surface anything the model thinks looks droney. `backpack` sits at
+# mAP50=0.922 but at this camera angle real backpacks frequently land in
+# the 0.5–0.6 band; 0.35 keeps recall high without flooding the dashboard.
+PER_CLASS_THRESHOLDS: dict[str, float] = {
+    # COCO yolov8s emits dense, well-calibrated person/backpack scores in
+    # this venue — set the bar high enough to suppress low-conf clutter
+    # ("fake people" on furniture / posters / shadow). A separate fine-tune
+    # pass on real venue footage is queued for later, which will let us drop
+    # these back down with confidence.
+    "person": 0.60,
+    "backpack": 0.50,
+    # Drone is effectively suppressed until the planned Hetzner fine-tune
+    # pass produces a properly-trained drone class. The current fine-tune
+    # mAP50=0.193 yields too many low-conf false positives (chairs, lamps,
+    # ceiling fans) at any threshold the demo would actually fire on.
+    # Setting the bar at 0.95 means nothing real fires; resurrect this knob
+    # post-retrain.
+    "drone": 0.95,
+}
+
+
+def _threshold_for(label: str) -> float:
+    return PER_CLASS_THRESHOLDS.get(label, CONF_THRESHOLD)
 # Labels the cascade actually cares about. Derived to indices at runtime
 # from `self.model.names`, so this works against both the off-the-shelf
 # COCO yolov8s engine ("airplane" included as a drone proxy until we have
@@ -86,6 +112,7 @@ class Detector:
         node_id: str,
         triggers: TriggerClient,
         model_path: str = "yolo11s.engine",
+        drone_model_path: str | None = None,
         gemini_api_key: str | None = None,
     ) -> None:
         from ultralytics import YOLO  # heavy import, defer until construction
@@ -93,9 +120,19 @@ class Detector:
         self.node_id = node_id
         self.triggers = triggers
         self.model = YOLO(model_path)
+        # Optional secondary engine. Use case: COCO yolov8s as primary
+        # (dense, reliable person/backpack), fine-tuned 3-class as secondary
+        # ONLY for the `drone` class (COCO has no drone class — yolov8s
+        # emits "airplane" as a proxy, but a real drone-trained model is
+        # tighter for the demo's drone-detection beat). Per-frame cost is
+        # roughly doubled, but Jetson Orin Nano fits two TRT inferences
+        # well under our 100ms / 10 FPS budget.
+        self.drone_model = YOLO(drone_model_path) if drone_model_path else None
         # Warm up so first real frame doesn't pay the cold-start tax.
         dummy = np.zeros((640, 640, 3), dtype=np.uint8)
         self.model(dummy, verbose=False)
+        if self.drone_model is not None:
+            self.drone_model(dummy, verbose=False)
 
         self.api_key = (
             gemini_api_key
@@ -117,7 +154,14 @@ class Detector:
         wanted_indices = [
             i for i, n in self.model.names.items() if n in _WANTED_LABELS
         ]
-        results = self.model(frame, verbose=False, classes=wanted_indices or None)[0]
+        # Pass a low predict-side conf floor so anything the model is willing
+        # to emit reaches our per-class threshold filter. Without this, YOLO's
+        # default (0.25) silently drops mid-confidence person/drone outputs
+        # before we ever see them — and our 0.30 person bar is meaningless if
+        # the candidates never arrive.
+        results = self.model(
+            frame, verbose=False, classes=wanted_indices or None, conf=0.10
+        )[0]
         hits: list[Detection] = []
         for cls_idx, conf, box in zip(results.boxes.cls, results.boxes.conf, results.boxes.xyxy):
             label = self.model.names[int(cls_idx)]
@@ -129,7 +173,7 @@ class Detector:
             if label == "airplane":
                 label = "drone"
             confidence = float(conf)
-            if self.triggers.contains(label) and confidence > CONF_THRESHOLD:
+            if self.triggers.contains(label) and confidence > _threshold_for(label):
                 hits.append(
                     Detection(
                         label=label,
@@ -137,6 +181,35 @@ class Detector:
                         bbox=tuple(float(v) for v in box),
                     )
                 )
+
+        # Secondary pass: fine-tuned drone model. Only consume its `drone`
+        # class — person/backpack come from primary (COCO), which is denser
+        # and better-calibrated in deployment scenes. Skipped if no
+        # drone_model_path was provided at construction.
+        if self.drone_model is not None and self.triggers.contains("drone"):
+            drone_indices = [
+                i for i, n in self.drone_model.names.items() if n == "drone"
+            ]
+            if drone_indices:
+                drone_results = self.drone_model(
+                    frame, verbose=False, classes=drone_indices, conf=0.10
+                )[0]
+                for cls_idx, conf, box in zip(
+                    drone_results.boxes.cls,
+                    drone_results.boxes.conf,
+                    drone_results.boxes.xyxy,
+                ):
+                    if self.drone_model.names[int(cls_idx)] != "drone":
+                        continue
+                    confidence = float(conf)
+                    if confidence > _threshold_for("drone"):
+                        hits.append(
+                            Detection(
+                                label="drone",
+                                confidence=confidence,
+                                bbox=tuple(float(v) for v in box),
+                            )
+                        )
 
         if not hits:
             return None

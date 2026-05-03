@@ -99,8 +99,9 @@ function refreshGeminiPill(flash = false) {
 }
 
 // Drift the rolling window even when no new events arrive, so an old call
-// rolls off after 60s on its own.
-setInterval(() => refreshGeminiPill(false), 1000);
+// rolls off after 60s on its own. Tight tick keeps the per-minute counter
+// visually live instead of jumping in 1s steps.
+setInterval(() => refreshGeminiPill(false), 250);
 
 // De-dup events: same sector + same ts + same yolo signature should only render once.
 // (Backfill on WS reconnect can otherwise re-emit events that the live stream
@@ -322,8 +323,9 @@ function renderFusionTile(f) {
   alertActiveUntil = Date.now() + 6000;
 }
 
-// Drive the STANDBY decay: every second, if we're past the active window,
-// collapse the tile back to standby and update the "last:" age.
+// Drive the STANDBY decay: every 250ms, if we're past the active window,
+// collapse the tile back to standby and update the "last:" age. Sub-second
+// tick so the alert tile feels reactive on transition.
 setInterval(() => {
   const tile = document.getElementById('alert-tile');
   const stateEl = document.getElementById('alert-state');
@@ -339,7 +341,7 @@ setInterval(() => {
   if (alertLastTs > 0 && metaEl) {
     metaEl.textContent = `last: ${fmtIsoUtc(alertLastTs)}`;
   }
-}, 1000);
+}, 250);
 
 // ISO 8601 UTC format helper — `2026-05-02T11:48:14Z`. Per the design spec
 // (refine-dashboard-design-vocabulary), the dashboard uses ISO 8601 UTC for
@@ -639,27 +641,36 @@ function archLastFrameAgeString(eventsPerMin) {
   return '—';
 }
 
-// Poll metrics + jobs + S3 every 2s
+// Fast poll for the event-driven counters (/metrics) + S3 freshness.
+// Both are pure in-memory reads, so 500ms is cheap.
 setInterval(async () => {
   try {
-    const [m, j, s] = await Promise.all([
+    const [m, s] = await Promise.all([
       fetch('/metrics').then((r) => r.json()),
-      fetch('/jobs').then((r) => r.json()),
       fetch('/s3').then((r) => r.json()),
     ]);
     renderMetrics(m);
-    renderJobs(j.jobs || []);
     renderS3(s);
+  } catch (e) { /* offline; ignore */ }
+}, 500);
+
+// Slow poll for /jobs — it shells out to `expanso-cli job list` with a 1s
+// subprocess timeout, so keep it at 2s to avoid overlapping spawns.
+setInterval(async () => {
+  try {
+    const j = await fetch('/jobs').then((r) => r.json());
+    renderJobs(j.jobs || []);
   } catch (e) { /* offline; ignore */ }
 }, 2000);
 
-// Sectors offline if no event in 8 seconds
+// Sectors offline if no event in 8 seconds. Tick at 250ms so the
+// "live → offline" transition has at most a quarter-second lag.
 setInterval(() => {
   const now = Date.now();
   for (const node of Object.keys(lastSeen)) {
     if (lastSeen[node] && now - lastSeen[node] > 8000) updateSectorStatus(node, 'offline');
   }
-}, 1000);
+}, 250);
 
 // Camera feeds use the orchestrator's MJPEG /stream/{sector} endpoint —
 // browser holds an HTTP connection open and renders new frames as the

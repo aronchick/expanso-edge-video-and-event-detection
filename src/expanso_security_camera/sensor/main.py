@@ -44,6 +44,7 @@ def run_real(
     orchestrator_url: str,
     db_path: str,
     yolo_model: str,
+    drone_yolo_model: str | None = None,
     snapshot_dir: str = "snapshots",
 ) -> None:
     # Defer heavy imports so --fake doesn't pay for them.
@@ -57,7 +58,12 @@ def run_real(
     print(f"[{node_id}] starting real sensor, RTSP={rtsp_url}", flush=True)
     triggers = TriggerClient(orchestrator_url)
     reader = FreshFrameReader(rtsp_url, name=node_id)
-    detector = Detector(node_id, triggers, model_path=yolo_model)
+    detector = Detector(
+        node_id,
+        triggers,
+        model_path=yolo_model,
+        drone_model_path=drone_yolo_model,
+    )
     emitter = Emitter(node_id, db_path, orchestrator_url)
 
     snapshot_path = Path(snapshot_dir) / f"{node_id}.jpg"
@@ -295,6 +301,13 @@ def main() -> None:
     parser.add_argument("--node-id", default=os.environ.get("NODE_ID", "sensor-fake"))
     parser.add_argument("--rtsp-url", default=os.environ.get("RTSP_URL"))
     parser.add_argument("--yolo-model", default=os.environ.get("YOLO_MODEL", "yolo11s.engine"))
+    parser.add_argument(
+        "--drone-yolo-model",
+        default=os.environ.get("DRONE_YOLO_MODEL"),
+        help="Optional secondary engine consulted only for the drone class. "
+        "Pair with a COCO yolov8s.engine primary so person/backpack come from "
+        "the dense COCO model and drone comes from the fine-tune.",
+    )
     parser.add_argument("--db", default=None)
     parser.add_argument(
         "--cadence", type=float, default=2.5, help="(fake) seconds between event attempts"
@@ -341,7 +354,14 @@ def main() -> None:
     if not args.rtsp_url:
         raise SystemExit("real mode requires RTSP_URL or --rtsp-url")
     db = args.db or f"/data/{args.node_id}.db"
-    run_real(args.node_id, args.rtsp_url, args.orchestrator, db, args.yolo_model)
+    run_real(
+        args.node_id,
+        args.rtsp_url,
+        args.orchestrator,
+        db,
+        args.yolo_model,
+        drone_yolo_model=args.drone_yolo_model,
+    )
 
 
 if __name__ == "__main__":

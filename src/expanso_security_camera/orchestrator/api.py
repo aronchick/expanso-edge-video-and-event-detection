@@ -287,7 +287,7 @@ def create_app(
             # not an Expanso/AWS dependency (so probe failure means
             # general WAN loss, not "AWS happens to be slow").
             reader, writer = await asyncio.wait_for(
-                asyncio.open_connection("1.1.1.1", 443), timeout=1.2
+                asyncio.open_connection("1.1.1.1", 443), timeout=2.5
             )
             writer.close()
             try:
@@ -299,16 +299,29 @@ def create_app(
             return False
 
     async def wan_monitor_loop() -> None:
-        last = metrics.is_cloud_up()
-        # Small initial delay so the FastAPI lifespan can finish wiring up
+        # Flap-suppress: a single timed-out probe to 1.1.1.1 (transient packet
+        # drop, residential bufferbloat, ISP queue) is not real WAN loss. Real
+        # loss persists for many seconds. Require N consecutive failures before
+        # painting the red banner; recover on first success.
+        DOWN_THRESHOLD = 3  # 3 × 3s probe interval ≈ 9s of confirmed loss
+        consecutive_failures = 0
+        last_broadcast = metrics.is_cloud_up()
         await asyncio.sleep(2.0)
         while True:
             try:
                 up = await _wan_probe()
-                if up != last:
-                    metrics.set_cloud(up)
-                    await manager.broadcast({"type": "cloud", "data": {"up": up}})
-                    last = up
+                if up:
+                    consecutive_failures = 0
+                    if not last_broadcast:
+                        metrics.set_cloud(True)
+                        await manager.broadcast({"type": "cloud", "data": {"up": True}})
+                        last_broadcast = True
+                else:
+                    consecutive_failures += 1
+                    if consecutive_failures >= DOWN_THRESHOLD and last_broadcast:
+                        metrics.set_cloud(False)
+                        await manager.broadcast({"type": "cloud", "data": {"up": False}})
+                        last_broadcast = False
             except Exception:
                 pass  # never let the monitor crash the app
             await asyncio.sleep(3.0)

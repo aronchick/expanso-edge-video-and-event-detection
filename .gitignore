@@ -49,3 +49,13 @@ runs/
 *.db-shm
 events.ndjson
 detection-events.ndjson
+triggers.yaml
+
+# Internal demo material — verbal speaker scripts, deployment-specific
+# bootstrap, runbooks, planning docs. Distributed out-of-band, not via git.
+internal/
+
+# Stray local recordings / large binaries that occasionally land at the root
+jetson
+*.mov
+*.MOV
