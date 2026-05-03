@@ -30,7 +30,12 @@ from expanso_security_camera.sensor.schema import Detection, Event
 from expanso_security_camera.sensor.triggers_client import TriggerClient
 
 CONF_THRESHOLD = 0.55
-GEMINI_COOLDOWN_SEC = 3.0
+# Per-sensor Gemini cooldown. With GPU YOLO at ~18 events/sec/sensor, a 3s
+# cooldown still lets ~40 cloud reachbacks/min through — too noisy for a
+# demo (and burns API quota). 15s caps each sensor at 4/min, so the audience
+# sees the cloud-reachback pill tick at a calm cadence (~8/min total across
+# both sensors) instead of a firehose. Override per-deploy with EDGE_GEMINI_COOLDOWN_SEC.
+GEMINI_COOLDOWN_SEC = float(os.environ.get("EDGE_GEMINI_COOLDOWN_SEC", "15.0"))
 GEMINI_MODEL = "gemini-3-flash-preview"
 
 GEMINI_PROMPT = """You are an edge sensor analyst. Look at this frame from
