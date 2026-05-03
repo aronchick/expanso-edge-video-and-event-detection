@@ -938,16 +938,16 @@ async function startWebRTCFor(sectorEl) {
     if (!resp.ok) throw new Error(`go2rtc HTTP ${resp.status}`);
     const answerSdp = await resp.text();
     await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
-    // Tell the browser to maintain a 2s playout buffer on the video stream.
-    // This artificially delays the live WebRTC display so it lines up with
-    // YOLO bbox events (which trail realtime by ~300–500ms inference + WS).
-    // Net effect: judges see the bracket land on the person at the same
-    // instant the video frame shows them. The "live" badge becomes a
-    // 2-second-old-live, which is fine for a stage demo.
+    // Maintain a small playout buffer so the WebRTC stream lines up with the
+    // YOLO bbox events. With the TRT engine on the Orin GPU, inference is
+    // ~10–30ms per frame and WS transport is ~50ms — total bbox lag ~150ms.
+    // We previously set this to 2.0s when YOLO ran on CPU and trailed by
+    // 500ms+; with GPU we can drop it back to ~0.15s and the video is
+    // nearly live with the bracket riding on top in real time.
     for (const r of pc.getReceivers()) {
-      if (r.track && r.track.kind === 'video') r.playoutDelayHint = 2.0;
+      if (r.track && r.track.kind === 'video') r.playoutDelayHint = 0.15;
     }
-    console.log(`[webrtc] ${sector} ← ${stream} negotiated (playoutDelay 2s)`);
+    console.log(`[webrtc] ${sector} ← ${stream} negotiated (playoutDelay 150ms)`);
   } catch (err) {
     console.warn(`[webrtc] ${sector} failed, falling back to JPEG snapshot:`, err);
     // The fallback <img class="sector-fallback"> is z-index 0 underneath the video.
