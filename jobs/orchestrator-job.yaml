@@ -1,6 +1,5 @@
-# Edge-ISR fusion node, deployed to the armyx-tech Expanso Cloud cluster
-# as a real Expanso pipeline (replaces the standalone nohup edge-orchestrator
-# process on the Jetson).
+# Edge-ISR fusion node, deployed as a real Expanso pipeline (replaces
+# the standalone nohup edge-orchestrator process on the Jetson).
 #
 # Why a pipeline, not Type: ops with a docker engine: the current Expanso
 # CLI accepts only Type: pipeline. We wrap the long-running edge-orchestrator
@@ -12,12 +11,17 @@
 # Selector is empty: there is exactly one node attached to the armyx-tech
 # cluster (security-camera-overseer / Jetson), so it always lands there.
 #
-# === BEFORE DEPLOYING ===
+# === DECLARATIVE EXECUTION ===
+# Same /usr/bin/env + uv run pattern as sensor-{north,south}-job.yaml,
+# but the orchestrator is pure-CPU FastAPI so no CUDA env vars needed.
+#
+# === BEFORE FIRST DEPLOY ===
 # The Jetson must be prepped:
 #   1. Free port 8090: `pkill -f edge-orchestrator` (do this just before
 #      `expanso-cli job deploy` so Expanso can bind immediately).
-#   2. The binary at /home/daaronch/security-cameras/.venv/bin/edge-orchestrator
-#      must exist (uv-managed venv from `uv sync` in the security-cameras repo).
+#   2. The repo at /home/daaronch/security-cameras must be present and
+#      `uv sync`'d at least once (so pyproject.toml + lockfile are valid).
+#      uv run regenerates the venv on demand from there.
 #   3. The orchestrator writes events.ndjson + orchestrator.db + snapshots/
 #      relative to its CWD. Expanso edge runs the subprocess from its own
 #      working dir; pass absolute paths so output ends up where the archive
@@ -29,6 +33,7 @@
 # Deploy:
 #   expanso-cli profile select armyx-tech
 #   expanso-cli job deploy jobs/orchestrator-job.yaml
+#   expanso-cli job start fusion-node
 
 name: fusion-node
 type: pipeline
@@ -36,8 +41,13 @@ type: pipeline
 config:
   input:
     subprocess:
-      name: /home/daaronch/security-cameras/.venv/bin/edge-orchestrator
+      name: /usr/bin/env
       args:
+        - /home/daaronch/.local/bin/uv
+        - run
+        - --project
+        - /home/daaronch/security-cameras
+        - edge-orchestrator
         - --host=0.0.0.0
         - --port=8090
         - --db=/opt/edge-isr/orchestrator/orchestrator.db

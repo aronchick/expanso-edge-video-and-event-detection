@@ -1,10 +1,11 @@
 # Edge-ISR sensor — sector south (cam-inside, 192.168.2.11).
-# See sensor-north-job.yaml for context; this is identical except NODE_ID,
+# See sensor-north-job.yaml for full context. Identical except node id,
 # RTSP camera IP/password env, and DB path.
 #
 # Deploy:
 #   expanso-cli profile select armyx-tech
 #   expanso-cli job deploy jobs/sensor-south-job.yaml
+#   expanso-cli job start sensor-south
 
 name: sensor-south
 type: pipeline
@@ -12,12 +13,19 @@ type: pipeline
 config:
   input:
     subprocess:
-      name: /home/daaronch/security-cameras/.venv/bin/edge-sensor
+      name: /usr/bin/env
       args:
+        - LD_LIBRARY_PATH=/usr/local/cuda/lib64:/home/daaronch/security-cameras/.venv/lib/python3.10/site-packages/nvidia/cu12/lib
+        - EDGE_INFERENCE_FPS_CAP=10
+        - /home/daaronch/.local/bin/uv
+        - run
+        - --project
+        - /home/daaronch/security-cameras
+        - edge-sensor
         - --orchestrator=http://localhost:8090
         - --node-id=sensor-south
-        - --rtsp-url=rtsp://${CAM_USER}:${CAM_PASS_INSIDE}@192.168.2.11:554/h264Preview_01_main
-        - --yolo-model=yolov8s.pt
+        - --rtsp-url=rtsp://${CAM_USER}:${CAM_PASS_INSIDE}@192.168.2.11:554/h264Preview_01_sub
+        - --yolo-model=/home/daaronch/security-cameras/yolov8s.engine
         - --db=/opt/edge-isr/data/sensor-south.db
       codec: lines
       restart_on_exit: true
