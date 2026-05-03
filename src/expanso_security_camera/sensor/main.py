@@ -81,16 +81,32 @@ def run_real(
     yolo_lock = threading.Lock()
     yolo_event = threading.Event()
 
+    # Cap inference rate so the dashboard isn't firehosed. With TRT on the GPU
+    # the worker can do ~30 fps per sensor; that's 60+ events/sec into the WS,
+    # which overwhelms the browser. 5 fps per sensor (~10 fps total across
+    # both) is plenty for the eye to read brackets as "live tracking" without
+    # melting the client. Configurable via EDGE_INFERENCE_FPS_CAP.
+    inference_min_gap_sec = 1.0 / float(os.environ.get("EDGE_INFERENCE_FPS_CAP", "5.0"))
+    last_inference_ts = 0.0
+
     def yolo_worker() -> None:
+        nonlocal last_inference_ts
         while True:
             yolo_event.wait()
             yolo_event.clear()
+            # Throttle: skip this wakeup if we ran inference too recently.
+            # The mailbox keeps the latest frame, so the next wakeup will
+            # still see fresh content — we just drop intermediate frames.
+            now = time.time()
+            if now - last_inference_ts < inference_min_gap_sec:
+                continue
             with yolo_lock:
                 frame = yolo_inbox["frame"]
                 ts = yolo_inbox["ts"]
                 yolo_inbox["frame"] = None
             if frame is None:
                 continue
+            last_inference_ts = now
             try:
                 ev = detector.detect(frame, ts)
             except Exception as e:
