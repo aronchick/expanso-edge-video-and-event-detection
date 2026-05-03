@@ -473,14 +473,21 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    # Env-var fallbacks — the YAML pipeline doesn't propagate every flag,
+    # but expanso-edge.service does load /home/daaronch/demo-gemma-4/.env
+    # which has ARMYX_S3_BUCKET / ARMYX_JETSON_HOST. Honor those when the
+    # CLI flag wasn't passed.
+    s3_bucket = args.s3_bucket or os.environ.get("ARMYX_S3_BUCKET")
+    jetson_host = args.jetson_host or os.environ.get("ARMYX_JETSON_HOST")
+
     app = create_app(
         db_path=args.db,
         triggers_path=args.triggers,
         snapshots_dir=args.snapshots,
         ndjson_path=args.ndjson,
         fake_mode=not args.no_fake_snapshots,
-        s3_bucket=args.s3_bucket,
-        jetson_host=args.jetson_host,
+        s3_bucket=s3_bucket,
+        jetson_host=jetson_host,
     )
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 

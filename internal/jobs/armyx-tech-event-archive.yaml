@@ -38,8 +38,15 @@ config:
     # rotations and survives the file being recreated by the
     # orchestrator process. Same pattern as the sensor jobs use.
     subprocess:
-      name: /usr/bin/tail
+      # Force line-buffered output. Without `stdbuf -oL`, tail's stdout
+      # is block-buffered when piped (default ~4KB buffer) — bento sees
+      # zero messages until the buffer fills, which at our event size
+      # takes minutes. With -oL, every line flushes immediately so
+      # bento processes events as they land.
+      name: /usr/bin/stdbuf
       args:
+        - -oL
+        - /usr/bin/tail
         - -F
         - -n
         - "+1"
@@ -50,22 +57,9 @@ config:
 
   pipeline:
     processors:
-      # Parse JSON; drop lines that aren't parseable (blank line, boot noise).
-      - mapping: root = this.parse_json().catch(deleted())
-
-      # Lineage block: surfaces in the S3 object itself so judges can
-      # `aws s3 cp ... -` any object and see the chain. (Filter on
-      # node/signature was previously dropping every message — bloblang
-      # null-access semantics in this Expanso build don't behave like the
-      # spec; pipeline is more useful pass-through than over-filtered.)
-      - mapping: |
-          root = this
-          root.archive = {
-            "archived_at": now(),
-            "pipeline": "armyx-tech-event-archive",
-            "pipeline_version": "1.0.0",
-            "bucket": "armyx-tech-edge-events-767397752906"
-          }
+      # Bare minimum — let messages through unchanged. Anything fancier
+      # was eating messages silently in this Expanso build.
+      - mapping: root = content().string()
 
   output:
     broker:
@@ -77,6 +71,13 @@ config:
         - aws_s3:
             bucket: armyx-tech-edge-events-767397752906
             region: us-west-2
+            # Explicit profile — the Jetson's ~/.aws/credentials has only
+            # [armyx-tech] (no [default]) so without this, the AWS SDK
+            # fails auth silently and bento drops every message at the
+            # s3 sink. AWS_PROFILE env var would also work but the agent
+            # subprocess env isn't reliably set, so we hardcode here.
+            credentials:
+              profile: armyx-tech
             path: 'events/${! this.node.or("unknown") }/${! now() }-${! uuid_v4() }.json'
             content_type: application/json
             batching:
