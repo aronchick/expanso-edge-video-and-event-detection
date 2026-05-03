@@ -8,8 +8,10 @@ not on every quiet co-occurrence. Three rules:
                                  Backpack is the high-value object —
                                  anyone carrying one near the perimeter
                                  deserves an alert.
-    2. person_cross_sector     — person on north AND south within
-                                 WINDOW_SEC, neither replayed.
+    2. multiple_persons        — two or more person hits in a single
+                                 event. One person alone is normal foot
+                                 traffic; a group is the alert-worthy
+                                 signal.
     3. drone_after_update      — a drone detection on either sensor,
                                  BUT only after the operator has rolled
                                  out the drone class (i.e. "drone"
@@ -82,26 +84,18 @@ class Correlator:
                               [latest_event["node"]],
                               [latest_event])
 
-        # ── Rule 2: simultaneous person on north AND south ──────────
-        if not _has_label(latest_event, "person"):
-            return None
-        recent = self.store.recent(since_ts=now - WINDOW_SEC, limit=100)
-        other = next(
-            (
-                e
-                for e in recent
-                if e["node"] != latest_event["node"]
-                and not e.get("queued_offline")
-                and _has_label(e, "person")
-            ),
-            None,
+        # ── Rule 2: 2+ persons in a single event ─────────────────────
+        # One person alone is normal foot traffic; multiple people in a
+        # single frame is the alert-worthy signal (group walking
+        # together past the perimeter).
+        person_count = sum(
+            1 for h in latest_event.get("yolo_hits", []) if h.get("label") == "person"
         )
-        if other is None:
-            return None
-
-        sectors = sorted({latest_event["node"], other["node"]})
-        return self._fire(now, "person_cross_sector", sectors,
-                          [latest_event, other])
+        if person_count >= 2:
+            return self._fire(now, "multiple_persons",
+                              [latest_event["node"]],
+                              [latest_event])
+        return None
 
     def _fire(self, now: float, rule: str, sectors: list[str],
               events: list[dict]) -> dict:
