@@ -43,6 +43,13 @@ config:
     subprocess:
       name: /usr/bin/env
       args:
+        # S3 archive bucket — orchestrator's S3Watcher uses this to poll
+        # the bucket and surface object counts on the dashboard's
+        # ARCHIVE tab. The agent .env currently lacks ARMYX_S3_BUCKET,
+        # so we inject it inline here instead of editing the .env file
+        # (which would force a full agent restart).
+        - ARMYX_S3_BUCKET=armyx-tech-edge-events-767397752906
+        - AWS_PROFILE=armyx-tech
         - /home/daaronch/.local/bin/uv
         - run
         - --project
