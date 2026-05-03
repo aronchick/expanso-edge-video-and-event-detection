@@ -53,18 +53,22 @@ REVIEW = DATASET / "review"
 DRONE_CLASS_INDEX = 2  # matches CLASS_INDICES in ingest_3class.py
 
 
-PROMPT = (
-    "Look at this security-camera-style image and tell me whether it contains "
-    "a small civilian quadcopter drone (the kind a hobbyist or company would "
-    "fly indoors or in an open area).\n\n"
-    "Rules:\n"
-    "  - If NO such drone is visible, respond with exactly: NO_DRONE\n"
-    "  - If a drone is visible, respond with exactly one JSON object on a "
-    "single line giving its tight bounding box in pixel coordinates: "
-    '{"x1":INT,"y1":INT,"x2":INT,"y2":INT}\n'
-    "  - Do NOT box: ceiling-mounted projectors, speakers, lights, monitors, "
-    "people, plants, or any other non-drone object. If you're not sure, say NO_DRONE.\n"
-    "  - No explanation, no markdown, no other text."
+PROMPT_TEMPLATE = (
+    "Look at the image at {image_path}.\n\n"
+    "Examine it for a small civilian/hobbyist quadcopter drone. A drone here:\n"
+    "  - has 4 visible rotors/arms\n"
+    "  - is roughly palm-sized to shoebox-sized\n"
+    "  - may be in mid-air (hovering), on the floor, on a surface, or near "
+    "the ceiling\n"
+    "  - often has bright/colorful top shell against the dark/white "
+    "background of the room\n\n"
+    "Output rules:\n"
+    "  - If you see a drone, respond with EXACTLY one JSON object on a "
+    'single line: {{"x1":INT,"y1":INT,"x2":INT,"y2":INT}} — tight pixel-'
+    "coordinate bounding box.\n"
+    "  - If NO drone is visible, respond with exactly: NO_DRONE\n"
+    "  - No explanation, no markdown fences, no extra text — just the "
+    "JSON or the literal NO_DRONE."
 )
 
 
@@ -81,9 +85,23 @@ def _is_drone_subject(stem: str) -> bool:
 
 
 def _ask_claude(claude_bin: str, image_path: Path, timeout: float = 60.0) -> Optional[tuple[int, int, int, int]]:
-    """Returns (x1,y1,x2,y2) ints if Claude found a drone, else None."""
+    """Returns (x1,y1,x2,y2) ints if Claude found a drone, else None.
+
+    The CLI needs `--add-dir` to grant filesystem read access to the image,
+    AND the path has to appear in the prompt text (Claude reads files
+    referenced in prompts that are inside an --add-dir directory). Passing
+    the path as a positional arg is treated as additional prompt text and
+    Claude never actually opens the image — it returned NO_DRONE on every
+    frame because it was responding to "is there a drone in this filename?"
+    """
+    full_prompt = PROMPT_TEMPLATE.format(image_path=image_path)
     result = subprocess.run(
-        [claude_bin, "-p", PROMPT, str(image_path), "--output-format", "text"],
+        [
+            claude_bin,
+            "--add-dir", str(image_path.parent),
+            "-p", full_prompt,
+            "--output-format", "text",
+        ],
         capture_output=True,
         text=True,
         timeout=timeout,
