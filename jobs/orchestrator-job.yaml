@@ -59,10 +59,10 @@ config:
       max_buffer: 1048576
 
   pipeline:
+    # uvicorn access lines aren't JSON; pass through as raw string.
+    # `mapping: root = this` would error trying to parse them as JSON.
     processors:
-      # uvicorn access lines aren't JSON; keep them as-is so they appear in
-      # `expanso-cli execution logs fusion-node` for live debugging.
-      - mapping: root = this
+      - mapping: root = content().string()
 
   output:
     drop: {}

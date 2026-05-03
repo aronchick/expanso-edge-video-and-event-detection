@@ -32,8 +32,10 @@ config:
       max_buffer: 1048576
 
   pipeline:
+    # No-op: see sensor-north-job.yaml for why `root = this` doesn't work
+    # for plain-text subprocess stdout.
     processors:
-      - mapping: root = this
+      - mapping: root = content().string()
 
   output:
     drop: {}

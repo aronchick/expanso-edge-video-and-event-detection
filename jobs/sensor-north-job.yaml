@@ -65,8 +65,15 @@ config:
       max_buffer: 1048576
 
   pipeline:
+    # No-op processor: subprocess emits plain-text stdout lines like
+    # "[sensor-north] emitted: ['person']", not JSON. `mapping: root = this`
+    # tries to access the message as a JSON value and floods the agent log
+    # with "unable to reference message as structured" at ~30/sec, marking
+    # the job degraded. Since output is drop:{}, we just need anything that
+    # doesn't error — `root = content().string()` keeps the raw bytes as a
+    # string and is a true no-op.
     processors:
-      - mapping: root = this
+      - mapping: root = content().string()
 
   output:
     drop: {}
