@@ -476,6 +476,32 @@ body.tier-edge-down #tier-edge {
 .chip.added {
   animation: chip-pulse 1.5s ease-out;
 }
+/* Ghost chip — present when drone is NOT yet armed. Click-to-arm
+   affordance: dimmed fill, dashed border, soft pulse so the audience's
+   eye finds it without it competing with the live trigger chips. */
+.chip.chip--ghost {
+  background: transparent;
+  color: rgba(255, 77, 79, 0.55);
+  border-style: dashed;
+  border-color: rgba(255, 77, 79, 0.35);
+  cursor: pointer;
+  animation: chip-ghost-breath 2.4s ease-in-out infinite;
+}
+.chip.chip--ghost:hover {
+  color: var(--critical);
+  border-color: rgba(255, 77, 79, 0.7);
+  background: rgba(255, 77, 79, 0.08);
+  animation: none;
+}
+.chip.chip--ghost.arming {
+  cursor: default;
+  animation: none;
+  opacity: 0.45;
+}
+@keyframes chip-ghost-breath {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 0.95; }
+}
 @keyframes chip-pulse {
   0%   { transform: scale(0.7); background: var(--alert); color: #000; box-shadow: 0 0 0 0 var(--alert); }
   30%  { transform: scale(1.15); box-shadow: 0 0 0 1.5em rgba(255, 167, 38, 0); }
@@ -1139,9 +1165,10 @@ body.cloud-down .app {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
-  overflow: hidden;
-  /* Cap height so the grid row doesn't grow as new uploads arrive */
-  max-height: 6rem;
+  /* Show the full archive page; let the section scroll internally if it
+     overflows the viewport rather than clipping after ~4 entries. */
+  overflow-y: auto;
+  flex: 1 1 auto;
 }
 .egress-recent li {
   display: flex;

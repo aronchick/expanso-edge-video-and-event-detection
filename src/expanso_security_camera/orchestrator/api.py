@@ -30,7 +30,6 @@ from pathlib import Path
 import uvicorn
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, Response, StreamingResponse
-from fastapi.staticfiles import StaticFiles
 
 from expanso_security_camera.orchestrator.correlator import Correlator
 from expanso_security_camera.orchestrator.jetson_wan import JetsonWanController
@@ -46,6 +45,29 @@ from expanso_security_camera.orchestrator.store import EventStore
 from expanso_security_camera.orchestrator.triggers import TriggerStore
 
 PUBLIC_DIR = Path(__file__).parent.parent.parent.parent / "public" / "edge"
+
+# Per-sector fake provenance metadata. Stamped onto every event on receipt
+# so the DBOM payload shown in the dashboard's archive viewer carries the
+# kind of device/site provenance an operator would actually see in a real
+# deployment (lat/lon, building label, sensor serial, firmware). Doesn't
+# affect the existing DBOM signature — the signature was computed by the
+# sensor over its original payload; this is orchestrator-side enrichment.
+SECTOR_DEVICE_METADATA: dict[str, dict] = {
+    "sensor-north": {
+        "building": "Bldg A — North Perimeter",
+        "room": "Roof annex 3F",
+        "gps": {"lat": 38.8722, "lon": -77.0563},
+        "sensor_serial": "JTSN-N-018-A47",
+        "firmware": "edge-sensor v0.4.2",
+    },
+    "sensor-south": {
+        "building": "Bldg B — South Gate",
+        "room": "Pole-mount #14",
+        "gps": {"lat": 38.8709, "lon": -77.0552},
+        "sensor_serial": "JTSN-S-022-B19",
+        "firmware": "edge-sensor v0.4.2",
+    },
+}
 
 
 def create_app(
@@ -107,6 +129,10 @@ def create_app(
             event["gemini_description"] = None
             if isinstance(event.get("model_versions"), dict):
                 event["model_versions"]["gemini"] = None
+
+        device_meta = SECTOR_DEVICE_METADATA.get(event.get("node"))
+        if device_meta and "device" not in event:
+            event["device"] = device_meta
 
         store.insert(event)
         metrics.record_event(
@@ -241,8 +267,11 @@ def create_app(
                             yield (
                                 b"--" + boundary + b"\r\n"
                                 b"Content-Type: image/jpeg\r\n"
-                                b"Content-Length: " + str(len(jpg)).encode() + b"\r\n\r\n"
-                                + jpg + b"\r\n"
+                                b"Content-Length: "
+                                + str(len(jpg)).encode()
+                                + b"\r\n\r\n"
+                                + jpg
+                                + b"\r\n"
                             )
                         await asyncio.sleep(0.5)
                         continue
@@ -257,8 +286,11 @@ def create_app(
                         yield (
                             b"--" + boundary + b"\r\n"
                             b"Content-Type: image/jpeg\r\n"
-                            b"Content-Length: " + str(len(jpg)).encode() + b"\r\n\r\n"
-                            + jpg + b"\r\n"
+                            b"Content-Length: "
+                            + str(len(jpg)).encode()
+                            + b"\r\n\r\n"
+                            + jpg
+                            + b"\r\n"
                         )
                     # Tight sleep so we react quickly when the sensor writes
                     # a new frame; matches the sensor's ~100ms write cadence.

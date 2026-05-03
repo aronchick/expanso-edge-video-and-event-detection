@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 POLL_INTERVAL_SEC = 5.0
-RECENT_KEY_LIMIT = 10
+RECENT_KEY_LIMIT = 50
 LIST_PAGE_SIZE = 1000
 STALL_THRESHOLD_SEC = 15.0
 

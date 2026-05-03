@@ -282,11 +282,12 @@ const ALERT_RULE_LABELS = {
   backpack_detected:    'BACKPACK DETECTED',
   multiple_persons:     'MULTIPLE PERSONS',
   drone_after_update:   'DRONE DETECTED',
+  cross_sector_person:  'PERSON · BOTH SECTORS',
   synthetic:            'SYNTHETIC (REHEARSAL)',
   // Legacy keys kept so a degraded rolling deploy where the orchestrator
   // hasn't been respawned yet doesn't display the raw snake_case string.
   person_with_backpack: 'BACKPACK DETECTED',
-  person_cross_sector:  'MULTIPLE PERSONS',
+  person_cross_sector:  'PERSON · BOTH SECTORS',
 };
 
 function renderFusionTile(f) {
@@ -370,6 +371,44 @@ function renderTriggers(list) {
     }
     chip.textContent = display;
     container.appendChild(chip);
+  }
+
+  // Ghost drone chip: same affordance as F4, click-to-arm. Stays present
+  // (dimmed, dashed) whenever drone isn't in the active set, so the
+  // operator can flip drone detection on mid-demo without the keyboard
+  // and without it being scripted. Removed automatically once the
+  // server confirms drone is active.
+  // Check by *display* label, not raw trigger string — legacy configs
+  // may still carry "airplane" (COCO's drone proxy), which renders as a
+  // drone chip; without this check we'd show the ghost chip next to it.
+  const displaysDrone = (list || []).some(
+    (t) => displayLabel(t).toLowerCase() === 'drone'
+  );
+  if (!displaysDrone) {
+    const ghost = document.createElement('span');
+    ghost.className = 'chip chip--drone chip--ghost';
+    ghost.textContent = '+ drone';
+    ghost.title = 'Click to arm drone detection';
+    ghost.setAttribute('role', 'button');
+    ghost.setAttribute('tabindex', '0');
+    const arm = async () => {
+      ghost.classList.add('arming');
+      const next = Array.from(new Set([...knownTriggers, 'drone']));
+      try {
+        await fetch('/triggers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ triggers: next }),
+        });
+      } catch (e) {
+        ghost.classList.remove('arming');
+      }
+    };
+    ghost.addEventListener('click', arm);
+    ghost.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); arm(); }
+    });
+    container.appendChild(ghost);
   }
 
   // Big-signal moment: the operator just rolled out drone detection.

@@ -1,7 +1,7 @@
 """Cross-sensor alert correlator.
 
 The dashboard's RED ALERT banner only fires under explicit conditions —
-not on every quiet co-occurrence. Three rules:
+not on every quiet co-occurrence. Four rules:
 
     1. backpack_detected       — any backpack hit on either sensor,
                                  whether or not a person is in frame.
@@ -18,6 +18,16 @@ not on every quiet co-occurrence. Three rules:
                                  currently appears in the active trigger
                                  set). Pre-update, drone hits don't fire
                                  alerts even if YOLO emits one.
+    4. cross_sector_person     — a person hit on BOTH sensors within
+                                 WINDOW_SEC of each other. One sector at
+                                 a time is normal foot traffic; the same
+                                 person re-appearing on the second
+                                 camera (or two coordinated approaches)
+                                 within a few seconds is the alert.
+                                 Lives last so a richer signal in a
+                                 single frame (multi-person crowd,
+                                 backpack, armed drone) wins the
+                                 cooldown when both could fire.
 
 Replayed-offline events skip all rules — wall-clock simultaneity is what
 makes "two sensors at once" meaningful, and stale archive replays would
@@ -27,7 +37,6 @@ fake it.
 from __future__ import annotations
 
 from typing import Optional
-
 
 WINDOW_SEC = 5.0
 COOLDOWN_SEC = 8.0
@@ -69,9 +78,7 @@ class Correlator:
         # trip whether or not YOLO also matched the person who's
         # carrying it (occluded, partially out of frame, etc.).
         if _has_label(latest_event, "backpack"):
-            return self._fire(now, "backpack_detected",
-                              [latest_event["node"]],
-                              [latest_event])
+            return self._fire(now, "backpack_detected", [latest_event["node"]], [latest_event])
 
         # ── Rule 3: drone post-pipeline-update ───────────────────────
         # Checked before Rule 2 so a single-sensor drone hit doesn't get
@@ -80,9 +87,7 @@ class Correlator:
         # (Beat 4 in the demo runbook), which is the moment the audience
         # has been told "we're now also looking for drones."
         if self._drone_armed() and _has_label(latest_event, "drone"):
-            return self._fire(now, "drone_after_update",
-                              [latest_event["node"]],
-                              [latest_event])
+            return self._fire(now, "drone_after_update", [latest_event["node"]], [latest_event])
 
         # ── Rule 2: 2+ persons in a single event ─────────────────────
         # One person alone is normal foot traffic; multiple people in a
@@ -92,13 +97,35 @@ class Correlator:
             1 for h in latest_event.get("yolo_hits", []) if h.get("label") == "person"
         )
         if person_count >= 2:
-            return self._fire(now, "multiple_persons",
-                              [latest_event["node"]],
-                              [latest_event])
+            return self._fire(now, "multiple_persons", [latest_event["node"]], [latest_event])
+
+        # ── Rule 4: person on both sectors within WINDOW_SEC ─────────
+        # The architecture's promise: two cameras, one fusion node,
+        # cross-sector correlation. A person on a single camera is
+        # foot traffic; the same person traversing into the second
+        # camera's field within a few seconds is the alert-worthy
+        # signal. Skip fusion-node entries (alerts are stored too) and
+        # queued_offline events on both sides — wall-clock simultaneity
+        # is the whole point.
+        if _has_label(latest_event, "person"):
+            this_node = latest_event["node"]
+            other = next(
+                (
+                    e
+                    for e in self.store.recent(now - WINDOW_SEC)
+                    if e.get("node") not in (this_node, "fusion-node")
+                    and not e.get("queued_offline")
+                    and _has_label(e, "person")
+                ),
+                None,
+            )
+            if other:
+                return self._fire(
+                    now, "cross_sector_person", [other["node"], this_node], [other, latest_event]
+                )
         return None
 
-    def _fire(self, now: float, rule: str, sectors: list[str],
-              events: list[dict]) -> dict:
+    def _fire(self, now: float, rule: str, sectors: list[str], events: list[dict]) -> dict:
         self._last_alert_ts = now
         return {
             "type": "alert",
