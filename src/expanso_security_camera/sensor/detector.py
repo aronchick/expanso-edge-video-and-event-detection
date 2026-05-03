@@ -30,6 +30,14 @@ from expanso_security_camera.sensor.schema import Detection, Event
 from expanso_security_camera.sensor.triggers_client import TriggerClient
 
 CONF_THRESHOLD = 0.55
+# Labels the cascade actually cares about. Derived to indices at runtime
+# from `self.model.names`, so this works against both the off-the-shelf
+# COCO yolov8s engine ("airplane" included as a drone proxy until we have
+# a venue-fine-tuned model) and the 3-class fine-tune ({person, backpack,
+# drone}). Adding labels here is a no-op for models that don't expose
+# them — the index list just shrinks.
+_WANTED_LABELS = {"person", "backpack", "drone", "airplane"}
+
 # Per-sensor Gemini cooldown. With GPU YOLO at ~18 events/sec/sensor, a 3s
 # cooldown still lets ~40 cloud reachbacks/min through — too noisy for a
 # demo (and burns API quota). 15s caps each sensor at 4/min, so the audience
@@ -98,17 +106,28 @@ class Detector:
         self.model_name = os.path.basename(model_path).split(".")[0]
 
     def detect(self, frame: np.ndarray, ts: float) -> Optional[Event]:
-        # COCO class indices for the only labels we care about. Passing this to
-        # ultralytics short-circuits NMS + box score sorting on the other 77
-        # classes, which on a TRT engine is a measurable cut in post-process
-        # time. (The DFL/conv head still scores all 80, but the heavy work
-        # downstream collapses to these 3.)
-        #   0 = person, 4 = airplane (used as drone proxy by upstream
-        #   triggers config), 24 = backpack
-        results = self.model(frame, verbose=False, classes=[0, 4, 24])[0]
+        # Derive the class-index list from the model's own names dict, not
+        # hardcoded COCO indices, so the same detector works against:
+        #   - the original COCO yolov8s.engine (names {0:person, 4:airplane,
+        #     24:backpack, ...}) — picks indices [0, 4, 24]
+        #   - the venue-fine-tuned 3-class engine (names {0:person, 1:backpack,
+        #     2:drone}) — picks indices [0, 1, 2]
+        # ultralytics still short-circuits NMS + score sorting on the
+        # unwanted classes — same TRT post-process speedup as before.
+        wanted_indices = [
+            i for i, n in self.model.names.items() if n in _WANTED_LABELS
+        ]
+        results = self.model(frame, verbose=False, classes=wanted_indices or None)[0]
         hits: list[Detection] = []
         for cls_idx, conf, box in zip(results.boxes.cls, results.boxes.conf, results.boxes.xyxy):
             label = self.model.names[int(cls_idx)]
+            # COCO has no drone class — yolov8s emits "airplane" for civilian
+            # quadcopters. The dashboard's displayLabel() already aliases
+            # this, but the trigger filter compares raw labels, so the alias
+            # has to happen here too. Once the fine-tuned 3-class engine is
+            # loaded, real "drone" hits flow through with no remap.
+            if label == "airplane":
+                label = "drone"
             confidence = float(conf)
             if self.triggers.contains(label) and confidence > CONF_THRESHOLD:
                 hits.append(
