@@ -34,13 +34,54 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-DATASET_DIR = Path("dataset")
+# Target-specific config. Default "box" preserves the original box-counting
+# workflow; "drone" was added for the Edge ISR demo. Each target writes to
+# its own dataset dir so they don't clobber each other and a box training
+# session can coexist with a drone training session on the same Jetson.
+TARGETS: dict[str, dict] = {
+    "box": {
+        "dataset_dir": Path("dataset"),
+        "class_names": ["box"],
+        "subject_singular": "cardboard box",
+        "subject_plural": "cardboard boxes",
+        "subject_for_count": "cardboard box(es)",
+    },
+    "drone": {
+        "dataset_dir": Path("dataset-drone"),
+        "class_names": ["drone"],
+        # Phrasing is deliberate: civilian quadcopter shape, not "airplane"
+        # (the COCO airplane class is full-size aircraft and confuses the
+        # vision model when we want a small UAV).
+        "subject_singular": "small civilian quadcopter drone",
+        "subject_plural": "small civilian quadcopter drones",
+        "subject_for_count": "small civilian quadcopter drone(s)",
+    },
+}
+
+
+def _target_config(target: str) -> dict:
+    if target not in TARGETS:
+        raise SystemExit(
+            f"Unknown --target {target!r}; valid: {', '.join(TARGETS.keys())}"
+        )
+    return TARGETS[target]
+
+
+def _dirs(target: str) -> tuple[Path, Path, Path, Path, Path]:
+    """Return (dataset, images, labels, review, meta) paths for this target."""
+    base = _target_config(target)["dataset_dir"]
+    return base, base / "images", base / "labels", base / "review", base / "meta"
+
+
+# Back-compat: original module-level constants remain for any external
+# importer; default target is "box" so behavior is identical.
+DATASET_DIR = TARGETS["box"]["dataset_dir"]
 IMAGES_DIR = DATASET_DIR / "images"
 LABELS_DIR = DATASET_DIR / "labels"
 REVIEW_DIR = DATASET_DIR / "review"
 META_DIR = DATASET_DIR / "meta"
 
-CLASS_NAMES = ["box"]
+CLASS_NAMES = TARGETS["box"]["class_names"]
 
 BOX_CLASSES = [
     "cardboard box",
@@ -70,15 +111,22 @@ def capture(
     duration: int = 30,
     fps: float = 5.0,
     countdown: int = 0,
+    target: str = "box",
 ) -> None:
     """Capture raw frames from camera. No YOLO — just fast frame grabs.
 
-    Saves frames as JPEGs and a manifest with expected box count per frame.
+    Saves frames as JPEGs and a manifest with expected subject count per frame.
     Labeling happens in a separate offline batch step.
+
+    `target` selects the dataset directory + the subject vocabulary used by
+    the label/validate/export steps. Default "box" preserves the original
+    box-counting workflow; "drone" was added for the Edge ISR demo.
     """
     from expanso_security_camera.config import DemoConfig
 
     config = DemoConfig.from_yaml(config_path)
+
+    _, images_dir, _, _, meta_dir = _dirs(target)
 
     cam_url = None
     for cam in config.cameras:
@@ -91,14 +139,16 @@ def capture(
             print(f"  {cam.camera_id}")
         sys.exit(1)
 
-    for d in (IMAGES_DIR, META_DIR):
+    for d in (images_dir, meta_dir):
         d.mkdir(parents=True, exist_ok=True)
 
     interval = 1.0 / fps
     total_frames = int(duration * fps)
-    frame_idx = len(list(IMAGES_DIR.glob("*.jpg")))
+    frame_idx = len(list(images_dir.glob("*.jpg")))
 
-    print(f"Capturing {camera_id}: {expected_boxes} boxes expected")
+    cfg = _target_config(target)
+    print(f"Capturing {camera_id} → {cfg['dataset_dir']}: "
+          f"{expected_boxes} {cfg['subject_singular']}(s) expected")
     print(f"  {total_frames} frames over {duration}s ({fps} fps)")
 
     if countdown > 0:
@@ -132,11 +182,13 @@ def capture(
             continue
 
         fname = f"{camera_id}_{frame_idx:05d}"
-        cv2.imwrite(str(IMAGES_DIR / f"{fname}.jpg"), frame)
+        cv2.imwrite(str(images_dir / f"{fname}.jpg"), frame)
 
-        # Save expected box count for this frame (used by label step)
-        meta = {"expected_boxes": expected_boxes, "camera_id": camera_id}
-        (META_DIR / f"{fname}.json").write_text(json.dumps(meta))
+        # Save expected count + target so the label step knows which subject
+        # to ask Gemini about. (Frames captured under one target should not
+        # be relabeled as a different target without re-capture.)
+        meta = {"expected_boxes": expected_boxes, "camera_id": camera_id, "target": target}
+        (meta_dir / f"{fname}.json").write_text(json.dumps(meta))
 
         kept += 1
         frame_idx += 1
@@ -151,23 +203,29 @@ def capture(
 
     cap.release()
     total_time = time.time() - start
-    total_dataset = len(list(IMAGES_DIR.glob("*.jpg")))
+    total_dataset = len(list(images_dir.glob("*.jpg")))
 
     print(f"\nDone! {kept} frames captured ({total_time:.0f}s)")
-    print(f"  Total dataset: {total_dataset} images")
+    print(f"  Total dataset: {total_dataset} images at {images_dir}")
 
 
 # ── Step 2: Label (batch Claude vision on all captured frames) ──────────
 
 
-def _call_gemini_for_boxes(image_path: str, expected_boxes: int) -> list[dict]:
-    """Ask Gemini Flash to identify bounding boxes around cardboard boxes.
+def _call_gemini_for_boxes(
+    image_path: str, expected_boxes: int, target: str = "box"
+) -> list[dict]:
+    """Ask Gemini Flash to identify bounding boxes around the target subject.
 
     Returns list of {"bbox": [x1, y1, x2, y2]} dicts in pixel coords.
     Uses the REST API directly — no SDK needed.
+
+    `target` selects the subject vocabulary (box vs drone vs ...).
     """
     import base64
     import urllib.request
+
+    cfg = _target_config(target)
 
     api_key = os.environ.get("GOOGLE_API_KEY", "")
     if not api_key:
@@ -183,9 +241,10 @@ def _call_gemini_for_boxes(image_path: str, expected_boxes: int) -> list[dict]:
 
     prompt = (
         f"This security camera image ({w}x{h} pixels) contains exactly "
-        f"{expected_boxes} cardboard box(es). For each box, return its "
-        f"bounding box as pixel coordinates. Return ONLY a JSON array of "
-        f"objects with x1, y1, x2, y2 integer keys (pixel values). "
+        f"{expected_boxes} {cfg['subject_for_count']}. For each "
+        f"{cfg['subject_singular']}, return its tight bounding box as pixel "
+        f"coordinates. Return ONLY a JSON array of objects with x1, y1, x2, y2 "
+        f"integer keys (pixel values). "
         f'Example: [{{"x1":10,"y1":20,"x2":100,"y2":200}}]. No explanation.'
     )
 
@@ -243,22 +302,25 @@ def _call_gemini_for_boxes(image_path: str, expected_boxes: int) -> list[dict]:
         return []
 
 
-def _label_one(img_path: Path) -> tuple[str, int, str | None]:
+def _label_one(img_path: Path, target: str = "box") -> tuple[str, int, str | None]:
     """Label a single image. Returns (stem, num_boxes, error_or_none)."""
+    cfg = _target_config(target)
+    _, _, labels_dir, review_dir, meta_dir = _dirs(target)
+
     frame = cv2.imread(str(img_path))
     if frame is None:
         return (img_path.stem, 0, "cannot read")
 
     h, w = frame.shape[:2]
 
-    meta_path = META_DIR / f"{img_path.stem}.json"
+    meta_path = meta_dir / f"{img_path.stem}.json"
     expected = 8
     if meta_path.exists():
         meta = json.loads(meta_path.read_text())
         expected = meta.get("expected_boxes", 8)
 
     try:
-        dets = _call_gemini_for_boxes(str(img_path), expected)
+        dets = _call_gemini_for_boxes(str(img_path), expected, target=target)
 
         lines = []
         for d in dets:
@@ -268,7 +330,7 @@ def _label_one(img_path: Path) -> tuple[str, int, str | None]:
             bw = (x2 - x1) / w
             bh = (y2 - y1) / h
             lines.append(f"0 {xc:.6f} {yc:.6f} {bw:.6f} {bh:.6f}")
-        (LABELS_DIR / f"{img_path.stem}.txt").write_text("\n".join(lines))
+        (labels_dir / f"{img_path.stem}.txt").write_text("\n".join(lines))
 
         review = frame.copy()
         for d in dets:
@@ -276,35 +338,39 @@ def _label_one(img_path: Path) -> tuple[str, int, str | None]:
             cv2.rectangle(review, (bx1, by1), (bx2, by2), (0, 255, 0), 2)
         cv2.putText(
             review,
-            f"{len(dets)}/{expected} boxes [Gemini]",
+            f"{len(dets)}/{expected} {cfg['class_names'][0]} [Gemini]",
             (10, 25),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
             (0, 255, 0),
             2,
         )
-        cv2.imwrite(str(REVIEW_DIR / f"{img_path.stem}.jpg"), review)
+        cv2.imwrite(str(review_dir / f"{img_path.stem}.jpg"), review)
         return (img_path.stem, len(dets), None)
 
     except Exception as e:
         return (img_path.stem, 0, str(e))
 
 
-def label(sample_every: int = 1, workers: int = 10) -> None:
+def label(sample_every: int = 1, workers: int = 10, target: str = "box") -> None:
     """Batch-label captured frames using Gemini vision, parallelized.
 
     Args:
         sample_every: Label every Nth frame (1 = all, 5 = every 5th)
         workers: Number of concurrent API requests (default 10)
+        target:  Which dataset (and subject vocab) to label.
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    images = sorted(IMAGES_DIR.glob("*.jpg"))
+    cfg = _target_config(target)
+    _, images_dir, labels_dir, review_dir, _ = _dirs(target)
+
+    images = sorted(images_dir.glob("*.jpg"))
     if not images:
-        print("No images found. Run 'capture' first.")
+        print(f"No images found in {images_dir}. Run 'capture' first.")
         return
 
-    existing_labels = {p.stem for p in LABELS_DIR.glob("*.txt")}
+    existing_labels = {p.stem for p in labels_dir.glob("*.txt")}
     to_label = [img for img in images if img.stem not in existing_labels]
 
     if not to_label:
@@ -313,11 +379,11 @@ def label(sample_every: int = 1, workers: int = 10) -> None:
 
     to_label = to_label[::sample_every]
 
-    for d in (LABELS_DIR, REVIEW_DIR):
+    for d in (labels_dir, review_dir):
         d.mkdir(parents=True, exist_ok=True)
 
     # Start conservative, ramp up if no 429s
-    print(f"Labeling {len(to_label)} images via Gemini Flash")
+    print(f"Labeling {len(to_label)} images for target={target!r} via Gemini Flash")
 
     labeled = 0
     errors = 0
@@ -329,7 +395,7 @@ def label(sample_every: int = 1, workers: int = 10) -> None:
         batch = to_label[batch_start : batch_start + batch_size]
 
         with ThreadPoolExecutor(max_workers=batch_size) as pool:
-            futures = {pool.submit(_label_one, img): img for img in batch}
+            futures = {pool.submit(_label_one, img, target): img for img in batch}
             for future in as_completed(futures):
                 stem, n_boxes, err = future.result()
                 if err:
@@ -403,24 +469,27 @@ def _parse_indices(text: str) -> list[int]:
         return []
 
 
-def validate(sample_every: int = 10) -> None:
+def validate(sample_every: int = 10, target: str = "box") -> None:
     """Offline validation: send sampled frames to Claude CLI.
 
     For every Nth image, draws all YOLO candidates on the frame,
-    sends to `claude -p`, asks which are real boxes.
+    sends to `claude -p`, asks which candidates are real targets.
     Rewrites the label file with the validated detections.
     """
     import tempfile
 
-    images = sorted(IMAGES_DIR.glob("*.jpg"))
-    metas = sorted(META_DIR.glob("*.json"))
+    cfg = _target_config(target)
+    _, images_dir, labels_dir, review_dir, meta_dir = _dirs(target)
+
+    images = sorted(images_dir.glob("*.jpg"))
+    metas = sorted(meta_dir.glob("*.json"))
 
     if not images:
-        print("No images found. Run 'capture' then 'label' first.")
+        print(f"No images found in {images_dir}. Run 'capture' then 'label' first.")
         return
 
     meta_stems = {m.stem for m in metas}
-    paired = [(img, META_DIR / f"{img.stem}.json") for img in images if img.stem in meta_stems]
+    paired = [(img, meta_dir / f"{img.stem}.json") for img in images if img.stem in meta_stems]
 
     to_validate = paired[::sample_every]
     print(f"Validating {len(to_validate)} of {len(paired)} frames via claude CLI")
@@ -451,10 +520,10 @@ def validate(sample_every: int = 10) -> None:
 
         n = len(all_candidates)
         prompt = (
-            f"This security camera image has exactly {expected} cardboard boxes "
+            f"This security camera image has exactly {expected} {cfg['subject_for_count']} "
             f"(some may be partially occluded). I've drawn {n} numbered candidate "
             f"bounding boxes (#1-#{n}). Which candidates are correctly on real "
-            f"cardboard boxes? Return ONLY a JSON array of candidate numbers. "
+            f"{cfg['subject_plural']}? Return ONLY a JSON array of candidate numbers. "
             f"Example: [1, 3, 5]. No explanation."
         )
 
@@ -470,7 +539,7 @@ def validate(sample_every: int = 10) -> None:
                 bw = (x2 - x1) / w
                 bh = (y2 - y1) / h
                 lines.append(f"0 {xc:.6f} {yc:.6f} {bw:.6f} {bh:.6f}")
-            (LABELS_DIR / f"{img_path.stem}.txt").write_text("\n".join(lines))
+            (labels_dir / f"{img_path.stem}.txt").write_text("\n".join(lines))
 
             review = frame.copy()
             for d in dets:
@@ -478,19 +547,19 @@ def validate(sample_every: int = 10) -> None:
                 cv2.rectangle(review, (bx1, by1), (bx2, by2), (0, 255, 0), 2)
             cv2.putText(
                 review,
-                f"{len(dets)}/{expected} boxes [Gemini]",
+                f"{len(dets)}/{expected} {cfg['class_names'][0]} [validated]",
                 (10, 25),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.7,
                 (0, 255, 0),
                 2,
             )
-            cv2.imwrite(str(REVIEW_DIR / f"{img_path.stem}.jpg"), review)
+            cv2.imwrite(str(review_dir / f"{img_path.stem}.jpg"), review)
 
             validated += 1
             print(
                 f"  [{idx + 1}/{len(to_validate)}] {img_path.stem}: "
-                f"{len(dets)}/{expected} boxes validated"
+                f"{len(dets)}/{expected} validated"
             )
 
         except Exception as e:
@@ -505,30 +574,46 @@ def validate(sample_every: int = 10) -> None:
 # ── Step 4: Export ──────────────────────────────────────────────────────
 
 
-def export_dataset(val_split: float = 0.2) -> None:
+def export_dataset(val_split: float = 0.2, target: str = "box") -> None:
     """Create YOLO-format dataset with train/val split."""
-    images = sorted(IMAGES_DIR.glob("*.jpg"))
-    labels = sorted(LABELS_DIR.glob("*.txt"))
+    cfg = _target_config(target)
+    dataset_dir, images_dir, labels_dir, _, _ = _dirs(target)
+
+    images = sorted(images_dir.glob("*.jpg"))
+    labels = sorted(labels_dir.glob("*.txt"))
 
     if not images:
-        print("No images found. Run 'capture' then 'label' first.")
+        print(f"No images found in {images_dir}. Run 'capture' then 'label' first.")
         return
 
     label_stems = {lbl.stem for lbl in labels}
-    paired = [(img, LABELS_DIR / f"{img.stem}.txt") for img in images if img.stem in label_stems]
+    paired = [(img, labels_dir / f"{img.stem}.txt") for img in images if img.stem in label_stems]
 
     if not paired:
         print("No matched image/label pairs. Run 'label' first.")
         return
 
-    print(f"Found {len(paired)} image/label pairs")
+    # Filter out empty label files (Gemini found 0 detections — bad
+    # training signal). Drop instead of poison the dataset.
+    nonempty = []
+    empty = 0
+    for img_path, lbl_path in paired:
+        if lbl_path.stat().st_size > 0:
+            nonempty.append((img_path, lbl_path))
+        else:
+            empty += 1
+    if empty:
+        print(f"Skipped {empty} frames with empty label files")
+    paired = nonempty
+
+    print(f"Found {len(paired)} usable image/label pairs")
 
     random.shuffle(paired)
     split_idx = int(len(paired) * (1 - val_split))
     train_pairs = paired[:split_idx]
     val_pairs = paired[split_idx:]
 
-    out_dir = DATASET_DIR / "yolo_dataset"
+    out_dir = dataset_dir / "yolo_dataset"
     for split in ("train", "val"):
         (out_dir / split / "images").mkdir(parents=True, exist_ok=True)
         (out_dir / split / "labels").mkdir(parents=True, exist_ok=True)
@@ -538,17 +623,18 @@ def export_dataset(val_split: float = 0.2) -> None:
             shutil.copy2(img_path, out_dir / split / "images" / img_path.name)
             shutil.copy2(lbl_path, out_dir / split / "labels" / lbl_path.name)
 
+    class_names = cfg["class_names"]
     data_yaml = out_dir / "data.yaml"
     data_yaml.write_text(
         f"path: {out_dir.resolve()}\n"
         f"train: train/images\n"
         f"val: val/images\n"
         f"\n"
-        f"nc: {len(CLASS_NAMES)}\n"
-        f"names: {CLASS_NAMES}\n"
+        f"nc: {len(class_names)}\n"
+        f"names: {class_names}\n"
     )
 
-    print(f"\nDataset exported to {out_dir}/")
+    print(f"\nDataset (target={target!r}) exported to {out_dir}/")
     print(f"  Train: {len(train_pairs)} images")
     print(f"  Val:   {len(val_pairs)} images")
     print(f"\nNext: uv run esc-finetune {data_yaml}")
@@ -567,20 +653,32 @@ def _parse_arg(flag: str, default, cast=str):
 def main() -> None:
     if len(sys.argv) < 2:
         print("Usage:")
-        print("  esc-dataset capture config.yaml --boxes 4 --camera cam-inside")
-        print("  esc-dataset label              # batch Claude vision labeling")
-        print("  esc-dataset label --sample-every 5   # every 5th frame")
-        print("  esc-dataset export              # train/val split")
+        print("  esc-dataset capture config.yaml --target drone --boxes 1 --camera cam-outside")
+        print("  esc-dataset label   --target drone   # batch Gemini labeling")
+        print("  esc-dataset export  --target drone   # train/val split")
+        print()
+        print("Common options (all subcommands):")
+        print("  --target NAME  Subject class set: 'box' (default) | 'drone'")
         print()
         print("Capture options:")
-        print("  --boxes N      Expected box count (required)")
-        print("  --camera ID    Camera (default: cam-inside)")
-        print("  --duration S   Seconds (default: 30)")
+        print("  --boxes N      Expected subject count per frame (required, default 8)")
+        print("  --camera ID    Camera id from config.yaml (default: cam-inside)")
+        print("  --duration S   Seconds to capture (default: 30)")
         print("  --fps N        Frames/sec (default: 5)")
         print("  --countdown S  Countdown before starting (default: 0)")
+        print()
+        print("Label options:")
+        print("  --sample-every N   Label every Nth frame (default 1)")
+        print()
+        print("Validate options:")
+        print("  --sample-every N   Validate every Nth frame (default 10)")
+        print()
+        print("Export options:")
+        print("  --val-split F   Fraction held out for validation (default 0.2)")
         sys.exit(1)
 
     cmd = sys.argv[1]
+    target = _parse_arg("--target", "box", str)
 
     if cmd == "capture":
         config_path = sys.argv[2] if len(sys.argv) > 2 else "config.yaml"
@@ -591,6 +689,7 @@ def main() -> None:
             duration=_parse_arg("--duration", 30, int),
             fps=_parse_arg("--fps", 5.0, float),
             countdown=_parse_arg("--countdown", 0, int),
+            target=target,
         )
 
     elif cmd == "models":
@@ -610,13 +709,13 @@ def main() -> None:
                 print(f"  {name}")
 
     elif cmd == "label":
-        label(sample_every=_parse_arg("--sample-every", 1, int))
+        label(sample_every=_parse_arg("--sample-every", 1, int), target=target)
 
     elif cmd == "validate":
-        validate(sample_every=_parse_arg("--sample-every", 10, int))
+        validate(sample_every=_parse_arg("--sample-every", 10, int), target=target)
 
     elif cmd == "export":
-        export_dataset(val_split=_parse_arg("--val-split", 0.2, float))
+        export_dataset(val_split=_parse_arg("--val-split", 0.2, float), target=target)
 
     else:
         print(f"Unknown command: {cmd}")
