@@ -31,6 +31,8 @@ def finetune(
     freeze: int = 10,
     device: str = "0",
     name: str = "box-finetune",
+    cls_loss: float = 0.5,
+    output_name: str | None = None,
 ) -> str:
     """Fine-tune YOLOv8 on box detection dataset.
 
@@ -103,7 +105,11 @@ def finetune(
         cos_lr=True,  # Cosine annealing
         # Loss weights
         box=7.5,  # Box loss weight (higher = more precise boxes)
-        cls=0.5,  # Classification loss (low — we only have 1 class)
+        cls=cls_loss,  # Classification loss. Default 0.5 was tuned for the
+        # 1-class box-counting case where the head only needs to localize.
+        # For multi-class fine-tunes (e.g. person/backpack/drone), 1.0 is
+        # a more reasonable starting point so the head learns to
+        # discriminate between classes.
         dfl=1.5,  # Distribution focal loss
         # Other
         plots=True,
@@ -115,15 +121,21 @@ def finetune(
     # Find best weights
     best_pt = Path(f"runs/detect/{name}/weights/best.pt")
     if best_pt.exists():
-        # Also copy to project root for easy use
-        output_path = Path("box-detector-finetuned.pt")
+        # Also copy to project root for easy use. The legacy default
+        # `box-detector-finetuned.pt` is preserved for the original box
+        # workflow; pass --output-name to override (e.g. drone-3class.pt).
+        out_name = output_name or "box-detector-finetuned.pt"
+        if not out_name.endswith(".pt"):
+            out_name = f"{out_name}.pt"
+        output_path = Path(out_name)
         shutil.copy2(best_pt, output_path)
         print(f"\n{'=' * 60}")
         print("Fine-tuning complete!")
         print(f"  Best model: {best_pt}")
         print(f"  Copied to:  {output_path}")
-        print("\nTo use in your pipeline, update config.yaml:")
-        print('  model_name: "box-detector-finetuned"')
+        print("\nTo use in your pipeline:")
+        print(f"  python scripts/export_tensorrt.py --model {output_path}")
+        print(f"  Then point your YAML --yolo-model at {output_path.stem}.engine")
         print(f"{'=' * 60}")
         return str(output_path)
     else:
@@ -159,6 +171,10 @@ def main() -> None:
         print("  --base MODEL     Base model (default: yolov8n.pt)")
         print("  --freeze N       Layers to freeze (default: 10)")
         print("  --device DEV     CUDA device (default: 0)")
+        print("  --name NAME      runs/detect/<name>/ output dir (default: box-finetune)")
+        print("  --cls F          Classification loss weight (default: 0.5)")
+        print("  --output-name N  Copy best.pt as <N>.pt at project root")
+        print("                   (default: box-detector-finetuned.pt)")
         print("  --validate       Run validation only (needs trained model)")
         sys.exit(1)
 
@@ -171,6 +187,9 @@ def main() -> None:
     freeze = 10
     device = "0"
     validate_only = False
+    name = "box-finetune"
+    cls_loss = 0.5
+    output_name: str | None = None
 
     i = 2
     while i < len(sys.argv):
@@ -189,6 +208,15 @@ def main() -> None:
             i += 2
         elif arg == "--device" and i + 1 < len(sys.argv):
             device = sys.argv[i + 1]
+            i += 2
+        elif arg == "--name" and i + 1 < len(sys.argv):
+            name = sys.argv[i + 1]
+            i += 2
+        elif arg == "--cls" and i + 1 < len(sys.argv):
+            cls_loss = float(sys.argv[i + 1])
+            i += 2
+        elif arg == "--output-name" and i + 1 < len(sys.argv):
+            output_name = sys.argv[i + 1]
             i += 2
         elif arg == "--validate":
             validate_only = True
@@ -210,6 +238,9 @@ def main() -> None:
             batch=batch,
             freeze=freeze,
             device=device,
+            name=name,
+            cls_loss=cls_loss,
+            output_name=output_name,
         )
 
 
