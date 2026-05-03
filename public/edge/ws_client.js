@@ -10,8 +10,8 @@ const knownTriggers = new Set();
 let firstTriggerLoad = true;
 let cloudUp = true;
 let queuedOfflineCount = 0;
-const fusedQueue = [];
-let fusedShowing = false;
+const alertQueue = [];
+let alertShowing = false;
 
 // Rolling 60s window of Gemini reachback timestamps (ms). Same pattern as
 // `events_per_minute`, but tracked client-side: every event with a non-empty
@@ -40,7 +40,11 @@ ws.onmessage = (msg) => {
       });
       break;
     case 'event':    handleEvent(m.data); break;
-    case 'fused':    enqueueFused(m.data); break;
+    case 'alert':    enqueueAlert(m.data); break;
+    // Back-compat: legacy WS event name from before the rename. Keep
+    // listening for it so a stale orchestrator + new dashboard still
+    // surfaces alerts during a partial roll-out.
+    case 'fused':    enqueueAlert(m.data); break;
     case 'triggers': renderTriggers(m.data); break;
     case 'cloud':    setCloudState(m.data.up); break;
     case 'jobs':     renderJobs(m.data); break;
@@ -244,10 +248,10 @@ function updateSectorStatus(node, signal) {
 // for 6s when one fires (LED + border light up, detail line fills with
 // the contact summary), then collapses back to STANDBY with `last:` ts.
 
-let fusionLastTs = 0;
-let fusionActiveUntil = 0;
+let alertLastTs = 0;
+let alertActiveUntil = 0;
 
-function enqueueFused(f) {
+function enqueueAlert(f) {
   // No queue any more — tiles can't queue, so we just take the latest.
   // Multiple rapid fusions still each light up; the most recent wins.
   renderFusionTile(f);
@@ -255,49 +259,65 @@ function enqueueFused(f) {
   pingTopology('sensor-south', '#ffa726');
 }
 
+// Human-readable label for each correlator rule. Falls back to the raw
+// rule string for any new rule wired up server-side without a label here.
+const ALERT_RULE_LABELS = {
+  person_with_backpack: 'PERSON + BACKPACK',
+  person_cross_sector:  'PERSON · BOTH SECTORS',
+  drone_after_update:   'DRONE DETECTED',
+  synthetic:            'SYNTHETIC (REHEARSAL)',
+};
+
 function renderFusionTile(f) {
-  const tile = document.getElementById('fusion-tile');
-  const stateEl = document.getElementById('fusion-state');
-  const detailEl = document.getElementById('fusion-detail');
-  const metaEl = document.getElementById('fusion-meta');
+  const tile = document.getElementById('alert-tile');
+  const stateEl = document.getElementById('alert-state');
+  const detailEl = document.getElementById('alert-detail');
+  const metaEl = document.getElementById('alert-meta');
   if (!tile || !stateEl || !detailEl || !metaEl) return;
 
-  // Build a compact one-line summary: "NORTH+SOUTH · person+backpack / cell phone"
+  // Build a compact one-line summary like:
+  //   "PERSON + BACKPACK — NORTH · person+backpack"
+  //   "PERSON · BOTH SECTORS — NORTH+SOUTH · person / person"
+  // The rule label leads so the audience reads the trigger before the
+  // raw class list.
   const sectors = (f.sectors || []).map((s) => s.replace('sensor-', '').toUpperCase()).join('+');
   const contactSummary = (f.contacts || [])
     .map((c) => (c.yolo_hits || []).join('+') || '(none)')
     .join(' / ');
-  const detail = sectors ? `${sectors} · ${contactSummary}` : contactSummary;
+  const ruleLabel = ALERT_RULE_LABELS[f.rule] || (f.rule || 'ALERT').toUpperCase();
+  const detail = sectors
+    ? `${ruleLabel} — ${sectors} · ${contactSummary}`
+    : `${ruleLabel} — ${contactSummary}`;
 
   stateEl.textContent = 'ACTIVE';
   detailEl.textContent = detail;
-  fusionLastTs = (f && f.ts) ? f.ts : (Date.now() / 1000);
-  metaEl.textContent = `last: ${fmtIsoUtc(fusionLastTs)}`;
+  alertLastTs = (f && f.ts) ? f.ts : (Date.now() / 1000);
+  metaEl.textContent = `last: ${fmtIsoUtc(alertLastTs)}`;
 
   // Restart the active class so the pulse animation runs cleanly each fire
   tile.classList.remove('active');
   void tile.offsetWidth; // restart animation
   tile.classList.add('active');
 
-  fusionActiveUntil = Date.now() + 6000;
+  alertActiveUntil = Date.now() + 6000;
 }
 
 // Drive the STANDBY decay: every second, if we're past the active window,
 // collapse the tile back to standby and update the "last:" age.
 setInterval(() => {
-  const tile = document.getElementById('fusion-tile');
-  const stateEl = document.getElementById('fusion-state');
-  const detailEl = document.getElementById('fusion-detail');
-  const metaEl = document.getElementById('fusion-meta');
+  const tile = document.getElementById('alert-tile');
+  const stateEl = document.getElementById('alert-state');
+  const detailEl = document.getElementById('alert-detail');
+  const metaEl = document.getElementById('alert-meta');
   if (!tile) return;
-  if (Date.now() >= fusionActiveUntil && tile.classList.contains('active')) {
+  if (Date.now() >= alertActiveUntil && tile.classList.contains('active')) {
     tile.classList.remove('active');
     stateEl.textContent = 'STANDBY';
-    detailEl.textContent = 'no multi-sector correlation';
+    detailEl.textContent = 'no alerts';
   }
   // Always refresh the "last:" time display when we have a fusion history
-  if (fusionLastTs > 0 && metaEl) {
-    metaEl.textContent = `last: ${fmtIsoUtc(fusionLastTs)}`;
+  if (alertLastTs > 0 && metaEl) {
+    metaEl.textContent = `last: ${fmtIsoUtc(alertLastTs)}`;
   }
 }, 1000);
 

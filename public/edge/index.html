@@ -19,15 +19,15 @@
   <div class="queue"><span id="queue-count">0</span> events queued · YOLO still firing</div>
 </div>
 
-<!-- Fused alert overlay -->
-<div id="fused-overlay" class="fused-overlay">
-  <div class="fused-headline">
+<!-- Alert event overlay (full-screen takeover when correlator fires) -->
+<div id="alert-overlay" class="alert-overlay">
+  <div class="alert-headline">
     <span class="icon">⚠</span>
-    <span>MULTI-SECTOR CORRELATION</span>
+    <span>ALERT</span>
     <span class="icon">⚠</span>
   </div>
-  <div id="fused-contacts" class="fused-contacts"></div>
-  <div id="fused-meta" class="fused-meta"></div>
+  <div id="alert-contacts" class="alert-contacts"></div>
+  <div id="alert-meta" class="alert-meta"></div>
 </div>
 
 <!-- Topology mini canvas -->
@@ -51,7 +51,7 @@
         <span class="value" id="metric-epm">0</span>
       </div>
       <div class="metric-pill">
-        <span class="label">fused</span>
+        <span class="label">alerts</span>
         <span class="value" id="metric-fused">0</span>
       </div>
       <div class="metric-pill" id="metric-gemini-pill">
@@ -70,15 +70,15 @@
     <div id="trigger-chips" class="trigger-chips"></div>
   </section>
 
-  <!-- Fusion tile — always visible, replaces the old full-screen modal.
-       STANDBY when no recent multi-sector correlation; ACTIVE when one fires
-       (pulses for 6s, then collapses back to STANDBY with a "last:" timestamp). -->
-  <section class="fusion-tile" id="fusion-tile">
-    <div class="fusion-light" id="fusion-light"></div>
-    <div class="fusion-label">FUSION</div>
-    <div class="fusion-state" id="fusion-state">STANDBY</div>
-    <div class="fusion-detail" id="fusion-detail">no multi-sector correlation</div>
-    <div class="fusion-meta" id="fusion-meta">last: —</div>
+  <!-- Alert tile — always visible. STANDBY when the correlator hasn't
+       matched any rule recently; ACTIVE (red pulse) when an alert fires.
+       Collapses back to STANDBY after 6s with a "last:" timestamp. -->
+  <section class="alert-tile" id="alert-tile">
+    <div class="alert-light" id="alert-light"></div>
+    <div class="alert-label">ALERT</div>
+    <div class="alert-state" id="alert-state">STANDBY</div>
+    <div class="alert-detail" id="alert-detail">no alerts</div>
+    <div class="alert-meta" id="alert-meta">last: —</div>
   </section>
 
   <!-- Camera tiles use WebRTC (via go2rtc on :1984) for true real-time video,
@@ -136,7 +136,7 @@
     <div class="tier-strip-inline" aria-label="Architecture tiers">
       <span class="tier"><span class="tier-dot" id="tier-edge"></span><span class="tier-label">EDGE</span></span>
       <span class="tier-sep">·</span>
-      <span class="tier"><span class="tier-dot" id="tier-fusion"></span><span class="tier-label">FUSION</span></span>
+      <span class="tier"><span class="tier-dot" id="tier-fusion"></span><span class="tier-label">ALERTS</span></span>
       <span class="tier-sep">·</span>
       <span class="tier"><span class="tier-dot" id="tier-cloud"></span><span class="tier-label">CLOUD</span></span>
     </div>
@@ -347,7 +347,7 @@
            its branch. -->
       <div class="arch-arrow-meta arch-arrow-meta--out" id="arch-meta-local">
         <span class="arch-arrow-counter" id="arch-counter-local">— /min</span>
-        <span class="arch-arrow-label">fused</span>
+        <span class="arch-arrow-label">alert</span>
       </div>
       <div class="arch-arrow-meta arch-arrow-meta--out" id="arch-meta-gemini">
         <span class="arch-arrow-counter" id="arch-counter-gemini-flow">— /min</span>
@@ -367,10 +367,10 @@
           <span class="arch-box__tag-icon" aria-hidden="true">●</span>
           <span class="arch-box__tag-text">LOCAL DECISION</span>
         </header>
-        <div class="arch-box__sub arch-box__sub--lead">Stays on edge — fused alerts fire here</div>
+        <div class="arch-box__sub arch-box__sub--lead">Stays on edge — alerts fire here</div>
         <ul class="arch-box__list arch-box__list--local">
           <li>correlator · 5s window</li>
-          <li>fused alerts · 8s cooldown</li>
+          <li>alerts · 8s cooldown</li>
         </ul>
       </div>
       <div class="arch-box arch-box--dest" id="arch-box-dest-gemini">
@@ -424,7 +424,7 @@
       <div class="stat"><span class="label">jobs</span><span id="footer-jobs">–/–</span></div>
       <div class="stat"><span class="label">events</span><span id="footer-events">0</span></div>
       <div class="stat"><span class="label">DBOM signed</span><span id="footer-signed">0</span></div>
-      <div class="stat"><span class="label">fused</span><span id="footer-fused">0</span></div>
+      <div class="stat"><span class="label">alerts</span><span id="footer-fused">0</span></div>
     </div>
   </footer>
 

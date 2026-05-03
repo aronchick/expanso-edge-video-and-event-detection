@@ -118,7 +118,7 @@ body {
 
 .header           { grid-row: 1; grid-column: 1 / span 2; }
 .triggers-bar     { grid-row: 2; grid-column: 1 / span 2; }
-.fusion-tile      { grid-row: 3; grid-column: 2; }   /* shifted right — only over events column */
+.alert-tile      { grid-row: 3; grid-column: 2; }   /* shifted right — only over events column */
 .sector-north     { grid-row: 4; grid-column: 1; margin-left: 0.6rem; margin-right: 0.4rem; }
 .events-north     { grid-row: 4; grid-column: 2; }
 .sector-south     { grid-row: 5; grid-column: 1; margin-left: 0.6rem; margin-right: 0.4rem; }
@@ -133,13 +133,13 @@ body {
    structural / archival info, not live-ops trigger config. Hiding it also
    reclaims row 2 so the arch-view can use it without overlapping. */
 body.tab-arch .triggers-bar,
-body.tab-arch .fusion-tile,
+body.tab-arch .alert-tile,
 body.tab-arch .sector,
 body.tab-arch .events-panel { display: none; }
 body.tab-arch .arch-view { display: grid; }
 
 body.tab-archive .triggers-bar,
-body.tab-archive .fusion-tile,
+body.tab-archive .alert-tile,
 body.tab-archive .sector,
 body.tab-archive .events-panel { display: none; }
 body.tab-archive .archive-view { display: flex; }
@@ -323,7 +323,7 @@ body.tier-edge-down #tier-edge {
 
 /* ── Fusion tile (replaces full-screen fused-overlay) ─────────────── */
 
-.fusion-tile {
+.alert-tile {
   display: grid;
   grid-template-columns: auto auto auto 1fr auto;
   align-items: center;
@@ -343,7 +343,7 @@ body.tier-edge-down #tier-edge {
   transition: border-color var(--m-fast), background var(--m-fast);
 }
 /* LED-style square indicator (the spec's `led-status` primitive) */
-.fusion-light {
+.alert-light {
   width: 0.85em;
   height: 0.85em;
   background: var(--text-mono);
@@ -351,17 +351,17 @@ body.tier-edge-down #tier-edge {
   flex-shrink: 0;
   transition: background var(--m-fast), box-shadow var(--m-fast);
 }
-.fusion-label {
+.alert-label {
   font-weight: 700;
   color: var(--text-dim);
   letter-spacing: 0.18em;
 }
-.fusion-state {
+.alert-state {
   font-weight: 700;
   color: var(--text-mono);
   letter-spacing: 0.12em;
 }
-.fusion-detail {
+.alert-detail {
   color: var(--text-dim);
   font-style: italic;
   letter-spacing: 0.02em;
@@ -372,7 +372,7 @@ body.tier-edge-down #tier-edge {
   text-overflow: ellipsis;
   min-width: 0;
 }
-.fusion-meta {
+.alert-meta {
   color: var(--text-mono);
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
@@ -380,28 +380,39 @@ body.tier-edge-down #tier-edge {
   flex-shrink: 0;
 }
 
-/* ACTIVE state — when a fused alert just fired. Pulses for 6s then fades. */
-.fusion-tile.active {
-  border-color: var(--alert);
+/* ACTIVE state — when an alert event just fired. Red, with attention.
+   Pulses for 6s then fades back to STANDBY. The amber `--alert` token
+   is still used elsewhere (track-gate brackets, trigger pulse-in
+   animation), so we use `--critical` here to mean "this is an *alert*
+   event, RIGHT NOW, look at me." */
+.alert-tile.active {
+  border-color: var(--critical);
+  border-width: 2px;
   background:
-    linear-gradient(90deg, rgba(255,167,38,0.18), rgba(255,167,38,0.04) 60%),
+    linear-gradient(90deg, rgba(255, 77, 79, 0.22), rgba(255, 77, 79, 0.06) 60%),
     var(--surface);
-  animation: fusion-pulse 1.2s ease-in-out 5;
+  animation: alert-pulse 0.9s ease-in-out 6;
 }
-.fusion-tile.active .fusion-light {
-  background: var(--alert);
-  box-shadow: 0 0 0.6em var(--alert);
+.alert-tile.active .alert-light {
+  background: var(--critical);
+  box-shadow: 0 0 0.6em var(--critical);
 }
-.fusion-tile.active .fusion-state {
-  color: var(--alert);
+.alert-tile.active .alert-label {
+  color: var(--critical);
+  letter-spacing: 0.18em;
 }
-.fusion-tile.active .fusion-detail {
+.alert-tile.active .alert-state {
+  color: var(--critical);
+  font-weight: 700;
+}
+.alert-tile.active .alert-detail {
   color: var(--text);
   font-style: normal;
+  font-weight: 600;
 }
-@keyframes fusion-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255,167,38,0); }
-  50%      { box-shadow: 0 0 0 0.4em rgba(255,167,38,0.18); }
+@keyframes alert-pulse {
+  0%, 100% { box-shadow: 0 0 0 0    rgba(255, 77, 79, 0); }
+  50%      { box-shadow: 0 0 0 0.55em rgba(255, 77, 79, 0.32); }
 }
 
 /* ── Trigger bar ──────────────────────────────────────────────────── */
@@ -877,21 +888,21 @@ body.cloud-down .app {
 
 /* ── Fused alert full-screen takeover ─────────────────────────────── */
 
-/* Fused alert overlay — DISABLED. Replaced by .fusion-tile (always-visible
+/* Fused alert overlay — DISABLED. Replaced by .alert-tile (always-visible
    strip in row 4). Kept hidden so legacy markup doesn't render. */
-.fused-overlay {
+.alert-overlay {
   display: none !important;
 }
-.fused-overlay.show {
+.alert-overlay.show {
   display: none !important;
 }
 /* Legacy keyframe kept so any orphaned animation references don't error */
-@keyframes fused-in {
+@keyframes alert-in {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
-/* Old .fused-overlay variant — superseded but keep below for any legacy refs */
-.fused-overlay-legacy {
+/* Old .alert-overlay variant — superseded but keep below for any legacy refs */
+.alert-overlay-legacy {
   position: fixed;
   inset: 0;
   background: rgba(11, 13, 16, 0.45);
@@ -902,23 +913,23 @@ body.cloud-down .app {
   z-index: 1000;
   pointer-events: none;
 }
-@keyframes fused-in {
+@keyframes alert-in {
   from { opacity: 0; transform: scale(0.96); }
   to   { opacity: 1; transform: scale(1); }
 }
 /* Inner card sized to be readable but not dominate. */
-.fused-overlay::before {
+.alert-overlay::before {
   /* No-op — placeholder so future variants can stack effects */
   content: none;
 }
-.fused-headline,
-.fused-contacts,
-.fused-meta {
+.alert-headline,
+.alert-contacts,
+.alert-meta {
   background: var(--surface);
   border: 2px solid var(--alert);
   pointer-events: auto;
 }
-.fused-headline {
+.alert-headline {
   font-size: var(--t-h);
   font-weight: 700;
   color: var(--alert);
@@ -936,8 +947,8 @@ body.cloud-down .app {
   max-width: calc(100vw - 2rem);
   justify-content: center;
 }
-.fused-headline .icon { font-size: 0.85em; }
-.fused-contacts {
+.alert-headline .icon { font-size: 0.85em; }
+.alert-contacts {
   display: flex;
   gap: 0.6rem;
   padding: 0.8rem 1rem;
@@ -947,7 +958,7 @@ body.cloud-down .app {
   width: 36rem;
   max-width: calc(100vw - 2rem);
 }
-.fused-contact {
+.alert-contact {
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -955,7 +966,7 @@ body.cloud-down .app {
   flex: 1;
   min-width: 0;
 }
-.fused-contact .sector {
+.alert-contact .sector {
   font-size: var(--t-caption);
   color: var(--text-dim);
   text-transform: uppercase;
@@ -963,13 +974,13 @@ body.cloud-down .app {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   margin-bottom: 0.2rem;
 }
-.fused-contact .hits {
+.alert-contact .hits {
   font-size: var(--t-body-lg);
   color: var(--alert);
   font-weight: 700;
   letter-spacing: -0.01em;
 }
-.fused-contact .desc {
+.alert-contact .desc {
   font-size: var(--t-caption);
   color: var(--text);
   margin-top: 0.25rem;
@@ -979,7 +990,7 @@ body.cloud-down .app {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.fused-meta {
+.alert-meta {
   font-size: var(--t-caption);
   color: var(--text-dim);
   text-transform: uppercase;
@@ -1136,7 +1147,7 @@ body.cloud-down .app {
 }
 .s3-modal.show {
   display: flex;
-  animation: fused-in var(--m-base) ease-out;
+  animation: alert-in var(--m-base) ease-out;
 }
 .s3-modal-card {
   background: var(--surface);

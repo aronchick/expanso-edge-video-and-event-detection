@@ -58,8 +58,10 @@ def create_app(
 ) -> FastAPI:
     app = FastAPI(title="Edge ISR Orchestrator", docs_url=None, redoc_url=None)
     store = EventStore(db_path, ndjson_path=ndjson_path)
-    correlator = Correlator(store)
     triggers = TriggerStore(triggers_path)
+    # Correlator needs the trigger store so Rule 3 (drone-after-update)
+    # can check whether "drone" is currently armed.
+    correlator = Correlator(store, triggers=triggers)
     metrics = Metrics()
     jobs = JobsStatus()
     snapshots_path = Path(snapshots_dir)
@@ -113,15 +115,16 @@ def create_app(
         fake_cache.update(event)
         await manager.broadcast({"type": "event", "data": event})
 
-        fused = correlator.evaluate(event)
-        if fused:
-            # Tag fused events as originating from the fusion-node so
+        alert = correlator.evaluate(event)
+        if alert:
+            # Tag alert events as originating from the fusion-node so
             # downstream Bloblang filters and the dashboard's renderEvent
-            # know to skip them as regular per-sector events. (Renamed from
-            # "orchestrator" — see jobs_status.py for naming rationale.)
-            store.insert({**fused, "node": "fusion-node"})
+            # know to skip them as regular per-sector events. (The job
+            # is still named "fusion-node" — that's the supervisor that
+            # *computes* alerts, not the alert object itself.)
+            store.insert({**alert, "node": "fusion-node"})
             metrics.record_fused()
-            await manager.broadcast({"type": "fused", "data": fused})
+            await manager.broadcast({"type": "alert", "data": alert})
 
         return {"status": "ok"}
 
@@ -364,10 +367,18 @@ def create_app(
             return JSONResponse({"error": "S3 not configured"}, status_code=503)
         return JSONResponse(result)
 
-    @app.post("/demo/fused-test")
-    async def fused_test() -> dict:
+    @app.post("/demo/alert-test")
+    async def alert_test() -> dict:
+        """Fire a synthetic alert for rehearsal — bypasses the correlator
+        rules so the operator can preview the dashboard takeover even
+        when the cameras don't have the required scene set up.
+
+        Old path /demo/fused-test still works (alias below) so anything
+        in muscle memory keeps functioning.
+        """
         synthetic = {
-            "type": "multi_sector_correlation",
+            "type": "alert",
+            "rule": "synthetic",
             "ts": time.time(),
             "sectors": ["sensor-north", "sensor-south"],
             "contacts": [
@@ -384,8 +395,14 @@ def create_app(
             ],
         }
         metrics.record_fused()
-        await manager.broadcast({"type": "fused", "data": synthetic})
+        await manager.broadcast({"type": "alert", "data": synthetic})
         return {"ok": True}
+
+    @app.post("/demo/fused-test")
+    async def fused_test_alias() -> dict:
+        """Legacy alias of /demo/alert-test — kept so STAGE_RUNBOOK.md's
+        printed F3 curl still works after the alert rename."""
+        return await alert_test()
 
     @app.websocket("/ws")
     async def websocket_endpoint(ws: WebSocket) -> None:

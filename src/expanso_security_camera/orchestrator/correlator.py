@@ -1,20 +1,23 @@
-"""Cross-sensor correlator with explicit alert rules.
+"""Cross-sensor alert correlator.
 
-Per the demo's narrative: an "alert event" (a.k.a. fused event) fires only
-when one of these explicit conditions is met, NOT on every quiet
-co-occurrence between two sectors. This keeps the dashboard's FUSION
-banner meaningful — when judges see the takeover, it should mean
-something the eye would also flag.
+The dashboard's RED ALERT banner only fires under explicit conditions —
+not on every quiet co-occurrence. Three rules:
 
-Rules:
-    1. Single-sensor person+backpack — one frame from either sensor
-       containing both labels in the latest event.
-    2. Cross-sensor simultaneous-person — a person on each of north
-       AND south within WINDOW_SEC (with neither being a queued-offline
-       replay, so wall-clock proximity isn't faked by a queue drain).
+    1. person_with_backpack    — person + backpack in a single frame on
+                                 either sensor. Fires before AND after
+                                 the operator's pipeline update.
+    2. person_cross_sector     — person on north AND south within
+                                 WINDOW_SEC, neither replayed.
+    3. drone_after_update      — a drone detection on either sensor,
+                                 BUT only after the operator has rolled
+                                 out the drone class (i.e. "drone"
+                                 currently appears in the active trigger
+                                 set). Pre-update, drone hits don't fire
+                                 alerts even if YOLO emits one.
 
-Replayed offline events are excluded from rule 2 explicitly. Both rules
-share a single COOLDOWN_SEC after firing.
+Replayed-offline events skip all rules — wall-clock simultaneity is what
+makes "two sensors at once" meaningful, and stale archive replays would
+fake it.
 """
 
 from __future__ import annotations
@@ -22,9 +25,6 @@ from __future__ import annotations
 from typing import Optional
 
 
-# Window for rule 2 (cross-sensor co-occurrence). Empty/heartbeat events
-# are written to the store too, so the lookback can return any event —
-# we filter for the labels we want inside the rule.
 WINDOW_SEC = 5.0
 COOLDOWN_SEC = 8.0
 
@@ -34,50 +34,52 @@ def _has_label(event: dict, label: str) -> bool:
 
 
 class Correlator:
-    def __init__(self, store) -> None:
+    def __init__(self, store, triggers=None) -> None:
+        """`triggers` is a TriggerStore (or anything with .get() returning
+        the active trigger label list). Used by Rule 3 to gate drone
+        alerts on the post-update state.
+        """
         self.store = store
-        self._last_fused_ts = 0.0
+        self.triggers = triggers
+        self._last_alert_ts = 0.0
+
+    def _drone_armed(self) -> bool:
+        if self.triggers is None:
+            return False
+        try:
+            return "drone" in self.triggers.get()
+        except Exception:
+            return False
 
     def evaluate(self, latest_event: dict) -> Optional[dict]:
-        # Replayed events skip both rules. Rule 1 because a person+backpack
-        # frame from 30 minutes ago shouldn't surprise the operator now;
-        # rule 2 because wall-clock proximity is what makes "two sensors
-        # at once" meaningful.
         if latest_event.get("queued_offline"):
             return None
 
         now = latest_event["ts"]
-        if now - self._last_fused_ts < COOLDOWN_SEC:
+        if now - self._last_alert_ts < COOLDOWN_SEC:
             return None
 
         # ── Rule 1: person + backpack on a single frame ──────────────
         if _has_label(latest_event, "person") and _has_label(latest_event, "backpack"):
-            fused = {
-                "type": "multi_sector_correlation",
-                "rule": "person_with_backpack",
-                "ts": now,
-                "sectors": [latest_event["node"]],
-                "contacts": [
-                    {
-                        "sector": latest_event["node"],
-                        "yolo_hits": [
-                            h["label"] for h in latest_event.get("yolo_hits", [])
-                        ],
-                        "description": latest_event.get("gemini_description"),
-                    }
-                ],
-            }
-            self._last_fused_ts = now
-            return fused
+            return self._fire(now, "person_with_backpack",
+                              [latest_event["node"]],
+                              [latest_event])
 
-        # ── Rule 2: simultaneous person on north AND south ────────────
-        # Only relevant if THIS event has a person — otherwise nothing to
-        # correlate against the other sector.
+        # ── Rule 3: drone post-pipeline-update ───────────────────────
+        # Checked before Rule 2 so a single-sensor drone hit doesn't get
+        # short-circuited by needing a cross-sector partner. Only arms
+        # once the operator has added "drone" to the active trigger set
+        # (Beat 4 in the demo runbook), which is the moment the audience
+        # has been told "we're now also looking for drones."
+        if self._drone_armed() and _has_label(latest_event, "drone"):
+            return self._fire(now, "drone_after_update",
+                              [latest_event["node"]],
+                              [latest_event])
+
+        # ── Rule 2: simultaneous person on north AND south ──────────
         if not _has_label(latest_event, "person"):
             return None
-
         recent = self.store.recent(since_ts=now - WINDOW_SEC, limit=100)
-        # Look for the OTHER sector having a person hit, also non-replay.
         other = next(
             (
                 e
@@ -92,9 +94,15 @@ class Correlator:
             return None
 
         sectors = sorted({latest_event["node"], other["node"]})
-        fused = {
-            "type": "multi_sector_correlation",
-            "rule": "person_cross_sector",
+        return self._fire(now, "person_cross_sector", sectors,
+                          [latest_event, other])
+
+    def _fire(self, now: float, rule: str, sectors: list[str],
+              events: list[dict]) -> dict:
+        self._last_alert_ts = now
+        return {
+            "type": "alert",
+            "rule": rule,
             "ts": now,
             "sectors": sectors,
             "contacts": [
@@ -103,8 +111,6 @@ class Correlator:
                     "yolo_hits": [h["label"] for h in e.get("yolo_hits", [])],
                     "description": e.get("gemini_description"),
                 }
-                for e in (latest_event, other)
+                for e in events
             ],
         }
-        self._last_fused_ts = now
-        return fused
