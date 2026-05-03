@@ -1,26 +1,26 @@
-# Edge ISR — live demo repo
+# Expanso Edge — Video & Event Detection
 
-This is the **internal, demo-specific** repository for the Edge ISR live demo: YOLO + Gemini cascade on a Jetson, FastAPI/WebSocket fusion node on a laptop, two RTSP cameras, multi-sector correlation, S3 archive, DDIL graceful degradation. It includes deployment-specific tooling (cluster bootstrap, S3 wiring, systemd units), demo-day runbooks, and verbal speaker scripts that are intentionally not part of the public product reference.
+Edge sensors today ship every frame to the cloud and wait for someone to decide whether what they saw mattered. That costs you bandwidth on a contested link, latency on every decision, emissions an adversary can detect, and a single point of failure they will exploit.
 
-> **Looking for the clean public reference instead?** → [`aronchick/expanso-edge-video-and-event-detection`](https://github.com/aronchick/expanso-edge-video-and-event-detection)
-> That repo holds the same source tree but stripped of demo-specific files, with a generic README and the operational material removed.
-
----
-
-## What's in here vs. what's not
-
-| | |
-|---|---|
-| **In git (public to this repo)** | `src/`, `jobs/`, `scripts/`, `public/`, `tests/`, `pipelines/`, `openspec/`, `Dockerfile.{jetson,sensor}`, `pyproject.toml`, `config.example.yaml` |
-| **In `internal/` (gitignored, distributed via scp/share)** | Verbal demo scripts (`DEMO_SCRIPT.md`, `DEMO_SCRIPT_1MIN.md`), the printable stage runbook (`STAGE_RUNBOOK.md`), implementation reference (`HACKATHON_SCRIPT.md`), UI design notes (`DEMO_UI_SPEC.md`), planning docs (`PLAN.md`, `OPENSPEC.md`), cluster-specific bootstrap scripts (`scripts/bootstrap_armyx_tech.sh`, etc.), session handoff notes |
-| **In `.armyx-tech-secrets/` (gitignored)** | AWS access keys for the demo S3 bucket |
-| **`.env` (gitignored)** | RTSP camera credentials, Expanso Cloud API key, Jetson host |
+This repo is a working reference for **moving the workload to the data**: YOLO + Gemini cascade on a Jetson, a FastAPI/WebSocket fusion node on a laptop, two RTSP cameras, multi-sector correlation, S3 archive — built on [Expanso Edge](https://expanso.io). Detection happens local; cloud is augmentation; pipeline updates push live; nothing is lost when the link drops.
 
 ---
 
-## Run the demo on a laptop in 60 seconds
+## What it delivers
 
-No GPU, no cameras, no Jetson required.
+Five outcomes a perimeter operator would actually ask for:
+
+1. **Detection runs local. Always.** YOLO v8 on a Jetson, sub-50ms inference. No network call required to know what you're looking at.
+2. **Cloud is a bonus, not a precondition.** When a contact warrants richer context, the *edge* decides to call Gemini Flash for a description — only on the events that need it. The cloud being unreachable doesn't stop the sensor from working.
+3. **Sensors correlate themselves.** A local fusion node merges contacts from N sensors within a configurable window. Multi-sector alerts fire without a round-trip to a TOC.
+4. **Mission parameters update in seconds.** Push a new threat class (e.g., `drone`) once from the cloud control plane and every sensor on the network picks it up within ~1 second. No restart, no firmware push, no truck roll.
+5. **Zero loss when the link drops.** When the WAN goes away the sensors keep detecting and the local dashboard keeps painting; events buffer to disk via Expanso Edge's offline queue. On reconnect, the cluster pulls the latest pipeline definition from the cloud and drains the buffered events to S3 — with the new transformation applied. Provenance preserved end-to-end.
+
+---
+
+## Run it on a laptop in 60 seconds
+
+No GPU, no cameras, no Jetson required — uses synthetic events and procedurally generated camera feeds.
 
 ```bash
 uv sync                                                # one-time
@@ -34,45 +34,24 @@ uv run edge-sensor --fake --multi --orchestrator http://localhost:8080 --cadence
 
 Open `http://localhost:8080`, hit F11.
 
-**Operator shortcuts** (keyboard focus on dashboard):
+| Key | Action | Maps to |
+|---|---|---|
+| `F1` | Cloud DOWN — banner appears within ~3s (auto-detected by WAN probe) | outcome 5 |
+| `F2` | Cloud UP — buffered events drain to S3 with current pipeline applied | outcome 5 |
+| `F3` | Synthetic fused alert (full-screen takeover) | outcome 3 |
+| `F4` | Push live trigger update — adds `drone` to the watch list across all sensors | outcome 4 |
 
-| Key | Action |
-|---|---|
-| `F1` | Cloud DOWN — banner appears within ~3s (auto-detected by WAN probe) |
-| `F2` | Cloud UP |
-| `F3` | Synthetic fused alert (full-screen takeover) |
-| `F4` | Push live trigger update — adds `drone` to the watch list across all sensors |
-
----
-
-## Run the demo on the live Jetson
-
-The Jetson runs `expanso-edge` as a systemd unit, which supervises four jobs (`fusion-node`, `sensor-north`, `sensor-south`, `armyx-tech-event-archive`). Cold-boot recovery is **~43 seconds** from `sudo reboot` to first HTTP 200 on `/metrics`.
-
-Day-1 bootstrap (creates S3 bucket, IAM user, distributes credentials, deploys pipeline):
-
-```bash
-JETSON_HOST=nvidia@jetson.local \
-  ARMYX_EXPANSO_ENDPOINT=https://<your-cluster>.cloud.expanso.io:9010 \
-  ARMYX_EXPANSO_API_KEY=exp_ak_... \
-  ./internal/scripts/bootstrap_armyx_tech.sh
-
-# On the Jetson, once:
-sudo ./scripts/setup_jetson_lan.sh
-```
-
-Demo-day operational details (pre-flight checklist, recovery moves, network topology, the 5 wired-up automatic behaviors): see `internal/STAGE_RUNBOOK.md`.
-
-Verbal scripts for the live demo: `internal/DEMO_SCRIPT.md` (3:00 record version) and `internal/DEMO_SCRIPT_1MIN.md` (1:00 cold-intro version).
+The dashboard has two views: `OPS` (live operations — cameras, events, triggers, platform strip) and `ARCH` (light-themed architecture diagram with animated data-flow lines).
 
 ---
 
-## Architecture (high level)
+## Architecture
 
 ```
               ┌──────────────────────┐
-              │   Expanso Cloud      │  ← control plane (config + jobs only,
-              │                      │     no customer data passes through)
+              │   Expanso Cloud      │  ← control plane
+              │                      │     (config + jobs only,
+              │                      │      no customer data)
               └──────────┬───────────┘
                          │ dashed control plane
                          ▼
@@ -93,7 +72,13 @@ Verbal scripts for the live demo: `internal/DEMO_SCRIPT.md` (3:00 record version
                      └──────┘ └────────┘ └──────────┘
 ```
 
-For the full architecture write-up (network topology, file paths on the Jetson, supervision model, the 5 WAN-down auto-fixes), see `internal/STAGE_RUNBOOK.md` § "Network topology & known timings".
+Every component runs as an Expanso job (`jobs/*.yaml`). On a real cluster you'll see four jobs in `expanso-cli job list`:
+
+- `fusion-node` — local FastAPI backend (event store + cross-sensor correlator + dashboard)
+- `sensor-north`, `sensor-south` — YOLO + Gemini cascade per camera
+- `event-archive` — Bloblang pipeline that signs every event and ships to S3 with offline buffering
+
+The dashed line is the **control plane**: job specs, trigger config, pipeline updates. The solid lines are **data plane**: video frames, events, S3 objects. Customer data never traverses Expanso Cloud — it's an architectural property of Expanso Edge, not a configuration choice.
 
 ---
 
@@ -101,72 +86,68 @@ For the full architecture write-up (network topology, file paths on the Jetson, 
 
 ```
 src/expanso_security_camera/
-  sensor/        Edge sensor: pipeline, detector, emitter, dbom, main, triggers_client
-  orchestrator/  FastAPI + WS, store, correlator, metrics, jobs_status, snapshots, triggers
-  inference.py   Box-counting demo variant (esc-infer)
-  recorder.py    Box-counting recorder (esc-record)
-  dataset.py     Fine-tuning dataset capture/label/export (esc-dataset)
-  finetune.py    Fine-tuning runner (esc-finetune)
-  simulate.py    Box-counting simulator (esc-simulate)
-  server.py      Box-counting dashboard (esc-server)
+  sensor/        Edge sensor: pipeline, detector (YOLO+Gemini), emitter, dbom, triggers_client
+  orchestrator/  FastAPI + WS backend: store, correlator, metrics, jobs_status, snapshots
+  inference.py + simulate.py + dataset.py + finetune.py + recorder.py + server.py
+                 The original box-counting demo variant — same engine, different application
 
 public/
-  index.html, app.js   Box-counting dashboard
-  edge/                Edge-ISR dashboard (stage-scale, OPS dark + ARCH light themed)
+  edge/          Stage-scale dashboard (HTML/CSS/JS) — OPS dark theme + ARCH light theme
+  index.html     Box-counting dashboard
 
 jobs/
-  sensor-north-job.yaml           Sensor (north) — YOLO + Gemini + emitter
-  sensor-south-job.yaml           Sensor (south)
-  orchestrator-job.yaml           Local fusion node (FastAPI)
-  armyx-tech-event-archive.yaml   S3 archive pipeline (Bloblang) — Beat 5 centerpiece
-  event-archive-job.yaml          Generic local-only archive (kept for reference)
-  yolo-detector-job.yaml          Box-counting variant
-  security-camera-events-job.yaml Box-counting event enrichment
+  sensor-north-job.yaml / sensor-south-job.yaml   YOLO + Gemini per camera
+  orchestrator-job.yaml                           Local fusion node
+  event-archive-job.yaml                          S3 archive Bloblang pipeline
+  yolo-detector-job.yaml + security-camera-events-job.yaml   Box-counting variant
 
 scripts/
-  setup_jetson_lan.sh             On Jetson: dnsmasq on eth0 + NOPASSWD nmcli
-  install_jetson_update_timer.sh  Jetson: nightly expanso-edge update timer
-  jetson_update_expanso_edge.sh   The updater the timer runs
-  rollback_engine.sh              Restore previous TensorRT engine
-  detect_loop.py                  Box-counting GPU loop
-  export_tensorrt.py              TensorRT engine builder
-  ingest_drone_video.py           Capture frames from a video for fine-tuning
-  ingest_3class.py / export_3class.py / claude_relabel_drones.py
-                                  3-class (person/backpack/drone) dataset pipeline
-  relabel_video.py                Re-detect a recorded MP4 with GroundingDINO
-  run_sensor.sh                   Local sensor wrapper
+  detect_loop.py / export_tensorrt.py / setup_jetson_lan.sh / run_sensor.sh
+  install_jetson_update_timer.sh / jetson_update_expanso_edge.sh / rollback_engine.sh
+  ingest_drone_video.py / ingest_3class.py / export_3class.py
+  claude_relabel_drones.py / relabel_video.py
 
-internal/                         (gitignored — demo scripts, runbooks, bootstrap)
-  DEMO_SCRIPT.md                  3:00 verbal demo script for recording
-  DEMO_SCRIPT_1MIN.md             1:00 cold-intro version
-  STAGE_RUNBOOK.md                Printable operator cheat sheet
-  HACKATHON_SCRIPT.md             Implementation reference
-  DEMO_UI_SPEC.md                 Dashboard design system
-  PLAN.md / OPENSPEC.md           Planning docs
-  scripts/bootstrap_armyx_tech.sh Day-1 cluster bootstrap
-  scripts/teardown_armyx_tech.sh  Opt-in destructive teardown
-  scripts/demo_reset.sh           One-shot Beat-0 lights-up reset
-  scripts/demo_deploy_all.sh      Initial venue deploy
-  scripts/precheck.sh             30-min-before-stage pass/fail
-  jobs/armyx-tech-event-archive.yaml   The deployed pipeline spec
-  jetson-systemd/                 Cluster-specific systemd units
+pipelines/      Bloblang pipelines
+openspec/       Public design specs / change proposals
+Dockerfile.jetson + Dockerfile.sensor
 ```
 
 ---
 
 ## Configuration
 
-`config.yaml` (gitignored — copy from `config.example.yaml`) drives the box-counting `esc-infer` variant. The Edge-ISR demo reads camera/cluster credentials from `.env`:
+`config.yaml` (gitignored — copy from `config.example.yaml`) drives the box-counting variant. The Edge-ISR demo reads camera + cluster credentials from `.env`:
 
 ```bash
 export CAM_USER=admin
-export CAM_PASS_OUTSIDE=...        export CAM_PASS_INSIDE=...
-export CAM_IP_OUTSIDE=192.168.2.10 export CAM_IP_INSIDE=192.168.2.11   # the actual deployed IPs
-export ARMYX_JETSON_HOST=jetson    # for F1/F2 SSH actions
+export CAM_PASS_OUTSIDE=...     export CAM_PASS_INSIDE=...
+export CAM_IP_OUTSIDE=...       export CAM_IP_INSIDE=...
 export GEMINI_API_KEY=...
 ```
 
-Cameras live on the wired LAN (`enP8p1s0`, 192.168.2.x via PoE switch). The Jetson's WiFi (`wlP1p1s0`) is used only for WAN egress. F1 (kill WiFi) does not touch the cameras.
+The reference deployment puts cameras on the wired LAN (192.168.2.x via PoE) and uses the Jetson's WiFi only for WAN egress — so the F1 demo can kill cloud reachability without touching the cameras.
+
+---
+
+## Build for a Jetson
+
+```bash
+# On the target Jetson:
+python scripts/export_tensorrt.py            # produces yolo11s.engine
+
+# Back on dev machine:
+docker build -f Dockerfile.sensor -t ghcr.io/<you>/edge-isr-sensor:latest .
+docker push ghcr.io/<you>/edge-isr-sensor:latest
+
+# Deploy:
+expanso-cli job deploy jobs/orchestrator-job.yaml
+expanso-cli job deploy jobs/sensor-north-job.yaml
+expanso-cli job deploy jobs/sensor-south-job.yaml
+expanso-cli job deploy jobs/event-archive-job.yaml
+expanso-cli job list
+```
+
+Cold-boot recovery on the reference Jetson is **~43 seconds** from `sudo reboot` to first HTTP 200 on `/metrics`. Camera tiles populate ~5–10s after that as CUDA + the YOLO TensorRT engine warm up.
 
 ---
 
@@ -176,8 +157,12 @@ Cameras live on the wired LAN (`enP8p1s0`, 192.168.2.x via PoE switch). The Jets
 uv sync --extra test
 uv run ruff check . --fix
 uv run ruff format .
-uv run pytest                                          # 120+ tests
-uv run pytest tests/test_counter.py::test_name         # one test
+uv run pytest                                  # 120+ tests
+uv run pytest tests/test_counter.py::test_name # one test
 ```
 
-For Claude Code or any AI assistant working in this repo: read [`CLAUDE.md`](./CLAUDE.md) first.
+---
+
+## License
+
+Apache-2.0 — see [LICENSE](./LICENSE). For the Expanso platform itself, see [expanso.io](https://expanso.io).
