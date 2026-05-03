@@ -122,19 +122,41 @@ function renderEvent(e) {
     seen.delete(first);
   }
 
+  const hits = e.yolo_hits || [];
+  const isEmpty = hits.length === 0;
+  // Real Gemini call (not the canned/local fallback) is signalled by the
+  // sensor populating model_versions.gemini. The dashboard shows a pill
+  // on those events so the audience sees which detections the cloud
+  // analyst actually weighed in on.
+  const usedGemini = !!(e.model_versions && e.model_versions.gemini);
+
   const root = document.createElement('div');
-  root.className = 'event' + (e.queued_offline ? ' queued' : '');
+  root.className =
+    'event' +
+    (e.queued_offline ? ' queued' : '') +
+    (isEmpty ? ' empty' : '') +
+    (usedGemini ? ' gemini-augmented' : '');
 
   const row1 = document.createElement('div');
   row1.className = 'event-row1';
 
   const yolo = document.createElement('span');
-  yolo.className = 'yolo';
-  const labels = (e.yolo_hits || [])
-    .map((h) => `${displayLabel(h.label)} ${(h.confidence * 100).toFixed(0)}%`)
-    .join(' · ') || '(none)';
-  yolo.textContent = labels;
+  yolo.className = 'yolo' + (isEmpty ? ' empty' : '');
+  yolo.textContent = isEmpty
+    ? 'empty'
+    : hits
+        .map((h) => `${displayLabel(h.label)} ${(h.confidence * 100).toFixed(0)}%`)
+        .join(' · ');
   row1.appendChild(yolo);
+
+  // Gemini-Augmented pill — sits inline next to the labels so it's
+  // visually adjacent to the actual classification info.
+  if (usedGemini) {
+    const pill = document.createElement('span');
+    pill.className = 'gemini-pill';
+    pill.textContent = 'Gemini Augmented';
+    row1.appendChild(pill);
+  }
 
   const ts = document.createElement('span');
   ts.className = 'ts';
@@ -142,15 +164,19 @@ function renderEvent(e) {
   row1.appendChild(ts);
   root.appendChild(row1);
 
-  const desc = document.createElement('div');
-  if (e.gemini_description) {
-    desc.className = 'event-desc';
-    desc.textContent = `"${e.gemini_description}"`;
-  } else {
-    desc.className = 'event-desc local';
-    desc.textContent = 'cloud analyst unavailable · local-only';
+  // Empty events skip the description row entirely — no point describing
+  // a frame that has nothing to describe.
+  if (!isEmpty) {
+    const desc = document.createElement('div');
+    if (e.gemini_description) {
+      desc.className = 'event-desc';
+      desc.textContent = `"${e.gemini_description}"`;
+    } else {
+      desc.className = 'event-desc local';
+      desc.textContent = 'cloud analyst unavailable · local-only';
+    }
+    root.appendChild(desc);
   }
-  root.appendChild(desc);
 
   if (e.signature) {
     const sig = document.createElement('div');
@@ -920,9 +946,14 @@ async function startWebRTCFor(sectorEl) {
   if (!video) return;
 
   try {
-    const pc = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-    });
+    // No STUN servers — Mac and Jetson are on the same wired LAN (192.168.2.x),
+    // so HOST candidates alone are sufficient for ICE. Adding a public STUN
+    // server (Google's, etc.) makes the demo dependent on Internet reachability:
+    // when F1 fires (Jetson WiFi off) the Mac loses its only WAN path,
+    // STUN times out, ICE fails, and the video stream breaks even though
+    // the Jetson is still pumping RTP over the wired LAN.
+    // (Beat 5A bug: video froze on WAN-down. Removing STUN fixes it.)
+    const pc = new RTCPeerConnection({ iceServers: [] });
     pc.addTransceiver('video', { direction: 'recvonly' });
     pc.addTransceiver('audio', { direction: 'recvonly' });
     pc.ontrack = (e) => {

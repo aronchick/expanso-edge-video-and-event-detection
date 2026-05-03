@@ -676,6 +676,44 @@ body.tier-edge-down #tier-edge {
 /* Hide the per-event sig line — too noisy for the compressed row */
 .event-sig { display: none; }
 
+/* "empty" event — sensor heartbeat with no detections this tick. Light-gray
+   text, italic, lower-weight, so the audience reads it as "still here, no
+   contact" rather than parsing it as another detection row. */
+.event-row1 .yolo.empty {
+  color: var(--text-mono);
+  font-weight: 400;
+  font-style: italic;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+  opacity: 0.55;
+}
+/* The whole row dims slightly when empty so detection rows pop more. */
+.event.empty {
+  opacity: 0.55;
+}
+
+/* "Gemini Augmented" pill — appears inline next to the YOLO labels on
+   events where the sensor's cascade actually called Gemini Flash (vs the
+   canned/local fallback when the cooldown is active or the WAN is down).
+   Visual contract matches the header's metric-gemini-pill so the audience
+   ties them together: "this row is one of the Gemini calls counted up
+   there in the pill." */
+.event-row1 .gemini-pill {
+  display: inline-block;
+  font-size: var(--t-caption);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: #7fb8dc;                  /* same blue as the gemini metric pill */
+  background: rgba(127, 184, 220, 0.12);
+  border: 1px solid rgba(127, 184, 220, 0.45);
+  border-radius: 999px;
+  padding: 0.05em 0.55em;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 /* ── Expanso platform tile ────────────────────────────────────────── */
 
 .platform {

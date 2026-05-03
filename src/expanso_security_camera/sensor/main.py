@@ -90,6 +90,11 @@ def run_real(
     last_inference_ts = 0.0
 
     def yolo_worker() -> None:
+        """Run YOLO inference at the configured FPS cap and store the
+        latest result. Emit cadence is owned by the main loop now (2s
+        heartbeat below) — this thread only updates `yolo_out` so the
+        main loop can read it whenever the heartbeat tick lands.
+        """
         nonlocal last_inference_ts
         while True:
             yolo_event.wait()
@@ -115,15 +120,20 @@ def run_real(
             with yolo_lock:
                 yolo_out["event"] = ev
                 yolo_out["ts"] = ts
-            if ev is not None:
-                sign_event(ev)
-                emitter.emit(ev)
-                labels = [h.label for h in ev.yolo_hits]
-                print(f"[{node_id}] emitted: {labels}", flush=True)
 
     threading.Thread(target=yolo_worker, daemon=True, name=f"{node_id}-yolo").start()
 
-    print(f"[{node_id}] warmed up, entering main loop", flush=True)
+    # Heartbeat emit cadence: produce one event every EMIT_INTERVAL_SEC
+    # whether or not the latest YOLO inference found anything. If the
+    # latest detection is recent (within the cadence window), emit it
+    # with hits. Otherwise emit an empty event so the dashboard keeps a
+    # steady "still here, no contact" pulse instead of going silent.
+    # Override per-deploy with EDGE_EMIT_INTERVAL_SEC.
+    EMIT_INTERVAL_SEC = float(os.environ.get("EDGE_EMIT_INTERVAL_SEC", "2.0"))  # noqa: N806
+    last_emit_ts = 0.0
+
+    print(f"[{node_id}] warmed up, entering main loop "
+          f"(emit cadence {EMIT_INTERVAL_SEC}s)", flush=True)
     while True:
         result = reader.read()
         if result is None:
@@ -154,8 +164,35 @@ def run_real(
                 tmp_path.replace(snapshot_path)
             last_snapshot_ts = ts
 
+        # Heartbeat emit. Drives the dashboard's event panel cadence.
+        now = time.time()
+        if now - last_emit_ts >= EMIT_INTERVAL_SEC:
+            if (
+                latest_event is not None
+                and (now - latest_event_ts) <= EMIT_INTERVAL_SEC
+            ):
+                # Recent detection → emit it. Detector already populated
+                # gemini_description (real or canned) when it last ran.
+                ev = latest_event
+            else:
+                # No fresh detection → emit an "empty" pulse so the
+                # dashboard renders a light-gray "empty" row instead of
+                # going silent. yolo_hits=[] is the marker.
+                from expanso_security_camera.sensor.schema import Event
+                ev = Event(
+                    node=node_id,
+                    ts=now,
+                    yolo_hits=[],
+                    gemini_description=None,
+                    model_versions={"yolo": detector.model_name, "gemini": None},
+                )
+            sign_event(ev)
+            emitter.emit(ev)
+            labels = [h.label for h in ev.yolo_hits] or ["empty"]
+            print(f"[{node_id}] emitted: {labels}", flush=True)
+            last_emit_ts = now
+
         # Tiny sleep so we don't pin a CPU core when RTSP is firing fast.
-        # (YOLO printing happens inside yolo_worker, not here.)
         time.sleep(0.02)
 
 
