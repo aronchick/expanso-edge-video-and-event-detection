@@ -252,7 +252,7 @@
         </circle>
       </svg>
       <div class="arch-arrow-meta arch-arrow-meta--cam">
-        <span class="arch-arrow-counter" id="arch-counter-rtsp">— ev/min</span>
+        <span class="arch-arrow-counter" id="arch-counter-rtsp" hidden></span>
         <span class="arch-arrow-label">stream</span>
       </div>
     </div>
@@ -285,7 +285,7 @@
                this misled the eye. -->
         </div>
         <div class="arch-control-label">
-          <span class="arch-arrow-counter" id="arch-counter-jobs">— jobs</span>
+          <span class="arch-arrow-counter" id="arch-counter-jobs" hidden></span>
           <span class="arch-arrow-label">control plane</span>
         </div>
       </div>
@@ -301,20 +301,11 @@
           <li><span class="step-name">Trigger filter + cascade</span><span class="step-meta">live config from cloud</span></li>
           <li><span class="step-name">DBOM sign + SQLite</span><span class="step-meta">offline replay queue</span></li>
         </ul>
-        <!-- Live stat strip: 2 most-load-bearing numbers, kept compact so the
-             pipeline list stays the eye-catcher. Was a 4-cell debug grid. -->
-        <div class="arch-livestat">
-          <div class="arch-livestat-row">
-            <span class="arch-livestat-label">events/min</span>
-            <span class="arch-livestat-val" id="arch-jet-epm">—</span>
-          </div>
-          <div class="arch-livestat-row">
-            <span class="arch-livestat-label">queued offline</span>
-            <span class="arch-livestat-val" id="arch-jet-queued">0</span>
-          </div>
-        </div>
-        <!-- Hidden stat ids — kept so ws_client.js setText calls don't error.
-             They have no visible effect; we surface only the 2 above. -->
+        <!-- Live stats removed — the numbers were stale and just visual
+             noise on the architecture diagram. Hidden stubs kept so the
+             ws_client.js setText calls don't error. -->
+        <span hidden id="arch-jet-epm">—</span>
+        <span hidden id="arch-jet-queued">0</span>
         <span hidden id="arch-jet-fps">—</span>
         <span hidden id="arch-jet-age">—</span>
       </div>
@@ -359,15 +350,15 @@
            once curve geometry is known, so each label sits at the midpoint of
            its branch. -->
       <div class="arch-arrow-meta arch-arrow-meta--out" id="arch-meta-local">
-        <span class="arch-arrow-counter" id="arch-counter-local">— /min</span>
+        <span class="arch-arrow-counter" id="arch-counter-local" hidden></span>
         <span class="arch-arrow-label">alert</span>
       </div>
       <div class="arch-arrow-meta arch-arrow-meta--out" id="arch-meta-gemini">
-        <span class="arch-arrow-counter" id="arch-counter-gemini-flow">— /min</span>
+        <span class="arch-arrow-counter" id="arch-counter-gemini-flow" hidden></span>
         <span class="arch-arrow-label">reachback</span>
       </div>
       <div class="arch-arrow-meta arch-arrow-meta--out" id="arch-meta-s3">
-        <span class="arch-arrow-counter" id="arch-counter-s3-flow">— obj</span>
+        <span class="arch-arrow-counter" id="arch-counter-s3-flow" hidden></span>
         <span class="arch-arrow-label">archive</span>
       </div>
     </div>
