@@ -203,12 +203,25 @@ class Detector:
             self._last_gemini_ts = ts
             return text, True
         except Exception as e:
+            # CRITICAL: update the cooldown timestamp even on failure. Otherwise,
+            # when WAN is down, every detection immediately re-attempts Gemini
+            # (since the cooldown check sees a stale `_last_gemini_ts`), and
+            # the synchronous urllib call blocks the yolo worker for the full
+            # timeout on EACH detection. The result is event/bbox stutter that
+            # tracks the timeout cadence, not the cooldown. (Beat 5A bug.)
+            self._last_gemini_ts = ts
             print(f"[{self.node_id}] gemini call failed: {e}", flush=True)
             return _canned_for(hits), False
 
 
-def _call_gemini(api_key: str, jpg_bytes: bytes, timeout: float = 5.0) -> str:
-    """Single-shot Gemini call. Retries 429 with exponential backoff."""
+def _call_gemini(api_key: str, jpg_bytes: bytes, timeout: float = 1.5) -> str:
+    """Single-shot Gemini call. Retries 429 with exponential backoff.
+
+    Timeout is intentionally short (1.5s) — when the WAN is healthy, Gemini
+    Flash returns in 200-800ms; when the WAN is down, we'd rather give up fast
+    than block the synchronous yolo worker (which would visibly stutter the
+    bbox overlay and event stream). The cooldown still throttles attempt rate.
+    """
     url = (
         f"https://generativelanguage.googleapis.com/v1beta/models/"
         f"{GEMINI_MODEL}:generateContent?key={api_key}"

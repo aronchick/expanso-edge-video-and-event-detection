@@ -269,6 +269,50 @@ def create_app(
             headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"},
         )
 
+    # ── Auto-detect WAN state and broadcast cloud-up/down ──────────────
+    # The big red banner only shows when `metrics.cloud_up` flips. F1 flips
+    # it explicitly, but a manual `nmcli radio wifi off` (or any underlying
+    # network failure) used to leave the dashboard ignorant. This loop
+    # probes WAN reachability with a fast async TCP connect and broadcasts
+    # cloud state on transitions, so the banner appears whether the operator
+    # hits F1 or just yanks the cable.
+    async def _wan_probe() -> bool:
+        """Returns True if we can complete a TCP handshake to a known external."""
+        try:
+            # Cloudflare's 1.1.1.1:443 — globally available, very fast,
+            # not an Expanso/AWS dependency (so probe failure means
+            # general WAN loss, not "AWS happens to be slow").
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection("1.1.1.1", 443), timeout=1.2
+            )
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except Exception:
+                pass
+            return True
+        except (asyncio.TimeoutError, OSError):
+            return False
+
+    async def wan_monitor_loop() -> None:
+        last = metrics.is_cloud_up()
+        # Small initial delay so the FastAPI lifespan can finish wiring up
+        await asyncio.sleep(2.0)
+        while True:
+            try:
+                up = await _wan_probe()
+                if up != last:
+                    metrics.set_cloud(up)
+                    await manager.broadcast({"type": "cloud", "data": {"up": up}})
+                    last = up
+            except Exception:
+                pass  # never let the monitor crash the app
+            await asyncio.sleep(3.0)
+
+    @app.on_event("startup")
+    async def _start_wan_monitor() -> None:
+        asyncio.create_task(wan_monitor_loop())
+
     @app.post("/demo/wan-down")
     async def wan_down() -> dict:
         # Always flip the in-memory flag first so the dashboard responds
@@ -361,7 +405,22 @@ def create_app(
             manager.disconnect(ws)
 
     if PUBLIC_DIR.exists():
-        app.mount("/", StaticFiles(directory=str(PUBLIC_DIR), html=True), name="dashboard")
+        # Wrapper that always sends no-cache headers for the dashboard assets.
+        # Stale CSS/JS during the live demo silently breaks behavior (the user
+        # gets the new code only after a hard refresh) — eliminate that risk.
+        from starlette.responses import FileResponse
+        from starlette.staticfiles import StaticFiles as _SF
+
+        class NoCacheStatic(_SF):
+            def file_response(self, *args, **kwargs):  # type: ignore[override]
+                resp = super().file_response(*args, **kwargs)
+                if isinstance(resp, FileResponse):
+                    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+                    resp.headers["Pragma"] = "no-cache"
+                    resp.headers["Expires"] = "0"
+                return resp
+
+        app.mount("/", NoCacheStatic(directory=str(PUBLIC_DIR), html=True), name="dashboard")
 
     return app
 
