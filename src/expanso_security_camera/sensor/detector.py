@@ -30,32 +30,29 @@ from expanso_security_camera.sensor.schema import Detection, Event
 from expanso_security_camera.sensor.triggers_client import TriggerClient
 
 CONF_THRESHOLD = 0.55
-# Per-class overrides. The 3-class fine-tune trained to mAP50=0.995 on
-# `person` (we can lower its bar safely: virtually no false positives).
-# `drone` only got mAP50=0.193 from sparse footage, so we also lower its bar
-# to surface anything the model thinks looks droney. `backpack` sits at
-# mAP50=0.922 but at this camera angle real backpacks frequently land in
-# the 0.5–0.6 band; 0.35 keeps recall high without flooding the dashboard.
+# Per-class overrides for `drone-3class-v2.pt` (Hetzner fine-tune,
+# mAP50=0.909 / mAP50-95=0.843 on val).
 PER_CLASS_THRESHOLDS: dict[str, float] = {
-    # COCO yolov8s emits dense, well-calibrated person/backpack scores in
-    # this venue — set the bar high enough to suppress low-conf clutter
-    # ("fake people" on furniture / posters / shadow). A separate fine-tune
-    # pass on real venue footage is queued for later, which will let us drop
-    # these back down with confidence.
-    "person": 0.60,
+    # Person flooded the event stream at 0.60 — venue has frequent
+    # operator/passerby foot traffic. Bumping to 0.75 trims the long tail
+    # of low-conf adult-ish silhouettes (shadows, posters, reflections)
+    # while keeping a clear positive when someone walks fully into frame.
+    "person": 0.75,
+    # Backpack is well-calibrated by the relabel pipeline; 0.50 catches
+    # carry-position cases without firing on jacket lumps.
     "backpack": 0.50,
-    # Drone is effectively suppressed until the planned Hetzner fine-tune
-    # pass produces a properly-trained drone class. The current fine-tune
-    # mAP50=0.193 yields too many low-conf false positives (chairs, lamps,
-    # ceiling fans) at any threshold the demo would actually fire on.
-    # Setting the bar at 0.95 means nothing real fires; resurrect this knob
-    # post-retrain.
-    "drone": 0.95,
+    # Drone sits high deliberately. Even with the new fine-tune, training
+    # data is sparse enough that round/elongated background objects (light
+    # fixtures, ceiling vents) occasionally pull a high-confidence drone
+    # label. 0.85 allows real airborne hits while suppressing those.
+    "drone": 0.85,
 }
 
 
 def _threshold_for(label: str) -> float:
     return PER_CLASS_THRESHOLDS.get(label, CONF_THRESHOLD)
+
+
 # Labels the cascade actually cares about. Derived to indices at runtime
 # from `self.model.names`, so this works against both the off-the-shelf
 # COCO yolov8s engine ("airplane" included as a drone proxy until we have
@@ -151,17 +148,13 @@ class Detector:
         #     2:drone}) — picks indices [0, 1, 2]
         # ultralytics still short-circuits NMS + score sorting on the
         # unwanted classes — same TRT post-process speedup as before.
-        wanted_indices = [
-            i for i, n in self.model.names.items() if n in _WANTED_LABELS
-        ]
+        wanted_indices = [i for i, n in self.model.names.items() if n in _WANTED_LABELS]
         # Pass a low predict-side conf floor so anything the model is willing
         # to emit reaches our per-class threshold filter. Without this, YOLO's
         # default (0.25) silently drops mid-confidence person/drone outputs
         # before we ever see them — and our 0.30 person bar is meaningless if
         # the candidates never arrive.
-        results = self.model(
-            frame, verbose=False, classes=wanted_indices or None, conf=0.10
-        )[0]
+        results = self.model(frame, verbose=False, classes=wanted_indices or None, conf=0.10)[0]
         hits: list[Detection] = []
         for cls_idx, conf, box in zip(results.boxes.cls, results.boxes.conf, results.boxes.xyxy):
             label = self.model.names[int(cls_idx)]
@@ -187,9 +180,7 @@ class Detector:
         # and better-calibrated in deployment scenes. Skipped if no
         # drone_model_path was provided at construction.
         if self.drone_model is not None and self.triggers.contains("drone"):
-            drone_indices = [
-                i for i, n in self.drone_model.names.items() if n == "drone"
-            ]
+            drone_indices = [i for i, n in self.drone_model.names.items() if n == "drone"]
             if drone_indices:
                 drone_results = self.drone_model(
                     frame, verbose=False, classes=drone_indices, conf=0.10
