@@ -28,6 +28,7 @@ import time
 from pathlib import Path
 
 import uvicorn
+from dotenv import load_dotenv
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
@@ -489,6 +490,10 @@ def create_app(
 
 
 def main() -> None:
+    # No-op on the Jetson (systemd EnvironmentFile= already populated the env,
+    # and load_dotenv doesn't clobber); load_dotenv only matters for laptop
+    # `uv run` where the shell hasn't sourced .env.
+    load_dotenv()
     parser = argparse.ArgumentParser(description="Edge-ISR orchestrator")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8080)

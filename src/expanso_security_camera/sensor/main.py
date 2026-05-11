@@ -30,6 +30,8 @@ import random
 import threading
 import time
 
+from dotenv import load_dotenv
+
 from expanso_security_camera.sensor.dbom import sign_event
 from expanso_security_camera.sensor.emitter import Emitter
 from expanso_security_camera.sensor.schema import Detection, Event
@@ -138,8 +140,9 @@ def run_real(
     EMIT_INTERVAL_SEC = float(os.environ.get("EDGE_EMIT_INTERVAL_SEC", "2.0"))  # noqa: N806
     last_emit_ts = 0.0
 
-    print(f"[{node_id}] warmed up, entering main loop "
-          f"(emit cadence {EMIT_INTERVAL_SEC}s)", flush=True)
+    print(
+        f"[{node_id}] warmed up, entering main loop (emit cadence {EMIT_INTERVAL_SEC}s)", flush=True
+    )
     while True:
         result = reader.read()
         if result is None:
@@ -173,10 +176,7 @@ def run_real(
         # Heartbeat emit. Drives the dashboard's event panel cadence.
         now = time.time()
         if now - last_emit_ts >= EMIT_INTERVAL_SEC:
-            if (
-                latest_event is not None
-                and (now - latest_event_ts) <= EMIT_INTERVAL_SEC
-            ):
+            if latest_event is not None and (now - latest_event_ts) <= EMIT_INTERVAL_SEC:
                 # Recent detection → emit it. Detector already populated
                 # gemini_description (real or canned) when it last ran.
                 ev = latest_event
@@ -185,6 +185,7 @@ def run_real(
                 # dashboard renders a light-gray "empty" row instead of
                 # going silent. yolo_hits=[] is the marker.
                 from expanso_security_camera.sensor.schema import Event
+
                 ev = Event(
                     node=node_id,
                     ts=now,
@@ -286,6 +287,7 @@ def run_fake_node(
 
 
 def main() -> None:
+    load_dotenv()  # see orchestrator/api.py main() for why
     parser = argparse.ArgumentParser(description="Edge-ISR sensor")
     parser.add_argument(
         "--fake", action="store_true", help="generate synthetic events (no GPU, no cameras)"

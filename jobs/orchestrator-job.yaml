@@ -6,7 +6,7 @@
 # FastAPI process as a subprocess input. restart_on_exit keeps it alive
 # across crashes; output: drop because the process publishes nothing useful
 # on stdout — its real outputs are HTTP (port 8090, dashboard + sensor
-# ingest) and the events.ndjson tail consumed by armyx-tech-event-archive.
+# ingest) and the events.ndjson tail consumed by the event-archive pipeline.
 #
 # Selector is empty: there is exactly one node attached to the armyx-tech
 # cluster (security-camera-overseer / Jetson), so it always lands there.
