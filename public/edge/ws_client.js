@@ -1040,13 +1040,19 @@ document.addEventListener('keydown', async (ev) => {
   }
 });
 
-// ── WebRTC live video + bbox canvas overlay ─────────────────────────
-// Replaces the snapshot polling for the camera tiles. Video comes from
-// go2rtc on :1984 (separate Jetson sidecar process). YOLO bbox coords
-// arrive via the existing WS event stream — drawn on a canvas overlay
-// positioned over the <video>. Video runs at native ~25fps; bbox redraws
-// at YOLO's ~5-10Hz inference rate. They're decoupled — video stays smooth
-// even when YOLO is mid-inference.
+// ── Camera tile feed: MJPEG floor + WebRTC opportunistic ─────────────
+// Two layers per tile: the <img class="sector-fallback"> streams MJPEG
+// continuously (multipart/x-mixed-replace from /stream/{sector}); the
+// <video class="sector-video"> sits on top and is faded in (opacity 1)
+// only when WebRTC is proven healthy — negotiation succeeded AND frames
+// are actually arriving. Any fault (connection state failed/disconnected,
+// no frame for 3s) instantly fades video out, revealing the MJPEG below,
+// and schedules a WebRTC retry. The bbox canvas overlay (z-index 2) sits
+// above both and is independent of which feed is currently visible.
+//
+// This model is "always-on bedrock + opportunistic upgrade" — the screen
+// is NEVER black. MJPEG runs at ~10fps and gives ~500ms latency; WebRTC
+// runs at native ~25fps and ~150ms latency. WebRTC is the nice-to-have.
 
 const GO2RTC_BASE = `${location.protocol}//${location.hostname}:1984`;
 // Source dims are detected per-sector from the actual <video>'s videoWidth/Height
@@ -1056,56 +1062,168 @@ const SECTOR_SOURCE_W_FALLBACK = 640;
 const SECTOR_SOURCE_H_FALLBACK = 360;
 const _bboxClearTimers = {};    // sector -> setTimeout handle for clear-after-hold
 
-async function startWebRTCFor(sectorEl) {
-  const stream = sectorEl.dataset.stream;
-  const sector = sectorEl.dataset.sector;
-  if (!stream || !sector) return;
-  const video = document.getElementById(`video-${sector}`);
-  if (!video) return;
+class SectorFeed {
+  constructor(sectorEl) {
+    this.stream = sectorEl.dataset.stream;
+    this.sector = sectorEl.dataset.sector;
+    this.video = document.getElementById(`video-${this.sector}`);
+    this.img = document.getElementById(`feed-${this.sector}`);
+    if (!this.video || !this.img || !this.stream || !this.sector) return;
 
-  try {
-    // No STUN servers — Mac and Jetson are on the same wired LAN (192.168.2.x),
-    // so HOST candidates alone are sufficient for ICE. Adding a public STUN
-    // server (Google's, etc.) makes the demo dependent on Internet reachability:
-    // when F1 fires (Jetson WiFi off) the Mac loses its only WAN path,
-    // STUN times out, ICE fails, and the video stream breaks even though
-    // the Jetson is still pumping RTP over the wired LAN.
-    // (Beat 5A bug: video froze on WAN-down. Removing STUN fixes it.)
-    const pc = new RTCPeerConnection({ iceServers: [] });
-    pc.addTransceiver('video', { direction: 'recvonly' });
-    pc.addTransceiver('audio', { direction: 'recvonly' });
-    pc.ontrack = (e) => {
-      video.srcObject = e.streams[0];
-    };
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
+    this.pc = null;
+    this.lastFrameAt = 0;
+    this.healthTimer = null;
+    this.retryTimer = null;
+    this.mode = 'mjpeg'; // 'mjpeg' | 'webrtc'
 
-    const resp = await fetch(`${GO2RTC_BASE}/api/webrtc?src=${encodeURIComponent(stream)}`, {
-      method: 'POST',
-      body: pc.localDescription.sdp,
+    // MJPEG is the floor. The <img> already has src="/stream/{sector}" from
+    // index.html; we just guarantee both layers' opacity state up front.
+    this.video.style.opacity = '0';
+    this.img.style.opacity = '1';
+
+    // Tabs throttled in the background can stall RTCPeerConnection. When the
+    // user returns, force a health re-check. If we're already in MJPEG, also
+    // try WebRTC again immediately (don't wait for the 15s retry timer).
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && this.mode !== 'webrtc') this.tryWebRTC();
     });
-    if (!resp.ok) throw new Error(`go2rtc HTTP ${resp.status}`);
-    const answerSdp = await resp.text();
-    await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
-    // Maintain a small playout buffer so the WebRTC stream lines up with the
-    // YOLO bbox events. With the TRT engine on the Orin GPU, inference is
-    // ~10–30ms per frame and WS transport is ~50ms — total bbox lag ~150ms.
-    // We previously set this to 2.0s when YOLO ran on CPU and trailed by
-    // 500ms+; with GPU we can drop it back to ~0.15s and the video is
-    // nearly live with the bracket riding on top in real time.
-    for (const r of pc.getReceivers()) {
-      if (r.track && r.track.kind === 'video') r.playoutDelayHint = 0.15;
+
+    this.tryWebRTC();
+  }
+
+  // Switch to the always-streaming MJPEG layer. Idempotent and safe to call
+  // from any state — clears all WebRTC resources and arms a retry.
+  toMJPEG(reason) {
+    if (this.mode === 'mjpeg' && this.pc === null) return;
+    console.warn(`[feed] ${this.sector} → MJPEG (${reason})`);
+    this.mode = 'mjpeg';
+    this.video.style.opacity = '0';
+    this.img.style.opacity = '1';
+    if (this.video.srcObject) this.video.srcObject = null;
+    if (this.pc) { try { this.pc.close(); } catch (_) {} this.pc = null; }
+    if (this.healthTimer) { clearInterval(this.healthTimer); this.healthTimer = null; }
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    // 15s retry — long enough to not pummel a dead service, short enough to
+    // recover quickly when the Jetson sidecar finishes restarting.
+    this.retryTimer = setTimeout(() => this.tryWebRTC(), 15_000);
+  }
+
+  // Promote to the WebRTC video layer. Only called from the frame watchdog
+  // once a frame has actually arrived — we never trust signaling alone.
+  toWebRTC() {
+    if (this.mode === 'webrtc') return;
+    console.log(`[feed] ${this.sector} → WebRTC`);
+    this.mode = 'webrtc';
+    this.video.style.opacity = '1';
+    this.img.style.opacity = '0';
+  }
+
+  async tryWebRTC() {
+    if (this.retryTimer) { clearTimeout(this.retryTimer); this.retryTimer = null; }
+    if (this.pc) { try { this.pc.close(); } catch (_) {} this.pc = null; }
+
+    try {
+      // No STUN servers — Mac and Jetson are on the same wired LAN (192.168.2.x),
+      // so HOST candidates alone are sufficient for ICE. Adding public STUN
+      // makes the demo Internet-dependent: F1 (Jetson WiFi off) kills WAN, STUN
+      // times out, ICE fails even though RTP still flows over the wired LAN.
+      const pc = new RTCPeerConnection({ iceServers: [] });
+      this.pc = pc;
+
+      pc.onconnectionstatechange = () => {
+        const s = pc.connectionState;
+        if (['failed', 'disconnected', 'closed'].includes(s)) {
+          this.toMJPEG(`connectionState=${s}`);
+        }
+      };
+
+      pc.ontrack = (e) => {
+        this.video.srcObject = e.streams[0];
+        // 150ms playout buffer keeps bbox overlay aligned with video frames
+        // when YOLO runs on the Orin GPU (~30ms inference + ~50ms WS transport).
+        for (const r of pc.getReceivers()) {
+          if (r.track && r.track.kind === 'video') r.playoutDelayHint = 0.15;
+        }
+        this.startFrameWatchdog();
+      };
+
+      pc.addTransceiver('video', { direction: 'recvonly' });
+      pc.addTransceiver('audio', { direction: 'recvonly' });
+
+      const negotiate = async () => {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        const resp = await fetch(
+          `${GO2RTC_BASE}/api/webrtc?src=${encodeURIComponent(this.stream)}`,
+          { method: 'POST', body: pc.localDescription.sdp }
+        );
+        if (!resp.ok) throw new Error(`go2rtc HTTP ${resp.status}`);
+        const answer = await resp.text();
+        await pc.setRemoteDescription({ type: 'answer', sdp: answer });
+      };
+
+      // 4s hard timeout on the whole handshake. The default browser timeout
+      // is many seconds; a sleeping/dead go2rtc would leave the user staring
+      // at MJPEG longer than necessary before we accept the situation.
+      await Promise.race([
+        negotiate(),
+        new Promise((_, rej) =>
+          setTimeout(() => rej(new Error('negotiate-timeout')), 4000)),
+      ]);
+
+      // Handshake complete. We do NOT promote to WebRTC here — the frame
+      // watchdog (started in ontrack) will promote once frames actually
+      // arrive. This catches the "negotiated but no media" case (go2rtc
+      // up but source stream missing) that previously showed black video.
+    } catch (err) {
+      this.toMJPEG(`negotiate: ${err.message || err}`);
     }
-    console.log(`[webrtc] ${sector} ← ${stream} negotiated (playoutDelay 150ms)`);
-  } catch (err) {
-    console.warn(`[webrtc] ${sector} failed, falling back to JPEG snapshot:`, err);
-    // The fallback <img class="sector-fallback"> is z-index 0 underneath the video.
-    // When video has no srcObject, it's transparent — img shows through.
-    // Trigger a re-poll on the fallback img every 300ms as before.
-    setInterval(() => {
-      const img = document.getElementById(`feed-${sector}`);
-      if (img) img.src = `/snapshot/${sector}?t=${Date.now()}`;
-    }, 300);
+  }
+
+  startFrameWatchdog() {
+    this.lastFrameAt = performance.now();
+
+    // Frame-accurate detection via requestVideoFrameCallback (Chrome, Edge,
+    // Safari 16+). Falls back to a 250ms poll of video.currentTime for
+    // older browsers — works but less precise.
+    const hasVFC = 'requestVideoFrameCallback' in this.video;
+    if (hasVFC) {
+      const onFrame = () => {
+        if (!this.pc || this.pc.connectionState === 'closed') return;
+        this.lastFrameAt = performance.now();
+        if (this.mode !== 'webrtc') this.toWebRTC();
+        try { this.video.requestVideoFrameCallback(onFrame); } catch (_) {}
+      };
+      try { this.video.requestVideoFrameCallback(onFrame); } catch (_) {}
+    } else {
+      let lastTime = -1;
+      const poll = setInterval(() => {
+        if (!this.pc || this.pc.connectionState === 'closed') {
+          clearInterval(poll);
+          return;
+        }
+        if (this.video.readyState >= 2 && this.video.currentTime !== lastTime) {
+          lastTime = this.video.currentTime;
+          this.lastFrameAt = performance.now();
+          if (this.mode !== 'webrtc') this.toWebRTC();
+        }
+      }, 250);
+    }
+
+    // Stall watchdog: if no frame arrives within 3s, fall back. Tolerance
+    // is 3s (not 1s) because decoder warm-up and first-frame delivery can
+    // legitimately take >1s on slow links even after negotiation succeeds.
+    if (this.healthTimer) clearInterval(this.healthTimer);
+    this.healthTimer = setInterval(() => {
+      if (!this.pc || this.pc.connectionState === 'closed') {
+        clearInterval(this.healthTimer);
+        this.healthTimer = null;
+        return;
+      }
+      if (performance.now() - this.lastFrameAt > 3000) {
+        this.toMJPEG('frame-stall');
+      }
+    }, 1000);
   }
 }
 
@@ -1182,10 +1300,11 @@ function pushBboxOverlay(e) {
   }, 1000);
 }
 
-// Boot WebRTC for every .sector-feed[data-stream] (after page load so DOM exists).
+// Boot one SectorFeed per camera tile (after DOM exists). Each feed owns
+// its own MJPEG/WebRTC swap state and health watchdog independently.
 window.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.sector-feed[data-stream]').forEach((el) => {
-    startWebRTCFor(el);
+    new SectorFeed(el);
   });
 });
 

@@ -596,7 +596,10 @@ body.tier-edge-down #tier-edge {
      stream returns a different ratio we letterbox instead of crop. */
   object-fit: contain;
   display: block;
-  background: #000;
+  /* No background here — when the video has no srcObject (laptop demo
+     with no go2rtc, or pre-negotiation), it must be transparent so the
+     fallback <img> at z-index 0 shows through. `.sector-feed` already
+     provides the black backdrop. */
   z-index: 1;
 }
 .sector-feed .bbox-overlay {
