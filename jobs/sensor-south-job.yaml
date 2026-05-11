@@ -19,8 +19,11 @@ config:
         - EDGE_INFERENCE_FPS_CAP=10
         - /home/daaronch/.local/bin/uv
         - run
-        - --project
-        - /home/daaronch/security-cameras
+        # See sensor-north-job.yaml for the SHA-pinning rationale and the
+        # libcudss LD_LIBRARY_PATH caveat. Bump the @<sha> below atomically
+        # across both sensor jobs.
+        - --from
+        - git+https://github.com/aronchick/expanso-edge-video-and-event-detection@68aff7b2838c1f88b41ccf313ea3426b14a49a37
         - edge-sensor
         - --orchestrator=http://localhost:8090
         - --node-id=sensor-south

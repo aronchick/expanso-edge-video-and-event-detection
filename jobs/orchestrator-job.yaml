@@ -12,23 +12,30 @@
 # cluster (security-camera-overseer / Jetson), so it always lands there.
 #
 # === DECLARATIVE EXECUTION ===
-# Same /usr/bin/env + uv run pattern as sensor-{north,south}-job.yaml,
-# but the orchestrator is pure-CPU FastAPI so no CUDA env vars needed.
+# The Python package is pulled from GitHub at a pinned SHA via `uv run
+# --from git+...`, so the deploy and the code are the same thing — bumping
+# requires a deliberate YAML edit, no local checkout drift on the Jetson.
+# To bump: push the desired commit to main, change the SHA below, redeploy.
+#
+# The orchestrator is pure-CPU FastAPI (no CUDA env vars). First start
+# after a SHA bump is slow (~1–3 min to git-clone + resolve deps + build);
+# subsequent restarts hit uv's cache.
 #
 # === BEFORE FIRST DEPLOY ===
 # The Jetson must be prepped:
 #   1. Free port 8090: `pkill -f edge-orchestrator` (do this just before
 #      `expanso-cli job deploy` so Expanso can bind immediately).
-#   2. The repo at /home/daaronch/security-cameras must be present and
-#      `uv sync`'d at least once (so pyproject.toml + lockfile are valid).
-#      uv run regenerates the venv on demand from there.
-#   3. The orchestrator writes events.ndjson + orchestrator.db + snapshots/
+#   2. The orchestrator writes events.ndjson + orchestrator.db + snapshots/
 #      relative to its CWD. Expanso edge runs the subprocess from its own
 #      working dir; pass absolute paths so output ends up where the archive
 #      pipeline expects (/opt/edge-isr/orchestrator/events.ndjson). Create
 #      that dir first:
 #         sudo mkdir -p /opt/edge-isr/{orchestrator/snapshots,archive}
 #         sudo chown -R daaronch:daaronch /opt/edge-isr
+#   3. .env in /home/daaronch/security-cameras/.env still drives
+#      ARMYX_S3_BUCKET / AWS_PROFILE / JETSON_HOST (load_dotenv walks CWD).
+#      uv will run the subprocess from its install dir, not the repo dir,
+#      so we inject those vars inline below for resilience.
 #
 # Deploy:
 #   expanso-cli profile select armyx-tech
@@ -52,8 +59,10 @@ config:
         - AWS_PROFILE=armyx-tech
         - /home/daaronch/.local/bin/uv
         - run
-        - --project
-        - /home/daaronch/security-cameras
+        # Pulled from GitHub at a pinned SHA. To bump, push to main and
+        # update the @<sha> ref below — that single edit IS the release.
+        - --from
+        - git+https://github.com/aronchick/expanso-edge-video-and-event-detection@68aff7b2838c1f88b41ccf313ea3426b14a49a37
         - edge-orchestrator
         - --host=0.0.0.0
         - --port=8090

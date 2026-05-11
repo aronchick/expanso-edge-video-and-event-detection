@@ -9,15 +9,23 @@
 # plus snapshot JPEGs on disk; nothing on stdout we want to ship.
 #
 # === DECLARATIVE EXECUTION ===
-# We invoke the entry point through `/usr/bin/env`, which lets us declare
-# env vars + the actual command in one args list — no shell wrapper, no
-# stale .venv/bin/<name> path baked into the YAML. uv resolves the venv
-# from pyproject.toml on each start, so a venv rebuild "just works."
+# The Python package is pulled from GitHub at a pinned SHA via `uv run
+# --from git+...`. Bumping requires a deliberate YAML edit; the deploy
+# and the code are the same thing. First start after a SHA bump is slow
+# (~5–10 min on the Jetson to git-clone + resolve + build wheels including
+# CLIP from git); subsequent restarts hit uv's cache and are <5s.
 #
 # Env vars set inline (per-job, no agent-wide leakage):
 #   LD_LIBRARY_PATH      — system cuBLAS 12.6 first (Orin needs this; the
 #                          wheel cuBLAS 12.9 fails CUBLAS_STATUS_ALLOC),
 #                          then nvidia/cu12 dir for libcudss.so.0.
+#                          NOTE: this still points at the legacy local
+#                          checkout's .venv. uv's --from creates an
+#                          ephemeral venv at an unpredictable cache path,
+#                          so we can't easily target it. The local checkout
+#                          at /home/daaronch/security-cameras must remain
+#                          present on disk (uv sync'd once) until we move
+#                          libcudss provisioning into the systemd unit.
 #   EDGE_INFERENCE_FPS_CAP — caps YOLO inference rate; raise for fluidity,
 #                          lower if dashboard/Mac is choking.
 #
@@ -52,8 +60,12 @@ config:
         # /home/.../venv/bin/edge-sensor path; survives venv rebuild.
         - /home/daaronch/.local/bin/uv
         - run
-        - --project
-        - /home/daaronch/security-cameras
+        # Pulled from GitHub at a pinned SHA. To bump, push to main and
+        # update the @<sha> ref below — that single edit IS the release.
+        # Model weight (drone-3class-v2.pt) is NOT in the package; it
+        # lives on disk and is referenced explicitly via --yolo-model.
+        - --from
+        - git+https://github.com/aronchick/expanso-edge-video-and-event-detection@68aff7b2838c1f88b41ccf313ea3426b14a49a37
         - edge-sensor
         - --orchestrator=http://localhost:8090
         - --node-id=sensor-north
