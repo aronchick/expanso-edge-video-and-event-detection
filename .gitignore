@@ -47,6 +47,9 @@ runs/
 *.db-journal
 *.db-wal
 *.db-shm
+
+# Makefile demo state (PIDs + logs for `make up`/`make down`)
+.demo-state/
 events.ndjson
 detection-events.ndjson
 triggers.yaml
