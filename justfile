@@ -138,8 +138,14 @@ up: install-go2rtc
     echo "  cloud node: expanso-cli node list           (Mac registered as M5-Max in armyx-tech)"
     echo
     echo "  ── Next: turn on detection from Expanso Cloud ──"
-    echo "    just detect-on        # deploys + starts sensor-north + sensor-south as cluster jobs"
-    echo "    just detect-off       # stops them (cameras keep streaming)"
+    echo "    1. Open https://cloud.expanso.io and select the armyx-tech cluster"
+    echo "    2. Navigate to Jobs → sensor-north → click Start"
+    echo "    3. Same for sensor-south"
+    echo "    Watch the dashboard light up with bracketed detections."
+    echo "    Stop later: click Stop in the UI, or 'just detect-off'."
+    echo
+    echo "  First-time-on-this-cluster: 'just deploy-jobs' to push the YAML specs."
+    echo "  CLI shortcut (no UI):       'just detect-on' starts both at once."
     echo
     echo "  follow: just logs    stop: just down"
     echo "  First run: macOS may prompt your terminal for Camera permission."
@@ -220,13 +226,34 @@ status:
 
 # ── Cloud-driven detection (the "Expanso Cloud turns it on" step) ─────────
 
-# Deploy + start sensor-north & sensor-south as cluster jobs. The selector
-# `site: laptop-demo` in each YAML pins them to this Mac. The cluster
-# control plane dispatches them; this laptop's expanso-edge runs the
-# subprocess (uv run --from git+...@SHA → edge-sensor), which pulls
-# frames from go2rtc's RTSP listener and POSTs events to the local
-# orchestrator. That's the "go to Expanso Cloud, turn on the detector"
-# step of the demo flow, scripted.
+# Push sensor-north / sensor-south YAML specs to the cluster and leave
+# them in `stopped` state. After this, the jobs exist in the control
+# plane and show up at https://cloud.expanso.io — the operator can click
+# "Start" in the UI to dispatch them to this Mac (selector
+# site=laptop-demo). One-time setup per cluster; safe to re-run (the
+# deploy is a versioned update; stop is idempotent with --force).
+deploy-jobs:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v expanso-cli > /dev/null \
+      || { echo "expanso-cli not on PATH"; exit 1; }
+    for f in jobs/sensor-north-job.yaml jobs/sensor-south-job.yaml; do
+      echo "→ pushing $f to cluster"
+      expanso-cli job deploy --force "$f"
+    done
+    sleep 1
+    for n in sensor-north sensor-south; do
+      echo "→ stopping $n so cloud UI can start it on demand"
+      expanso-cli job stop --force "$n" 2>/dev/null || true
+    done
+    echo
+    echo "  ✓ jobs are in the cluster, stopped. Start them via:"
+    echo "      cloud UI:  https://cloud.expanso.io   (pick armyx-tech cluster → Jobs)"
+    echo "      OR:        just detect-on"
+
+# Start sensor-north + sensor-south on the cluster from the CLI. Same
+# effect as clicking Start in the cloud UI on each job. Useful for
+# scripted demos and CI; the headline demo uses the UI button.
 detect-on:
     #!/usr/bin/env bash
     set -euo pipefail
