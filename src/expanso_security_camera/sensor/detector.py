@@ -33,18 +33,21 @@ CONF_THRESHOLD = 0.55
 # Per-class overrides for `drone-3class-v2.pt` (Hetzner fine-tune,
 # mAP50=0.909 / mAP50-95=0.843 on val).
 PER_CLASS_THRESHOLDS: dict[str, float] = {
-    # Person flooded the event stream at 0.60 — venue has frequent
-    # operator/passerby foot traffic. Bumping to 0.75 trims the long tail
-    # of low-conf adult-ish silhouettes (shadows, posters, reflections)
-    # while keeping a clear positive when someone walks fully into frame.
-    "person": 0.75,
-    # Backpack is well-calibrated by the relabel pipeline; 0.50 catches
-    # carry-position cases without firing on jacket lumps.
-    "backpack": 0.50,
-    # Drone sits high deliberately. Even with the new fine-tune, training
-    # data is sparse enough that round/elongated background objects (light
-    # fixtures, ceiling vents) occasionally pull a high-confidence drone
-    # label. 0.85 allows real airborne hits while suppressing those.
+    # 0.75 was tuned for a venue with full-body foot traffic crossing
+    # the FOV — false positives on shadows/posters needed suppression.
+    # For the laptop desk-cam demo, the user is OFTEN partially in
+    # frame (head cropped, legs cropped, torso-only) and YOLO confidence
+    # drops to 0.30-0.55 on partial bodies. Drop to 0.40 so partial
+    # detections actually surface. Re-tune up at venue deployments if
+    # the long-tail false positives come back.
+    "person": 0.40,
+    # Same partial-frame logic: a backpack half-occluded by a chair
+    # back or carried at the side often comes through at 0.35-0.45.
+    "backpack": 0.30,
+    # Drone stays HIGH. Training data is sparse enough that round/
+    # elongated background objects (light fixtures, ceiling vents)
+    # occasionally pull a high-confidence drone label. 0.85 allows
+    # real airborne hits while suppressing those.
     "drone": 0.85,
 }
 
@@ -156,17 +159,25 @@ class Detector:
         # the candidates never arrive.
         results = self.model(frame, verbose=False, classes=wanted_indices or None, conf=0.10)[0]
         hits: list[Detection] = []
+        # Diagnostic: log EVERY detection at the predict-time conf floor (0.10)
+        # so we can see what the model produces, including detections filtered
+        # out by per-class thresholds or by the trigger list. Cheap log per
+        # frame; revisit if it gets noisy.
         for cls_idx, conf, box in zip(results.boxes.cls, results.boxes.conf, results.boxes.xyxy):
             label = self.model.names[int(cls_idx)]
-            # COCO has no drone class — yolov8s emits "airplane" for civilian
-            # quadcopters. The dashboard's displayLabel() already aliases
-            # this, but the trigger filter compares raw labels, so the alias
-            # has to happen here too. Once the fine-tuned 3-class engine is
-            # loaded, real "drone" hits flow through with no remap.
             if label == "airplane":
                 label = "drone"
             confidence = float(conf)
-            if self.triggers.contains(label) and confidence > _threshold_for(label):
+            thresh = _threshold_for(label)
+            in_trig = self.triggers.contains(label)
+            passed = in_trig and confidence > thresh
+            verdict = "PASS" if passed else ("low-conf" if in_trig else "off-trigger")
+            print(
+                f"[{self.node_id}] yolo: {label:9s} conf={confidence:.2f} "
+                f"(thresh={thresh:.2f}, trigger={in_trig}, verdict={verdict})",
+                flush=True,
+            )
+            if passed:
                 hits.append(
                     Detection(
                         label=label,
