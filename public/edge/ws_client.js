@@ -1162,13 +1162,17 @@ class SectorFeed {
         await pc.setRemoteDescription({ type: 'answer', sdp: answer });
       };
 
-      // 4s hard timeout on the whole handshake. The default browser timeout
-      // is many seconds; a sleeping/dead go2rtc would leave the user staring
-      // at MJPEG longer than necessary before we accept the situation.
+      // 12s hard timeout on the whole handshake. go2rtc takes up to ~5s on
+      // its first response (full ICE candidate gathering across all
+      // interfaces — host + Tailscale + STUN-srflx); ffmpeg cold-start on
+      // the first consumer can add another second or two; the browser side
+      // adds its own ICE round. 12s comfortably covers the slow path while
+      // still bailing on a truly dead service. The frame watchdog (3s) is
+      // the real liveness check once negotiation completes.
       await Promise.race([
         negotiate(),
         new Promise((_, rej) =>
-          setTimeout(() => rej(new Error('negotiate-timeout')), 4000)),
+          setTimeout(() => rej(new Error('negotiate-timeout')), 12000)),
       ]);
 
       // Handshake complete. We do NOT promote to WebRTC here — the frame

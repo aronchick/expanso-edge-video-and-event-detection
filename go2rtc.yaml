@@ -10,10 +10,11 @@
 # launched `just up` (iTerm / Terminal / VS Code). System Settings ->
 # Privacy & Security -> Camera if you need to grant it manually.
 #
-# Device indices match `ffmpeg -f avfoundation -list_devices true -i ""`:
-#   [0] Brio 505                  (external Logitech)
-#   [1] MacBook Pro Camera        (built-in)
-#   [2] AnkerWork C310 Webcam
+# Device indices match `ffmpeg -f avfoundation -list_devices true -i ""`.
+# Only the two AnkerWork C310 webcams are wired up here — built-in MacBook
+# camera and the Brio are intentionally NOT used.
+#   [2] AnkerWork C310 Webcam   → cam-outside (Sector North)
+#   [3] AnkerWork C310 Webcam   → cam-inside  (Sector South)
 #
 # Bind go2rtc on 127.0.0.1 only — this is a laptop demo, no need to expose
 # WebRTC signaling to the LAN.
@@ -21,12 +22,17 @@
 api:
   listen: "127.0.0.1:1984"
 
+# Why exec:ffmpeg instead of ffmpeg:device?video=N — go2rtc's device URL
+# hardcodes 29.97 fps (NTSC). macOS AVFoundation webcams only support
+# 30.000 fps exactly, so ffmpeg fails with "Selected framerate (29.970030)
+# is not supported by the device" before producing any frames. Building
+# the ffmpeg command explicitly lets us pin -framerate 30 to match.
 streams:
   cam-outside:
-    - "ffmpeg:device?video=1&audio=2#video=h264#hardware"
+    - 'exec:ffmpeg -hide_banner -loglevel error -f avfoundation -framerate 30 -video_size 1280x720 -i "2" -c:v libx264 -preset ultrafast -tune zerolatency -profile:v baseline -pix_fmt yuv420p -g 30 -bf 0 -f rtsp -rtsp_transport tcp {output}'
 
   cam-inside:
-    - "ffmpeg:device?video=0&audio=2#video=h264#hardware"
+    - 'exec:ffmpeg -hide_banner -loglevel error -f avfoundation -framerate 30 -video_size 1280x720 -i "3" -c:v libx264 -preset ultrafast -tune zerolatency -profile:v baseline -pix_fmt yuv420p -g 30 -bf 0 -f rtsp -rtsp_transport tcp {output}'
 
 # Low log noise — go2rtc is chatty by default
 log:
