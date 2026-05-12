@@ -26,6 +26,15 @@ go2rtc_port   := "1984"
 go2rtc_rtsp_port := "8554"
 go2rtc_version := "1.9.14"
 
+# Expanso Edge daemon — registers the laptop as a node in the cloud
+# control plane so jobs can be deployed/started from cloud.expanso.io.
+# Data dir is local to the repo (gitignored under .demo-state/) instead
+# of ~/.expanso-edge so each project is self-contained.
+edge_data := state_dir / "expanso-edge"
+edge_creds := edge_data / "auth/credentials.creds"
+edge_pid := state_dir / "expanso-edge.pid"
+edge_log := state_dir / "expanso-edge.log"
+
 # Fine-tuned drone+person+backpack model (3-class). Thresholds for this
 # specific weight file are tuned in detector.py (commit 283902b). Override
 # with `YOLO_MODEL=path/to/other.pt just up` if needed.
@@ -63,7 +72,9 @@ install-go2rtc:
     echo "  ✓ installed {{go2rtc_bin}} ($({{go2rtc_bin}} --version 2>&1 | head -1))"
 
 # start orchestrator + go2rtc + two REAL edge-sensors doing YOLO on
-# each Anker stream. No fake events.
+# each Anker stream. No fake events. Also bootstraps + runs the Expanso
+# Edge daemon so the laptop appears as a node in cloud.expanso.io and
+# jobs can be deployed from the cloud control plane.
 up: install-go2rtc
     #!/usr/bin/env bash
     set -euo pipefail
@@ -72,6 +83,22 @@ up: install-go2rtc
       echo "orchestrator already running (PID $(cat {{orch_pid}})); run 'just down' first"
       exit 1
     fi
+    # Load .env so EXPANSO_EDGE_BOOTSTRAP_TOKEN + ARMYX_* land in our
+    # subshell. Python entrypoints load_dotenv separately (orchestrator,
+    # sensor); expanso-edge needs the var exported BEFORE the binary
+    # starts because there's no dotenv hook in Go.
+    if [[ -f .env ]]; then set -a; source .env; set +a; fi
+    # Bootstrap expanso-edge ONCE — idempotent guard on the creds file.
+    if [[ ! -f {{edge_creds}} ]]; then
+      echo "→ bootstrapping expanso-edge to cloud.expanso.io (one-time)…"
+      mkdir -p {{edge_data}}
+      expanso-edge bootstrap --data-dir {{edge_data}} \
+        > {{edge_log}} 2>&1 \
+        || { echo "expanso-edge bootstrap failed; see {{edge_log}}"; exit 1; }
+    fi
+    echo "→ starting expanso-edge daemon (cloud control plane connection)…"
+    nohup expanso-edge run --data-dir {{edge_data}} >> {{edge_log}} 2>&1 &
+    echo $! > {{edge_pid}}
     echo "→ starting orchestrator on port {{port}}…"
     uv run edge-orchestrator --port {{port}} > {{orch_log}} 2>&1 &
     echo $! > {{orch_pid}}
@@ -127,12 +154,14 @@ up: install-go2rtc
       sleep 1
     done
     echo
+    echo "  ✓ expanso-edge  PID $(cat {{edge_pid}})        log: {{edge_log}}"
     echo "  ✓ orchestrator  PID $(cat {{orch_pid}})         log: {{orch_log}}"
     echo "  ✓ sensor-north  PID $(cat {{sensor_north_pid}}) log: {{sensor_north_log}}"
     echo "  ✓ sensor-south  PID $(cat {{sensor_south_pid}}) log: {{sensor_south_log}}"
     echo "  ✓ go2rtc        PID $(cat {{go2rtc_pid}})       log: {{go2rtc_log}}"
     echo
     echo "  dashboard:  http://localhost:{{port}}"
+    echo "  cloud node: expanso-cli node list  # this Mac appears in armyx-tech"
     echo "  follow:     just logs"
     echo "  stop:       just down"
     echo
@@ -144,7 +173,7 @@ up: install-go2rtc
 down:
     #!/usr/bin/env bash
     set -euo pipefail
-    for f in {{sensor_north_pid}} {{sensor_south_pid}} {{orch_pid}} {{go2rtc_pid}}; do
+    for f in {{sensor_north_pid}} {{sensor_south_pid}} {{orch_pid}} {{go2rtc_pid}} {{edge_pid}}; do
       if [[ -f "$f" ]]; then
         pid=$(cat "$f")
         if kill -0 "$pid" 2>/dev/null; then kill "$pid" 2>/dev/null && echo "  killed $pid"; fi
@@ -159,6 +188,7 @@ down:
     pkill -f "edge-sensor" 2>/dev/null || true
     pkill -f "edge-orchestrator" 2>/dev/null || true
     pkill -f "{{go2rtc_bin}}" 2>/dev/null || true
+    pkill -f "expanso-edge run" 2>/dev/null || true
     sleep 1
     failed=0
     for p in {{port}} {{go2rtc_port}}; do
@@ -183,7 +213,7 @@ logs:
     #!/usr/bin/env bash
     set -euo pipefail
     files=()
-    for f in {{orch_log}} {{sensor_north_log}} {{sensor_south_log}} {{go2rtc_log}}; do
+    for f in {{orch_log}} {{sensor_north_log}} {{sensor_south_log}} {{go2rtc_log}} {{edge_log}}; do
       [[ -f "$f" ]] && files+=("$f")
     done
     if [[ ${#files[@]} -eq 0 ]]; then
@@ -196,7 +226,7 @@ logs:
 status:
     #!/usr/bin/env bash
     set -euo pipefail
-    for label in orchestrator sensor-north sensor-south go2rtc; do
+    for label in orchestrator sensor-north sensor-south go2rtc expanso-edge; do
       pidfile={{state_dir}}/$label.pid
       if [[ -f "$pidfile" ]] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
         echo "  $label: running (PID $(cat "$pidfile"))"
