@@ -1,0 +1,81 @@
+# Edge-ISR cross-sector fusion — runs at the edge as an Expanso pipeline,
+# visible in cloud.expanso.io alongside sensor-north / sensor-south.
+#
+# Pipeline stages (multistep, demonstrably running on the laptop node):
+#   INPUT:      subprocess running scripts/fuse-correlator.py, which
+#               tails events.ndjson and emits JSON fused alerts whenever
+#               both sensors see the same triggered class within 5s
+#               (8s cooldown per class).
+#   STEP 1:     parse the correlator's JSON
+#   STEP 2:     filter to fused_alert == true (defensive)
+#   STEP 3:     add archive lineage (pipeline, version, fused_at_iso)
+#   STEP 4:     sign with a fuse-sha256 over the full record
+#   OUTPUT:     fan_out
+#                 ├─ stdout            (visible: expanso-cli job logs fuse)
+#                 ├─ fused-alerts.ndjson (audit log)
+#                 └─ POST orchestrator/fused-alert  (dashboard alert strip)
+#
+# The fusion logic ITSELF is Python (Bento's cache_resources schema in
+# this build rejected the pure-Bloblang version). The Python lives in
+# scripts/fuse-correlator.py — small, single-purpose, reviewable.
+
+name: fuse
+type: pipeline
+
+selector:
+  match_labels:
+    site: laptop-demo
+
+config:
+  input:
+    subprocess:
+      name: /usr/bin/env
+      args:
+        - uv
+        - run
+        - --project
+        - /Users/daaronch/code/demos/demo-drone-detection
+        - python
+        - /Users/daaronch/code/demos/demo-drone-detection/scripts/fuse-correlator.py
+        - /Users/daaronch/code/demos/demo-drone-detection/events.ndjson
+      codec: lines
+      restart_on_exit: true
+      max_buffer: 1048576
+
+  pipeline:
+    processors:
+      # ── Step 1: parse JSON from the correlator
+      - mapping: 'root = this.parse_json().catch(deleted())'
+
+      # ── Step 2: defensive filter — only forward real fused alerts
+      - mapping: |
+          root = if this.fused_alert == true { this } else { deleted() }
+
+      # ── Step 3: add archive lineage
+      - mapping: |
+          root = this
+          root.archive = {"pipeline": "fuse", "pipeline_version": "1.0.0", "fused_at_iso": now(), "processor": "python-windowed-correlator"}
+
+      # ── Step 4: sign with a fuse-sha256 over the full record
+      - mapping: |
+          let payload = this.format_json()
+          root = this
+          root.fusion_signature = "fuse-sha256:" + $payload.hash("sha256").encode("hex")
+
+  output:
+    broker:
+      pattern: fan_out
+      outputs:
+        - stdout:
+            codec: lines
+        - file:
+            path: /Users/daaronch/code/demos/demo-drone-detection/.demo-state/fused-alerts.ndjson
+            codec: lines
+        - drop_on:
+            error: true
+            output:
+              http_client:
+                url: http://localhost:8080/fused-alert
+                verb: POST
+                headers:
+                  Content-Type: application/json

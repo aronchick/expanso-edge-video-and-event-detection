@@ -254,19 +254,20 @@ deploy-jobs:
     set -euo pipefail
     command -v expanso-cli > /dev/null \
       || { echo "expanso-cli not on PATH"; exit 1; }
-    for f in jobs/sensor-north-job.yaml jobs/sensor-south-job.yaml; do
+    for f in jobs/sensor-north-job.yaml jobs/sensor-south-job.yaml jobs/fuse-job.yaml; do
       echo "→ pushing $f to cluster"
       expanso-cli job deploy --force "$f"
     done
     sleep 1
-    for n in sensor-north sensor-south; do
+    for n in sensor-north sensor-south fuse; do
       echo "→ stopping $n so cloud UI can start it on demand"
       expanso-cli job stop --force "$n" 2>/dev/null || true
     done
     echo
     echo "  ✓ jobs are in the cluster, stopped. Start them via:"
     echo "      cloud UI:  https://cloud.expanso.io   (pick armyx-tech cluster → Jobs)"
-    echo "      OR:        just detect-on"
+    echo "      OR:        just detect-on   (sensors only)"
+    echo "                 just fuse-on     (adds the cross-sector fusion pipeline)"
 
 # Start sensor-north + sensor-south on the cluster from the CLI. Same
 # effect as clicking Start in the cloud UI on each job. Useful for
@@ -307,6 +308,25 @@ detect-off:
       echo "→ stopping $n"
       expanso-cli job stop --force "$n" 2>/dev/null || echo "  (was not running)"
     done
+
+# Start the cross-sector fusion pipeline (jobs/fuse-job.yaml). The
+# audience-facing version of "now we turn on the fusion stage" is to
+# click Start on `fuse` in cloud.expanso.io. This is the CLI shortcut.
+fuse-on:
+    @command -v expanso-cli > /dev/null || { echo "expanso-cli not on PATH"; exit 1; }
+    @echo "→ deploying jobs/fuse-job.yaml"
+    @expanso-cli job deploy --force jobs/fuse-job.yaml
+    @echo "  ✓ fuse pipeline running. Watch via:"
+    @echo "    expanso-cli job logs fuse    (raw Bloblang output)"
+    @echo "    tail -f .demo-state/fused-alerts.ndjson    (signed fused alerts)"
+
+# Stop the fusion pipeline. Sensors continue emitting; orchestrator's
+# in-process correlator.py keeps the dashboard's alert strip alive
+# (since fuse hasn't fully replaced it yet — that's a separate refactor).
+fuse-off:
+    @command -v expanso-cli > /dev/null || { echo "expanso-cli not on PATH"; exit 1; }
+    @echo "→ stopping fuse"
+    @expanso-cli job stop --force fuse 2>/dev/null || echo "  (was not running)"
 
 # ── Jetson Expanso deploy ──────────────────────────────────────────────────
 
