@@ -50,6 +50,9 @@ runs/
 
 # Makefile demo state (PIDs + logs for `make up`/`make down`)
 .demo-state/
+
+# go2rtc binary (downloaded by `just install-go2rtc`)
+bin/
 events.ndjson
 detection-events.ndjson
 triggers.yaml

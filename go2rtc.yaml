@@ -1,0 +1,39 @@
+# go2rtc laptop demo config.
+#
+# Feeds two distinct webcams into go2rtc so the dashboard's WebRTC code
+# (ws_client.js) negotiates real video for both sectors. Stream names
+# MUST match data-stream="..." in public/edge/index.html:
+#   - cam-outside  →  Sector North
+#   - cam-inside   →  Sector South
+#
+# First run prompts macOS for Camera permission against whichever terminal
+# launched `just up` (iTerm / Terminal / VS Code). System Settings ->
+# Privacy & Security -> Camera if you need to grant it manually.
+#
+# Device indices match `ffmpeg -f avfoundation -list_devices true -i ""`:
+#   [0] Brio 505                  (external Logitech)
+#   [1] MacBook Pro Camera        (built-in)
+#   [2] AnkerWork C310 Webcam
+#
+# Bind go2rtc on 127.0.0.1 only — this is a laptop demo, no need to expose
+# WebRTC signaling to the LAN.
+
+api:
+  listen: "127.0.0.1:1984"
+
+streams:
+  cam-outside:
+    - "ffmpeg:device?video=1&audio=2#video=h264#hardware"
+
+  cam-inside:
+    - "ffmpeg:device?video=0&audio=2#video=h264#hardware"
+
+# Low log noise — go2rtc is chatty by default
+log:
+  level: warn
+  api: warn
+  exec: warn
+  ngrok: warn
+  rtsp: warn
+  streams: warn
+  webrtc: warn
