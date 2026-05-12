@@ -1,0 +1,49 @@
+# go2rtc laptop demo config TEMPLATE.
+#
+# IMPORTANT: Do not edit go2rtc.yaml directly — it is REGENERATED at every
+# `just up` from this template, with the placeholders below substituted to
+# whatever AVFoundation indices the two AnkerWork C310 webcams happen to
+# have RIGHT NOW. macOS reorders devices between processes (we've observed
+# [0]/[1] swap between enumerations); pinning indices statically is fragile.
+#
+# Placeholders (substituted by scripts/render-go2rtc-yaml.sh):
+#   __ANKER_OUTSIDE_IDX__ → AnkerWork C310 index used by cam-outside
+#   __ANKER_INSIDE_IDX__  → AnkerWork C310 index used by cam-inside
+#
+# Stream names MUST match data-stream="..." in public/edge/index.html:
+#   - cam-outside  →  Sector North
+#   - cam-inside   →  Sector South
+#
+# First run prompts macOS for Camera permission against whichever terminal
+# launched `just up`. System Settings → Privacy & Security → Camera if you
+# need to grant it manually.
+
+api:
+  listen: "127.0.0.1:1984"
+  # Dashboard is served from http://localhost:8080 — different origin from
+  # this WebRTC signaling endpoint at :1984, so the browser blocks the
+  # cross-origin POST unless we send Access-Control-Allow-Origin. "*" is
+  # safe here because the API is bound to 127.0.0.1 only (no LAN exposure).
+  origin: "*"
+
+# Why exec:ffmpeg instead of ffmpeg:device?video=N — go2rtc's device URL
+# hardcodes 29.97 fps (NTSC). macOS AVFoundation webcams only support 30 fps
+# exactly, so ffmpeg fails with "Selected framerate (29.970030) is not
+# supported by the device" before producing any frames. Building the ffmpeg
+# command explicitly lets us pin -framerate 30 to match.
+streams:
+  cam-outside:
+    - 'exec:ffmpeg -hide_banner -loglevel error -f avfoundation -framerate 30 -video_size 1280x720 -i "__ANKER_OUTSIDE_IDX__" -c:v libx264 -preset ultrafast -tune zerolatency -profile:v baseline -pix_fmt yuv420p -g 30 -bf 0 -f rtsp -rtsp_transport tcp {output}'
+
+  cam-inside:
+    - 'exec:ffmpeg -hide_banner -loglevel error -f avfoundation -framerate 30 -video_size 1280x720 -i "__ANKER_INSIDE_IDX__" -c:v libx264 -preset ultrafast -tune zerolatency -profile:v baseline -pix_fmt yuv420p -g 30 -bf 0 -f rtsp -rtsp_transport tcp {output}'
+
+# Low log noise — go2rtc is chatty by default
+log:
+  level: warn
+  api: warn
+  exec: warn
+  ngrok: warn
+  rtsp: warn
+  streams: warn
+  webrtc: warn

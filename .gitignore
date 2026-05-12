@@ -53,6 +53,11 @@ runs/
 
 # go2rtc binary (downloaded by `just install-go2rtc`)
 bin/
+
+# Generated go2rtc config — rendered fresh on each `just up` from
+# go2rtc.yaml.template with whatever AVFoundation indices the Ankers
+# happen to have at that moment.
+go2rtc.yaml
 events.ndjson
 detection-events.ndjson
 triggers.yaml

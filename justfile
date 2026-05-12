@@ -86,6 +86,8 @@ up: install-go2rtc
     done
     kill -0 "$(cat {{sensor_pid}})" 2>/dev/null \
       || { echo "sensor failed; see {{sensor_log}}"; exit 1; }
+    echo "→ resolving AnkerWork AVFoundation indices (macOS reorders these)…"
+    ./scripts/render-go2rtc-yaml.sh
     echo "→ starting go2rtc on port {{go2rtc_port}} (webcam → WebRTC)…"
     ./{{go2rtc_bin}} -c {{go2rtc_config}} > {{go2rtc_log}} 2>&1 &
     echo $! > {{go2rtc_pid}}
