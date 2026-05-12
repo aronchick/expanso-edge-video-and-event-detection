@@ -207,10 +207,27 @@ logs:
 status:
     #!/usr/bin/env bash
     set -euo pipefail
-    for label in orchestrator sensor-north sensor-south go2rtc expanso-edge; do
-      pidfile={{state_dir}}/$label.pid
-      if [[ -f "$pidfile" ]] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
-        echo "  $label: running (PID $(cat "$pidfile"))"
+    # Look up each role by a process-cmdline grep instead of trusting
+    # .demo-state/*.pid files. Sensors are cluster-dispatched now (the
+    # expanso-edge daemon spawns them as job executions), so their PIDs
+    # never land in .demo-state/. The old "pidfile-exists" check would
+    # incorrectly report sensor-north / sensor-south as "not running"
+    # even when they were emitting events.
+    declare -a roles=(
+      "orchestrator|edge-orchestrator --port"
+      "sensor-north|edge-sensor --node-id=sensor-north"
+      "sensor-south|edge-sensor --node-id=sensor-south"
+      "go2rtc|bin/go2rtc -c"
+      "expanso-edge|expanso-edge run --data-dir"
+    )
+    for r in "${roles[@]}"; do
+      label="${r%%|*}"
+      pat="${r#*|}"
+      # Use the first matching PID — there may be multiple (e.g. `uv run`
+      # parent + the actual python child).
+      pid=$(pgrep -f "$pat" | head -1)
+      if [[ -n "$pid" ]]; then
+        echo "  $label: running (PID $pid)"
       else
         echo "  $label: not running"
       fi
