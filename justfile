@@ -96,6 +96,10 @@ up: install-go2rtc
         > {{edge_log}} 2>&1 \
         || { echo "expanso-edge bootstrap failed; see {{edge_log}}"; exit 1; }
     fi
+    # Refresh node labels every just up (idempotent overwrite) — they're
+    # what the per-platform job selectors target.
+    mkdir -p {{edge_data}}/config.d
+    cp scripts/expanso-edge-labels.yaml {{edge_data}}/config.d/20-labels.yaml
     echo "→ starting expanso-edge daemon (cloud control plane connection)…"
     nohup expanso-edge run --data-dir {{edge_data}} >> {{edge_log}} 2>&1 &
     echo $! > {{edge_pid}}

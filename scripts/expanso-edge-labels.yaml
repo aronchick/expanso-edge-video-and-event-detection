@@ -1,0 +1,18 @@
+# Expanso Edge node labels for THIS laptop. Copied into
+# .demo-state/expanso-edge/config.d/20-labels.yaml on every `just up` so
+# they survive re-bootstrap and re-installs.
+#
+# These are the selectors the per-job YAMLs use to target this hardware:
+#   - jobs that need a Mac with cameras attached:     os=macos
+#   - jobs that need the security-camera host role:   role=security-camera-host
+#   - jobs scoped to the laptop demo only (not        site=laptop-demo
+#     the on-stage Jetson at site=roadshow-demo):
+#
+# If you re-bootstrap into a different cluster or repurpose the laptop
+# for another demo, change site=... here and re-deploy the affected
+# job YAMLs.
+
+labels:
+  os: macos
+  role: security-camera-host
+  site: laptop-demo
