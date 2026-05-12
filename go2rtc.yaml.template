@@ -23,8 +23,17 @@ api:
   # Dashboard is served from http://localhost:8080 — different origin from
   # this WebRTC signaling endpoint at :1984, so the browser blocks the
   # cross-origin POST unless we send Access-Control-Allow-Origin. "*" is
-  # safe here because the API is bound to 127.0.0.1 only (no LAN exposure).
+  # safe here because the API is bound to 127.0.0.1 only (no LAN exposure.)
   origin: "*"
+
+# RTSP listener — edge-sensor in real mode pulls
+#   rtsp://localhost:8554/cam-outside
+#   rtsp://localhost:8554/cam-inside
+# go2rtc fans the same ffmpeg-spawned H.264 stream out to ALL consumers,
+# so the dashboard's WebRTC and both edge-sensor RTSP pulls share one
+# ffmpeg process per camera — no double-open of the webcam hardware.
+rtsp:
+  listen: "127.0.0.1:8554"
 
 # Why exec:ffmpeg instead of ffmpeg:device?video=N — go2rtc's device URL
 # hardcodes 29.97 fps (NTSC). macOS AVFoundation webcams only support 30 fps

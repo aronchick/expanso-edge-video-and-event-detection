@@ -11,17 +11,25 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 
 state_dir  := ".demo-state"
 orch_pid   := state_dir / "orchestrator.pid"
-sensor_pid := state_dir / "sensor.pid"
+sensor_north_pid := state_dir / "sensor-north.pid"
+sensor_south_pid := state_dir / "sensor-south.pid"
 go2rtc_pid := state_dir / "go2rtc.pid"
 orch_log   := state_dir / "orchestrator.log"
-sensor_log := state_dir / "sensor.log"
+sensor_north_log := state_dir / "sensor-north.log"
+sensor_south_log := state_dir / "sensor-south.log"
 go2rtc_log := state_dir / "go2rtc.log"
 port       := "8080"
 
 go2rtc_bin    := "bin/go2rtc"
 go2rtc_config := "go2rtc.yaml"
 go2rtc_port   := "1984"
+go2rtc_rtsp_port := "8554"
 go2rtc_version := "1.9.14"
+
+# Fine-tuned drone+person+backpack model (3-class). Thresholds for this
+# specific weight file are tuned in detector.py (commit 283902b). Override
+# with `YOLO_MODEL=path/to/other.pt just up` if needed.
+yolo_model := env_var_or_default("YOLO_MODEL", "/Users/daaronch/drone-3class-v2.pt")
 
 job_files := "jobs/orchestrator-job.yaml jobs/sensor-north-job.yaml jobs/sensor-south-job.yaml"
 job_names := "fusion-node sensor-north sensor-south"
@@ -54,7 +62,8 @@ install-go2rtc:
     chmod +x {{go2rtc_bin}}
     echo "  ✓ installed {{go2rtc_bin}} ($({{go2rtc_bin}} --version 2>&1 | head -1))"
 
-# start orchestrator + fake-multi sensor + go2rtc; wait for events
+# start orchestrator + go2rtc + two REAL edge-sensors doing YOLO on
+# each Anker stream. No fake events.
 up: install-go2rtc
     #!/usr/bin/env bash
     set -euo pipefail
@@ -72,23 +81,9 @@ up: install-go2rtc
     done
     curl -fsS http://localhost:{{port}}/metrics > /dev/null \
       || { echo "orchestrator failed to come up; see {{orch_log}}"; exit 1; }
-    echo "→ starting fake-multi sensor…"
-    uv run edge-sensor --fake --multi \
-        --orchestrator http://localhost:{{port}} --cadence 0.6 \
-        > {{sensor_log}} 2>&1 &
-    echo $! > {{sensor_pid}}
-    for _ in $(seq 1 15); do
-      events=$(curl -fsS http://localhost:{{port}}/metrics 2>/dev/null \
-        | python3 -c 'import json,sys; print(json.load(sys.stdin).get("total_events",0))' \
-        2>/dev/null || echo 0)
-      if [[ "$events" -gt 0 ]]; then break; fi
-      sleep 1
-    done
-    kill -0 "$(cat {{sensor_pid}})" 2>/dev/null \
-      || { echo "sensor failed; see {{sensor_log}}"; exit 1; }
-    echo "→ resolving AnkerWork AVFoundation indices (macOS reorders these)…"
+    echo "→ resolving AnkerWork AVFoundation indices…"
     ./scripts/render-go2rtc-yaml.sh
-    echo "→ starting go2rtc on port {{go2rtc_port}} (webcam → WebRTC)…"
+    echo "→ starting go2rtc (WebRTC on :{{go2rtc_port}}, RTSP on :{{go2rtc_rtsp_port}})…"
     ./{{go2rtc_bin}} -c {{go2rtc_config}} > {{go2rtc_log}} 2>&1 &
     echo $! > {{go2rtc_pid}}
     for _ in $(seq 1 10); do
@@ -97,26 +92,59 @@ up: install-go2rtc
     done
     curl -fsS http://localhost:{{go2rtc_port}}/api/streams > /dev/null \
       || { echo "go2rtc failed; see {{go2rtc_log}}"; exit 1; }
+    # Wait until go2rtc has actually opened the Ankers (consumer-on-demand).
+    # We trigger that by pulling one snapshot frame from each stream — this
+    # forces ffmpeg to start, which unblocks the downstream RTSP pulls.
+    echo "→ priming both Anker streams (forces ffmpeg start)…"
+    curl -fsS -o /dev/null --max-time 10 "http://localhost:{{go2rtc_port}}/api/frame.jpeg?src=cam-outside"
+    curl -fsS -o /dev/null --max-time 10 "http://localhost:{{go2rtc_port}}/api/frame.jpeg?src=cam-inside"
+    echo "→ starting real edge-sensor for sensor-north (RTSP cam-outside, YOLO {{yolo_model}})…"
+    uv run edge-sensor \
+        --node-id sensor-north \
+        --orchestrator http://localhost:{{port}} \
+        --rtsp-url rtsp://localhost:{{go2rtc_rtsp_port}}/cam-outside \
+        --yolo-model {{yolo_model}} \
+        --db {{state_dir}}/sensor-north.db \
+        > {{sensor_north_log}} 2>&1 &
+    echo $! > {{sensor_north_pid}}
+    echo "→ starting real edge-sensor for sensor-south (RTSP cam-inside, YOLO {{yolo_model}})…"
+    uv run edge-sensor \
+        --node-id sensor-south \
+        --orchestrator http://localhost:{{port}} \
+        --rtsp-url rtsp://localhost:{{go2rtc_rtsp_port}}/cam-inside \
+        --yolo-model {{yolo_model}} \
+        --db {{state_dir}}/sensor-south.db \
+        > {{sensor_south_log}} 2>&1 &
+    echo $! > {{sensor_south_pid}}
+    # Give the sensors ~30s to download ultralytics weights (first run only),
+    # warm up CV2, connect to RTSP, and emit their first event.
+    echo "→ waiting for real YOLO inference to start emitting events…"
+    for i in $(seq 1 60); do
+      events=$(curl -fsS http://localhost:{{port}}/metrics 2>/dev/null \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin).get("total_events",0))' \
+        2>/dev/null || echo 0)
+      if [[ "$events" -gt 0 ]]; then break; fi
+      sleep 1
+    done
     echo
-    echo "  ✓ orchestrator PID $(cat {{orch_pid}})  log: {{orch_log}}"
-    echo "  ✓ sensor PID       $(cat {{sensor_pid}})  log: {{sensor_log}}"
-    echo "  ✓ go2rtc PID       $(cat {{go2rtc_pid}})  log: {{go2rtc_log}}"
+    echo "  ✓ orchestrator  PID $(cat {{orch_pid}})         log: {{orch_log}}"
+    echo "  ✓ sensor-north  PID $(cat {{sensor_north_pid}}) log: {{sensor_north_log}}"
+    echo "  ✓ sensor-south  PID $(cat {{sensor_south_pid}}) log: {{sensor_south_log}}"
+    echo "  ✓ go2rtc        PID $(cat {{go2rtc_pid}})       log: {{go2rtc_log}}"
     echo
     echo "  dashboard:  http://localhost:{{port}}"
-    echo "  streams:    curl http://localhost:{{go2rtc_port}}/api/streams"
-    echo "  metrics:    curl http://localhost:{{port}}/metrics"
-    echo "  jobs panel: curl http://localhost:{{port}}/jobs"
     echo "  follow:     just logs"
     echo "  stop:       just down"
     echo
     echo "  First run: macOS may prompt your terminal for Camera permission."
     echo "  Grant it in System Settings → Privacy & Security → Camera."
+    echo "  First run: ultralytics downloads {{yolo_model}} (~6MB) into CWD."
 
-# stop orchestrator + sensor + go2rtc; verify ports free
+# stop orchestrator + sensors + go2rtc; verify ports free
 down:
     #!/usr/bin/env bash
     set -euo pipefail
-    for f in {{sensor_pid}} {{orch_pid}} {{go2rtc_pid}}; do
+    for f in {{sensor_north_pid}} {{sensor_south_pid}} {{orch_pid}} {{go2rtc_pid}}; do
       if [[ -f "$f" ]]; then
         pid=$(cat "$f")
         if kill -0 "$pid" 2>/dev/null; then kill "$pid" 2>/dev/null && echo "  killed $pid"; fi
@@ -150,7 +178,7 @@ logs:
     #!/usr/bin/env bash
     set -euo pipefail
     files=()
-    for f in {{orch_log}} {{sensor_log}} {{go2rtc_log}}; do
+    for f in {{orch_log}} {{sensor_north_log}} {{sensor_south_log}} {{go2rtc_log}}; do
       [[ -f "$f" ]] && files+=("$f")
     done
     if [[ ${#files[@]} -eq 0 ]]; then
@@ -163,7 +191,7 @@ logs:
 status:
     #!/usr/bin/env bash
     set -euo pipefail
-    for label in orchestrator sensor go2rtc; do
+    for label in orchestrator sensor-north sensor-south go2rtc; do
       pidfile={{state_dir}}/$label.pid
       if [[ -f "$pidfile" ]] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
         echo "  $label: running (PID $(cat "$pidfile"))"
