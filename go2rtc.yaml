@@ -21,6 +21,11 @@
 
 api:
   listen: "127.0.0.1:1984"
+  # Dashboard is served from http://localhost:8080 — different origin from
+  # this WebRTC signaling endpoint at :1984, so the browser blocks the
+  # cross-origin POST unless we send Access-Control-Allow-Origin. "*"
+  # is safe here because the API is bound to 127.0.0.1 only (no LAN exposure).
+  origin: "*"
 
 # Why exec:ffmpeg instead of ffmpeg:device?video=N — go2rtc's device URL
 # hardcodes 29.97 fps (NTSC). macOS AVFoundation webcams only support

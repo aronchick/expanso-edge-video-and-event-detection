@@ -1118,68 +1118,80 @@ class SectorFeed {
     this.img.style.opacity = '0';
   }
 
+  log(...args) {
+    console.log(`[feed:${this.sector}]`, ...args);
+  }
+
   async tryWebRTC() {
     if (this.retryTimer) { clearTimeout(this.retryTimer); this.retryTimer = null; }
     if (this.pc) { try { this.pc.close(); } catch (_) {} this.pc = null; }
 
+    this.log('tryWebRTC: starting handshake against', `${GO2RTC_BASE}/api/webrtc?src=${this.stream}`);
+
     try {
-      // No STUN servers — Mac and Jetson are on the same wired LAN (192.168.2.x),
-      // so HOST candidates alone are sufficient for ICE. Adding public STUN
-      // makes the demo Internet-dependent: F1 (Jetson WiFi off) kills WAN, STUN
-      // times out, ICE fails even though RTP still flows over the wired LAN.
       const pc = new RTCPeerConnection({ iceServers: [] });
       this.pc = pc;
 
       pc.onconnectionstatechange = () => {
-        const s = pc.connectionState;
-        if (['failed', 'disconnected', 'closed'].includes(s)) {
-          this.toMJPEG(`connectionState=${s}`);
+        this.log('connectionState =', pc.connectionState);
+        if (['failed', 'disconnected', 'closed'].includes(pc.connectionState)) {
+          this.toMJPEG(`connectionState=${pc.connectionState}`);
+        }
+      };
+      pc.oniceconnectionstatechange = () => {
+        this.log('iceConnectionState =', pc.iceConnectionState);
+      };
+      pc.onicegatheringstatechange = () => {
+        this.log('iceGatheringState =', pc.iceGatheringState);
+      };
+      pc.onicecandidate = (e) => {
+        if (e.candidate) {
+          this.log('local ICE candidate:', e.candidate.candidate);
+        } else {
+          this.log('local ICE candidates: gathering complete (null candidate)');
         }
       };
 
       pc.ontrack = (e) => {
+        this.log('ontrack fired — track kind=', e.track?.kind, 'streams=', e.streams?.length);
         this.video.srcObject = e.streams[0];
-        // 150ms playout buffer keeps bbox overlay aligned with video frames
-        // when YOLO runs on the Orin GPU (~30ms inference + ~50ms WS transport).
         for (const r of pc.getReceivers()) {
           if (r.track && r.track.kind === 'video') r.playoutDelayHint = 0.15;
         }
+        this.log('starting frame watchdog');
         this.startFrameWatchdog();
       };
 
       pc.addTransceiver('video', { direction: 'recvonly' });
       pc.addTransceiver('audio', { direction: 'recvonly' });
+      this.log('transceivers added (video+audio recvonly)');
 
       const negotiate = async () => {
+        this.log('createOffer…');
         const offer = await pc.createOffer();
+        this.log('createOffer done — sdp length=', offer.sdp.length);
         await pc.setLocalDescription(offer);
+        this.log('setLocalDescription done; POST to go2rtc…');
+        const t0 = performance.now();
         const resp = await fetch(
           `${GO2RTC_BASE}/api/webrtc?src=${encodeURIComponent(this.stream)}`,
           { method: 'POST', body: pc.localDescription.sdp }
         );
+        this.log(`fetch returned HTTP ${resp.status} in ${(performance.now() - t0).toFixed(0)}ms`);
         if (!resp.ok) throw new Error(`go2rtc HTTP ${resp.status}`);
         const answer = await resp.text();
+        this.log('answer SDP received, length=', answer.length);
         await pc.setRemoteDescription({ type: 'answer', sdp: answer });
+        this.log('setRemoteDescription done; awaiting ontrack + first frame');
       };
 
-      // 12s hard timeout on the whole handshake. go2rtc takes up to ~5s on
-      // its first response (full ICE candidate gathering across all
-      // interfaces — host + Tailscale + STUN-srflx); ffmpeg cold-start on
-      // the first consumer can add another second or two; the browser side
-      // adds its own ICE round. 12s comfortably covers the slow path while
-      // still bailing on a truly dead service. The frame watchdog (3s) is
-      // the real liveness check once negotiation completes.
       await Promise.race([
         negotiate(),
         new Promise((_, rej) =>
           setTimeout(() => rej(new Error('negotiate-timeout')), 12000)),
       ]);
-
-      // Handshake complete. We do NOT promote to WebRTC here — the frame
-      // watchdog (started in ontrack) will promote once frames actually
-      // arrive. This catches the "negotiated but no media" case (go2rtc
-      // up but source stream missing) that previously showed black video.
     } catch (err) {
+      this.log('ERROR in tryWebRTC:', err.message || err);
       this.toMJPEG(`negotiate: ${err.message || err}`);
     }
   }
@@ -1191,9 +1203,14 @@ class SectorFeed {
     // Safari 16+). Falls back to a 250ms poll of video.currentTime for
     // older browsers — works but less precise.
     const hasVFC = 'requestVideoFrameCallback' in this.video;
+    this.log(`watchdog start: hasVFC=${hasVFC}, video readyState=${this.video.readyState}, videoWidth=${this.video.videoWidth}`);
+    let framesSeen = 0;
     if (hasVFC) {
       const onFrame = () => {
         if (!this.pc || this.pc.connectionState === 'closed') return;
+        framesSeen++;
+        if (framesSeen === 1) this.log('FIRST FRAME via rVFC');
+        if (framesSeen % 30 === 0) this.log(`${framesSeen} frames received`);
         this.lastFrameAt = performance.now();
         if (this.mode !== 'webrtc') this.toWebRTC();
         try { this.video.requestVideoFrameCallback(onFrame); } catch (_) {}
@@ -1208,6 +1225,8 @@ class SectorFeed {
         }
         if (this.video.readyState >= 2 && this.video.currentTime !== lastTime) {
           lastTime = this.video.currentTime;
+          framesSeen++;
+          if (framesSeen === 1) this.log('FIRST FRAME via currentTime poll');
           this.lastFrameAt = performance.now();
           if (this.mode !== 'webrtc') this.toWebRTC();
         }
