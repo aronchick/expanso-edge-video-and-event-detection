@@ -151,8 +151,13 @@ down:
         rm -f "$f"
       fi
     done
-    # go2rtc spawns child ffmpeg procs that don't always die with the parent.
-    # Kill any lingering ones to avoid camera-busy errors on the next 'just up'.
+    # Belt-and-suspenders: kill anything matching our process patterns that
+    # outlived its pidfile (fake sensors started in a prior session,
+    # orchestrator restarted manually, etc.). Without this, stale `--fake`
+    # sensors keep emitting hardcoded events alongside the real ones and the
+    # dashboard mixes the two.
+    pkill -f "edge-sensor" 2>/dev/null || true
+    pkill -f "edge-orchestrator" 2>/dev/null || true
     pkill -f "{{go2rtc_bin}}" 2>/dev/null || true
     sleep 1
     failed=0
