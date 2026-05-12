@@ -58,6 +58,11 @@ bin/
 # go2rtc.yaml.template with whatever AVFoundation indices the Ankers
 # happen to have at that moment.
 go2rtc.yaml
+
+# Annotated JPEGs that the real edge-sensor writes per-frame for the
+# orchestrator's MJPEG /stream/{sector} fallback. Defaults to a CWD-
+# relative "snapshots/" dir; transient state, never committed.
+snapshots/
 events.ndjson
 detection-events.ndjson
 triggers.yaml
