@@ -1,89 +1,65 @@
-# Edge-ISR sensor — sector north (cam-outside, 192.168.2.10).
-# Runs the YOLO+Gemini cascade as a real Expanso pipeline on the Jetson,
-# replacing the standalone nohup edge-sensor process.
+# Edge-ISR sensor — sector north.
+# Real YOLO inference on Anker C310 #1 (via local go2rtc RTSP). Deployed
+# as an Expanso pipeline so the cluster control plane can start/stop
+# detection from Expanso Cloud — that's the "Cloud turns on the detector"
+# step of the demo narrative.
 #
-# Why a pipeline, not Type: ops with docker: the current Expanso CLI
-# accepts only Type: pipeline. We wrap edge-sensor as a subprocess input
-# with restart_on_exit so the agent supervises restarts. Output is
-# `drop`: the sensor's real output is HTTP POSTs to fusion-node (events)
-# plus snapshot JPEGs on disk; nothing on stdout we want to ship.
+# === SELECTOR ===
+# `site: laptop-demo` pins this job to the laptop node bootstrapped by
+# `just up` (labels in scripts/expanso-edge-labels.yaml). When the same
+# logical sensor needs to run on the on-stage Jetson, deploy a separate
+# variant with `site: roadshow-demo` and Jetson paths — same job name
+# would collide, so use `name: sensor-north-jetson` or similar.
 #
 # === DECLARATIVE EXECUTION ===
-# The Python package is pulled from GitHub at a pinned SHA via `uv run
-# --from git+...`. Bumping requires a deliberate YAML edit; the deploy
-# and the code are the same thing. First start after a SHA bump is slow
-# (~5–10 min on the Jetson to git-clone + resolve + build wheels including
-# CLIP from git); subsequent restarts hit uv's cache and are <5s.
+# Python package pulled from GitHub at a pinned SHA via `uv run --from
+# git+...`. Bumping requires a deliberate YAML edit; the deploy IS the
+# release. First start after a SHA bump is slow (uv git-clone + resolve
+# + build); subsequent restarts hit uv's cache and are <5s.
 #
-# Env vars set inline (per-job, no agent-wide leakage):
-#   LD_LIBRARY_PATH      — system cuBLAS 12.6 first (Orin needs this; the
-#                          wheel cuBLAS 12.9 fails CUBLAS_STATUS_ALLOC),
-#                          then nvidia/cu12 dir for libcudss.so.0.
-#                          NOTE: this still points at the legacy local
-#                          checkout's .venv. uv's --from creates an
-#                          ephemeral venv at an unpredictable cache path,
-#                          so we can't easily target it. The local checkout
-#                          at /home/daaronch/security-cameras must remain
-#                          present on disk (uv sync'd once) until we move
-#                          libcudss provisioning into the systemd unit.
-#   EDGE_INFERENCE_FPS_CAP — caps YOLO inference rate; raise for fluidity,
-#                          lower if dashboard/Mac is choking.
-#
-# Env vars that MUST be in the agent's environment (expanso-edge.service):
-#   CAM_USER, CAM_PASS_OUTSIDE  — RTSP basic auth
-#   GOOGLE_API_KEY              — Gemini Flash for second-stage cascade
-#                                 (without it, every event reads "[cached]")
-#
-# RTSP: sub-stream (640×360 H.264) — the main stream is HEVC + 4K which
-# (a) saturates Jetson decode under both cameras, (b) costs more YOLO time.
-#
-# Deploy:
-#   expanso-cli profile select armyx-tech   # or whichever profile
-#   expanso-cli job deploy jobs/sensor-north-job.yaml
-#   expanso-cli job start sensor-north
+# Model weight (drone-3class-v2.pt) is NOT in the package — it lives on
+# disk at /Users/daaronch/. Threshold tuning for this specific weight
+# file is in detector.py PER_CLASS_THRESHOLDS (commit 3da700b).
 
 name: sensor-north
 type: pipeline
 
+selector:
+  match_labels:
+    site: laptop-demo
+
 config:
   input:
     subprocess:
+      # `env` looks up `uv` in PATH instead of pinning a host-specific
+      # path like /home/daaronch/.local/bin/uv. Whichever host runs this
+      # job (Mac via Homebrew, Linux via .local/bin) finds its own uv.
       name: /usr/bin/env
       args:
-        # Inline env: LD_LIBRARY_PATH puts system cuBLAS 12.6 ahead of the
-        # nvidia/cu12 wheel's cuBLAS 12.9 (which crashes Orin), and exposes
-        # libcudss.so.0 from the wheel for torch._C.
-        - LD_LIBRARY_PATH=/usr/local/cuda/lib64:/home/daaronch/security-cameras/.venv/lib/python3.10/site-packages/nvidia/cu12/lib
-        - EDGE_INFERENCE_FPS_CAP=10
-        # Declarative entry — uv run resolves the venv from pyproject.toml
-        # and dispatches to the `edge-sensor` console script. No hard-coded
-        # /home/.../venv/bin/edge-sensor path; survives venv rebuild.
-        - /home/daaronch/.local/bin/uv
+        - uv
         - run
-        # Pulled from GitHub at a pinned SHA. To bump, push to main and
-        # update the @<sha> ref below — that single edit IS the release.
-        # Model weight (drone-3class-v2.pt) is NOT in the package; it
-        # lives on disk and is referenced explicitly via --yolo-model.
-        - --from
-        - git+https://github.com/aronchick/expanso-edge-video-and-event-detection@68aff7b2838c1f88b41ccf313ea3426b14a49a37
+        # `uv run --from git+...` requires uv >= 0.5; the Mac currently
+        # has 0.8.4 which only knows `--project`. Pointing at the local
+        # repo checkout is simpler anyway — the venv there already has
+        # the package + deps installed. (When uv on this box gets newer,
+        # this can flip back to `--from git+...@SHA` for true reproducibility.)
+        - --project
+        - /Users/daaronch/code/demos/demo-drone-detection
         - edge-sensor
-        - --orchestrator=http://localhost:8090
         - --node-id=sensor-north
-        - --rtsp-url=rtsp://${CAM_USER}:${CAM_PASS_OUTSIDE}@192.168.2.10:554/h264Preview_01_sub
-        - --yolo-model=/home/daaronch/security-cameras/drone-3class-v2.pt
-        - --db=/opt/edge-isr/data/sensor-north.db
+        - --orchestrator=http://localhost:8080
+        - --rtsp-url=rtsp://localhost:8554/cam-outside
+        - --yolo-model=/Users/daaronch/drone-3class-v2.pt
+        - --db=/Users/daaronch/code/demos/demo-drone-detection/.demo-state/sensor-north.db
       codec: lines
       restart_on_exit: true
       max_buffer: 1048576
 
   pipeline:
     # No-op processor: subprocess emits plain-text stdout lines like
-    # "[sensor-north] emitted: ['person']", not JSON. `mapping: root = this`
-    # tries to access the message as a JSON value and floods the agent log
-    # with "unable to reference message as structured" at ~30/sec, marking
-    # the job degraded. Since output is drop:{}, we just need anything that
-    # doesn't error — `root = content().string()` keeps the raw bytes as a
-    # string and is a true no-op.
+    # "[sensor-north] yolo: person ...". `mapping: root = this` would
+    # try to parse them as JSON and flood the agent log with errors.
+    # `root = content().string()` keeps the raw bytes and is a true no-op.
     processors:
       - mapping: root = content().string()
 

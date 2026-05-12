@@ -1,42 +1,34 @@
-# Edge-ISR sensor — sector south (cam-inside, 192.168.2.11).
-# See sensor-north-job.yaml for full context. Identical except node id,
-# RTSP camera IP/password env, and DB path.
-#
-# Deploy:
-#   expanso-cli profile select armyx-tech
-#   expanso-cli job deploy jobs/sensor-south-job.yaml
-#   expanso-cli job start sensor-south
+# Edge-ISR sensor — sector south. See sensor-north-job.yaml for full
+# rationale. Identical except node id + RTSP stream + db path.
 
 name: sensor-south
 type: pipeline
+
+selector:
+  match_labels:
+    site: laptop-demo
 
 config:
   input:
     subprocess:
       name: /usr/bin/env
       args:
-        - LD_LIBRARY_PATH=/usr/local/cuda/lib64:/home/daaronch/security-cameras/.venv/lib/python3.10/site-packages/nvidia/cu12/lib
-        - EDGE_INFERENCE_FPS_CAP=10
-        - /home/daaronch/.local/bin/uv
+        - uv
         - run
-        # See sensor-north-job.yaml for the SHA-pinning rationale and the
-        # libcudss LD_LIBRARY_PATH caveat. Bump the @<sha> below atomically
-        # across both sensor jobs.
-        - --from
-        - git+https://github.com/aronchick/expanso-edge-video-and-event-detection@68aff7b2838c1f88b41ccf313ea3426b14a49a37
+        # See sensor-north-job.yaml for the --project vs --from rationale.
+        - --project
+        - /Users/daaronch/code/demos/demo-drone-detection
         - edge-sensor
-        - --orchestrator=http://localhost:8090
         - --node-id=sensor-south
-        - --rtsp-url=rtsp://${CAM_USER}:${CAM_PASS_INSIDE}@192.168.2.11:554/h264Preview_01_sub
-        - --yolo-model=/home/daaronch/security-cameras/drone-3class-v2.pt
-        - --db=/opt/edge-isr/data/sensor-south.db
+        - --orchestrator=http://localhost:8080
+        - --rtsp-url=rtsp://localhost:8554/cam-inside
+        - --yolo-model=/Users/daaronch/drone-3class-v2.pt
+        - --db=/Users/daaronch/code/demos/demo-drone-detection/.demo-state/sensor-south.db
       codec: lines
       restart_on_exit: true
       max_buffer: 1048576
 
   pipeline:
-    # No-op: see sensor-north-job.yaml for why `root = this` doesn't work
-    # for plain-text subprocess stdout.
     processors:
       - mapping: root = content().string()
 

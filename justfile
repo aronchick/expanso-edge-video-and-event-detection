@@ -129,49 +129,20 @@ up: install-go2rtc
     echo "→ priming both Anker streams (forces ffmpeg start)…"
     curl -fsS -o /dev/null --max-time 10 "http://localhost:{{go2rtc_port}}/api/frame.jpeg?src=cam-outside"
     curl -fsS -o /dev/null --max-time 10 "http://localhost:{{go2rtc_port}}/api/frame.jpeg?src=cam-inside"
-    echo "→ starting real edge-sensor for sensor-north (RTSP cam-outside, YOLO {{yolo_model}})…"
-    uv run edge-sensor \
-        --node-id sensor-north \
-        --orchestrator http://localhost:{{port}} \
-        --rtsp-url rtsp://localhost:{{go2rtc_rtsp_port}}/cam-outside \
-        --yolo-model {{yolo_model}} \
-        --db {{state_dir}}/sensor-north.db \
-        > {{sensor_north_log}} 2>&1 &
-    echo $! > {{sensor_north_pid}}
-    echo "→ starting real edge-sensor for sensor-south (RTSP cam-inside, YOLO {{yolo_model}})…"
-    uv run edge-sensor \
-        --node-id sensor-south \
-        --orchestrator http://localhost:{{port}} \
-        --rtsp-url rtsp://localhost:{{go2rtc_rtsp_port}}/cam-inside \
-        --yolo-model {{yolo_model}} \
-        --db {{state_dir}}/sensor-south.db \
-        > {{sensor_south_log}} 2>&1 &
-    echo $! > {{sensor_south_pid}}
-    # Give the sensors ~30s to download ultralytics weights (first run only),
-    # warm up CV2, connect to RTSP, and emit their first event.
-    echo "→ waiting for real YOLO inference to start emitting events…"
-    for i in $(seq 1 60); do
-      events=$(curl -fsS http://localhost:{{port}}/metrics 2>/dev/null \
-        | python3 -c 'import json,sys; print(json.load(sys.stdin).get("total_events",0))' \
-        2>/dev/null || echo 0)
-      if [[ "$events" -gt 0 ]]; then break; fi
-      sleep 1
-    done
     echo
     echo "  ✓ expanso-edge  PID $(cat {{edge_pid}})        log: {{edge_log}}"
     echo "  ✓ orchestrator  PID $(cat {{orch_pid}})         log: {{orch_log}}"
-    echo "  ✓ sensor-north  PID $(cat {{sensor_north_pid}}) log: {{sensor_north_log}}"
-    echo "  ✓ sensor-south  PID $(cat {{sensor_south_pid}}) log: {{sensor_south_log}}"
     echo "  ✓ go2rtc        PID $(cat {{go2rtc_pid}})       log: {{go2rtc_log}}"
     echo
-    echo "  dashboard:  http://localhost:{{port}}"
-    echo "  cloud node: expanso-cli node list  # this Mac appears in armyx-tech"
-    echo "  follow:     just logs"
-    echo "  stop:       just down"
+    echo "  dashboard:  http://localhost:{{port}}    (cameras streaming, NO detection yet)"
+    echo "  cloud node: expanso-cli node list           (Mac registered as M5-Max in armyx-tech)"
     echo
+    echo "  ── Next: turn on detection from Expanso Cloud ──"
+    echo "    just detect-on        # deploys + starts sensor-north + sensor-south as cluster jobs"
+    echo "    just detect-off       # stops them (cameras keep streaming)"
+    echo
+    echo "  follow: just logs    stop: just down"
     echo "  First run: macOS may prompt your terminal for Camera permission."
-    echo "  Grant it in System Settings → Privacy & Security → Camera."
-    echo "  First run: ultralytics downloads {{yolo_model}} (~6MB) into CWD."
 
 # stop orchestrator + sensors + go2rtc; verify ports free
 down:
@@ -246,6 +217,52 @@ status:
     streams=$(curl -fsS http://localhost:{{go2rtc_port}}/api/streams 2>/dev/null \
       | python3 -c 'import json,sys; d=json.load(sys.stdin); [print(f"  go2rtc stream: {k}") for k in d]' \
       2>/dev/null) && echo "$streams" || echo "  (no go2rtc reachable)"
+
+# ── Cloud-driven detection (the "Expanso Cloud turns it on" step) ─────────
+
+# Deploy + start sensor-north & sensor-south as cluster jobs. The selector
+# `site: laptop-demo` in each YAML pins them to this Mac. The cluster
+# control plane dispatches them; this laptop's expanso-edge runs the
+# subprocess (uv run --from git+...@SHA → edge-sensor), which pulls
+# frames from go2rtc's RTSP listener and POSTs events to the local
+# orchestrator. That's the "go to Expanso Cloud, turn on the detector"
+# step of the demo flow, scripted.
+detect-on:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v expanso-cli > /dev/null \
+      || { echo "expanso-cli not on PATH"; exit 1; }
+    # Stop any existing executions first. Expanso doesn't have a
+    # `job start` verb — deploy auto-rolls out. But if the previous
+    # version's executions are still running, they keep their old spec
+    # (paths, selector) until killed. Stop first, deploy second.
+    for n in sensor-north sensor-south; do
+      echo "→ stopping any existing $n execution"
+      expanso-cli job stop --force "$n" 2>/dev/null || true
+    done
+    # Brief settle so the scheduler clears the old eval before we deploy
+    sleep 2
+    for f in jobs/sensor-north-job.yaml jobs/sensor-south-job.yaml; do
+      echo "→ deploying $f (auto-starts via rollout)"
+      expanso-cli job deploy --force "$f"
+    done
+    echo
+    echo "  Watch detection start: just logs    (look for [sensor-*] yolo: PASS lines)"
+    echo "  Stop:                  just detect-off"
+
+# Stop both sensor jobs in the cluster — cameras + dashboard keep running,
+# but no events are emitted. This is what step 4 of the demo ('disable
+# cloud connection') currently looks like; once the WAN-down work lands,
+# F1 will simulate this more naturally.
+detect-off:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v expanso-cli > /dev/null \
+      || { echo "expanso-cli not on PATH"; exit 1; }
+    for n in sensor-north sensor-south; do
+      echo "→ stopping $n"
+      expanso-cli job stop --force "$n" 2>/dev/null || echo "  (was not running)"
+    done
 
 # ── Jetson Expanso deploy ──────────────────────────────────────────────────
 
