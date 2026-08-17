@@ -40,7 +40,47 @@ def reolink_gst_pipeline(rtsp_url: str) -> str:
     )
 
 
-def _open_capture(rtsp_url: str, prefer_gstreamer: bool) -> cv2.VideoCapture:
+def as_device_index(source: str | int) -> int | None:
+    """Return the integer device index if `source` names a local USB
+    webcam (an int, or a digit-only string like "0"/"1"), else None.
+
+    The booth setup is two USB-C webcams plugged into a MacBook, addressed
+    by capture-device index — NOT RTSP. `esc-test-cameras --list` prints
+    the indices that open; pass them with `--cameras 0,1`.
+    """
+    if isinstance(source, int):
+        return source
+    s = str(source).strip()
+    return int(s) if s.isdigit() else None
+
+
+# Webcam capture defaults. Two parallel webcam streams are cheap compared to
+# two 4K RTSP feeds, but we still cap at 1280x720@30 so the bbox overlay math
+# (which reads the actual frame size) stays predictable and the JPEG encode
+# in the snapshot loop is fast. Override with EDGE_CAM_WIDTH/HEIGHT/FPS.
+_CAM_W = int(os.environ.get("EDGE_CAM_WIDTH", "1280"))
+_CAM_H = int(os.environ.get("EDGE_CAM_HEIGHT", "720"))
+_CAM_FPS = int(os.environ.get("EDGE_CAM_FPS", "30"))
+
+
+def _open_capture(source: str | int, prefer_gstreamer: bool) -> cv2.VideoCapture:
+    # ── Local USB webcam path (the Mac booth setup) ──────────────────
+    index = as_device_index(source)
+    if index is not None:
+        # No backend hint → OpenCV picks the platform default (AVFoundation
+        # on macOS, V4L2 on Linux). Passing CAP_FFMPEG here would try to
+        # treat "0" as a file path and fail.
+        cap = cv2.VideoCapture(index)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, _CAM_W)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, _CAM_H)
+        cap.set(cv2.CAP_PROP_FPS, _CAM_FPS)
+        # Smallest buffer so .read() returns the freshest frame, not a
+        # backlog — matches the fresh-frame contract for RTSP below.
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        return cap
+
+    # ── RTSP / network path (Jetson + IP cameras) ────────────────────
+    rtsp_url = str(source)
     if prefer_gstreamer:
         cap = cv2.VideoCapture(reolink_gst_pipeline(rtsp_url), cv2.CAP_GSTREAMER)
         if cap.isOpened():
@@ -66,15 +106,17 @@ def _open_capture(rtsp_url: str, prefer_gstreamer: bool) -> cv2.VideoCapture:
 class FreshFrameReader:
     def __init__(
         self,
-        rtsp_url: str,
+        rtsp_url: str | int,
         name: str = "cam",
         prefer_gstreamer: Optional[bool] = None,
     ) -> None:
         self.name = name
         self.rtsp_url = rtsp_url
-        # Auto-detect: assume GStreamer on Linux (Jetson), software decode elsewhere.
+        # USB webcams never want the Jetson GStreamer pipeline. Only auto-
+        # enable GStreamer for RTSP sources on Linux (Jetson + IP cameras).
+        is_webcam = as_device_index(rtsp_url) is not None
         if prefer_gstreamer is None:
-            prefer_gstreamer = os.uname().sysname == "Linux"
+            prefer_gstreamer = (not is_webcam) and os.uname().sysname == "Linux"
         self.prefer_gstreamer = prefer_gstreamer
 
         self.cap = _open_capture(rtsp_url, prefer_gstreamer)

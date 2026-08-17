@@ -22,7 +22,6 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-
 DATASET = Path("dataset-3class")
 IMAGES = DATASET / "images"
 LABELS = DATASET / "labels"
@@ -112,7 +111,7 @@ def main() -> int:
     print(f"\nExported to {out}/")
     print(f"  train: {len(train)} images")
     print(f"  val:   {len(val)} images")
-    print(f"\nNext:")
+    print("\nNext:")
     print(f"  uv run esc-finetune {data_yaml} --base yolov8n.pt --epochs 60")
     return 0
 

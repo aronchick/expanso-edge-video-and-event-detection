@@ -143,16 +143,25 @@ def synthesize_snapshot(
     cv2.circle(bg, (w - 30, 50), 6, rec_color, -1, cv2.LINE_AA)
     cv2.putText(bg, "REC", (w - 70, 56), font, 0.5, text_white, 1, cv2.LINE_AA)
 
-    # ── Track gates: bracket-style corner marks instead of solid rectangles ──
+    # ── Track gates: bold, color-coded, with filled label chips so they
+    # read from across a conference hall on a 42" monitor. ──
     if yolo_hits:
+        # Spread multiple boxes of the SAME label across the frame (so 4
+        # "person" hits become 4 distinct gates, not 4 stacked on one spot).
+        n_by_label: dict[str, int] = {}
+        for hit in yolo_hits:
+            lbl = hit.get("label", "object")
+            n_by_label[lbl] = n_by_label.get(lbl, 0) + 1
+        idx_by_label: dict[str, int] = {}
         for i, hit in enumerate(yolo_hits):
-            x1, y1, x2, y2 = _placeholder_bbox(hit.get("label", "object"), w, h)
-            color = (38, 167, 255)  # amber (BGR for #ffa726)
-            _draw_track_gate(bg, x1, y1, x2, y2, color)
-            label = hit.get("label", "?").upper()
+            lbl = hit.get("label", "object")
+            li = idx_by_label.get(lbl, 0)
+            idx_by_label[lbl] = li + 1
+            x1, y1, x2, y2 = _placeholder_bbox(lbl, w, h, li, n_by_label[lbl])
+            color = _class_color_bgr(lbl)
             conf_pct = int(hit.get("confidence", 0) * 100)
-            label_text = f"TRK-{i + 1:03d} {label} {conf_pct}"
-            cv2.putText(bg, label_text, (x1, y1 - 8), font, 0.55, color, 1, cv2.LINE_AA)
+            _draw_bold_gate(bg, x1, y1, x2, y2, color)
+            _draw_label_chip(bg, x1, y1, f"{lbl.upper()} {conf_pct}%", color)
 
     ok, buf = cv2.imencode(".jpg", bg, [cv2.IMWRITE_JPEG_QUALITY, 78])
     if not ok:
@@ -160,34 +169,65 @@ def synthesize_snapshot(
     return buf.tobytes()
 
 
-def _draw_track_gate(img: np.ndarray, x1: int, y1: int, x2: int, y2: int, color: tuple) -> None:
-    """Draw 4 L-shaped corner brackets (track gate style) instead of a solid box."""
-    # Bracket leg length scales with box size, capped
-    leg = max(12, min((x2 - x1) // 5, (y2 - y1) // 5, 24))
-    # Top-left
-    cv2.line(img, (x1, y1), (x1 + leg, y1), color, 2, cv2.LINE_AA)
-    cv2.line(img, (x1, y1), (x1, y1 + leg), color, 2, cv2.LINE_AA)
-    # Top-right
-    cv2.line(img, (x2, y1), (x2 - leg, y1), color, 2, cv2.LINE_AA)
-    cv2.line(img, (x2, y1), (x2, y1 + leg), color, 2, cv2.LINE_AA)
-    # Bottom-left
-    cv2.line(img, (x1, y2), (x1 + leg, y2), color, 2, cv2.LINE_AA)
-    cv2.line(img, (x1, y2), (x1, y2 - leg), color, 2, cv2.LINE_AA)
-    # Bottom-right
-    cv2.line(img, (x2, y2), (x2 - leg, y2), color, 2, cv2.LINE_AA)
-    cv2.line(img, (x2, y2), (x2, y2 - leg), color, 2, cv2.LINE_AA)
+# Per-class colors (BGR for OpenCV). Chosen to POP on the dark EO/IR scene
+# and to match the dashboard's per-class palette: person = bright green,
+# backpack = amber, drone = red. Kept in sync with _CLASS_COLORS in
+# public/edge/ws_client.js.
+_CLASS_COLOR_BGR: dict[str, tuple] = {
+    "person": (90, 230, 60),  # green  (#3ce65a-ish)
+    "backpack": (38, 167, 255),  # amber  (#ffa726)
+    "drone": (60, 60, 240),  # red    (#f03c3c)
+    "airplane": (60, 60, 240),  # drone proxy
+}
 
 
-def _placeholder_bbox(label: str, w: int, h: int) -> tuple[int, int, int, int]:
-    """Deterministic bbox per label — looks plausible, no per-frame jitter."""
-    import hashlib
+def _class_color_bgr(label: str) -> tuple:
+    return _CLASS_COLOR_BGR.get(str(label).lower(), (38, 167, 255))
 
-    seed = int(hashlib.md5(label.encode()).hexdigest()[:8], 16)
-    rng = np.random.default_rng(seed)
-    cx = int(rng.uniform(0.25, 0.75) * w)
-    cy = int(rng.uniform(0.30, 0.70) * h)
-    bw = int(rng.uniform(0.15, 0.30) * w)
-    bh = int(rng.uniform(0.25, 0.45) * h)
+
+def _draw_bold_gate(img: np.ndarray, x1: int, y1: int, x2: int, y2: int, color: tuple) -> None:
+    """Thin full rectangle + thick corner brackets — a track gate that reads
+    at a distance on a 42" booth monitor (bracket legs 4px, box edge 2px)."""
+    cv2.rectangle(img, (x1, y1), (x2, y2), color, 2, cv2.LINE_AA)
+    leg = max(18, min((x2 - x1) // 4, (y2 - y1) // 4, 40))
+    t = 4
+    for cx_, cy_, dx, dy in (
+        (x1, y1, 1, 1),
+        (x2, y1, -1, 1),
+        (x1, y2, 1, -1),
+        (x2, y2, -1, -1),
+    ):
+        cv2.line(img, (cx_, cy_), (cx_ + dx * leg, cy_), color, t, cv2.LINE_AA)
+        cv2.line(img, (cx_, cy_), (cx_, cy_ + dy * leg), color, t, cv2.LINE_AA)
+
+
+def _draw_label_chip(img: np.ndarray, x1: int, y1: int, text: str, color: tuple) -> None:
+    """Filled rounded-ish label chip above the box with dark text — far more
+    legible at booth distance than thin colored text on a noisy scene."""
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    scale, thick = 0.7, 2
+    (tw, th), base = cv2.getTextSize(text, font, scale, thick)
+    pad = 8
+    cy2 = max(y1, th + 2 * pad + 2)
+    top_left = (x1, cy2 - th - 2 * pad)
+    bot_right = (x1 + tw + 2 * pad, cy2)
+    cv2.rectangle(img, top_left, bot_right, color, -1, cv2.LINE_AA)
+    cv2.putText(img, text, (x1 + pad, cy2 - pad), font, scale, (20, 24, 28), thick, cv2.LINE_AA)
+
+
+def _placeholder_bbox(
+    label: str, w: int, h: int, i: int = 0, n: int = 1
+) -> tuple[int, int, int, int]:
+    """Plausible bbox for synthesized feeds. When a label appears `n` times
+    (e.g. a crowd of `n` people), `i` spreads the boxes evenly across the
+    frame so the gates don't stack on one spot."""
+    bw = int(0.12 * w)
+    bh = int(0.42 * h)
+    if n <= 1:
+        cx = int(0.5 * w)
+    else:
+        cx = int((0.12 + 0.76 * (i / (n - 1))) * w)
+    cy = int((0.54 + 0.05 * ((i % 2) * 2 - 1)) * h)
     return (cx - bw // 2, cy - bh // 2, cx + bw // 2, cy + bh // 2)
 
 

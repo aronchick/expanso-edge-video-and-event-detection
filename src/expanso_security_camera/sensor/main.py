@@ -42,7 +42,7 @@ from expanso_security_camera.sensor.triggers_client import TriggerClient
 
 def run_real(
     node_id: str,
-    rtsp_url: str,
+    rtsp_url: str | int,
     orchestrator_url: str,
     db_path: str,
     yolo_model: str,
@@ -57,7 +57,8 @@ def run_real(
     from expanso_security_camera.sensor.detector import Detector
     from expanso_security_camera.sensor.pipeline import FreshFrameReader
 
-    print(f"[{node_id}] starting real sensor, RTSP={rtsp_url}", flush=True)
+    src_kind = "webcam" if str(rtsp_url).isdigit() else "RTSP"
+    print(f"[{node_id}] starting real sensor, {src_kind}={rtsp_url}", flush=True)
     triggers = TriggerClient(orchestrator_url)
     reader = FreshFrameReader(rtsp_url, name=node_id)
     detector = Detector(
@@ -89,12 +90,14 @@ def run_real(
     yolo_lock = threading.Lock()
     yolo_event = threading.Event()
 
-    # Cap inference rate so the dashboard isn't firehosed. With TRT on the GPU
-    # the worker can do ~30 fps per sensor; that's 60+ events/sec into the WS,
-    # which overwhelms the browser. 5 fps per sensor (~10 fps total across
-    # both) is plenty for the eye to read brackets as "live tracking" without
-    # melting the client. Configurable via EDGE_INFERENCE_FPS_CAP.
-    inference_min_gap_sec = 1.0 / float(os.environ.get("EDGE_INFERENCE_FPS_CAP", "5.0"))
+    # Cap inference rate. This is DECOUPLED from the WS emit rate (see
+    # EMIT_INTERVAL_SEC below) — inference only feeds the 10 fps annotated
+    # snapshot stream, so a higher cap just means the bounding boxes track the
+    # video at its own frame rate instead of stepping. 10 fps per sensor matches
+    # the snapshot cadence (SNAPSHOT_INTERVAL_SEC = 0.1) for near-real-time box
+    # tracking; going higher than the snapshot rate just wastes inference.
+    # Configurable via EDGE_INFERENCE_FPS_CAP.
+    inference_min_gap_sec = 1.0 / float(os.environ.get("EDGE_INFERENCE_FPS_CAP", "10.0"))
     last_inference_ts = 0.0
 
     def yolo_worker() -> None:
@@ -132,12 +135,14 @@ def run_real(
     threading.Thread(target=yolo_worker, daemon=True, name=f"{node_id}-yolo").start()
 
     # Heartbeat emit cadence: produce one event every EMIT_INTERVAL_SEC
-    # whether or not the latest YOLO inference found anything. If the
-    # latest detection is recent (within the cadence window), emit it
-    # with hits. Otherwise emit an empty event so the dashboard keeps a
-    # steady "still here, no contact" pulse instead of going silent.
-    # Override per-deploy with EDGE_EMIT_INTERVAL_SEC.
-    EMIT_INTERVAL_SEC = float(os.environ.get("EDGE_EMIT_INTERVAL_SEC", "2.0"))  # noqa: N806
+    # whether or not the latest YOLO inference found anything. This drives the
+    # dashboard's zone counts + CROWD FLAG alert, so it IS the perceived
+    # detection latency. 0.5s (~2 events/sec/sensor, ~4/sec total) keeps the
+    # numbers feeling live without firehosing the WebSocket. If the latest
+    # detection is recent (within the cadence window), emit it with hits;
+    # otherwise emit an empty pulse so the dashboard shows "still here, no
+    # contact" instead of going silent. Override with EDGE_EMIT_INTERVAL_SEC.
+    EMIT_INTERVAL_SEC = float(os.environ.get("EDGE_EMIT_INTERVAL_SEC", "0.5"))  # noqa: N806
     last_emit_ts = 0.0
 
     print(
@@ -206,38 +211,79 @@ def run_real(
 # ── Fake sensor loop (no GPU, no cameras) ───────────────────────────────
 
 
-_FAKE_SCENES: list[dict] = [
-    {"hits": [("person", 0.78)], "weight": 4},
-    {"hits": [("person", 0.83), ("backpack", 0.71)], "weight": 3},
-    {"hits": [("airplane", 0.66)], "weight": 2},  # YOLO-classifies drone as airplane
-    {"hits": [("car", 0.81)], "weight": 2},
-    {"hits": [("truck", 0.74)], "weight": 1},
-    {"hits": [("person", 0.69), ("cell phone", 0.62)], "weight": 1},
-    {"hits": [], "weight": 5},  # no detection — most frames are quiet
-]
-_FAKE_DESCRIPTIONS = {
-    ("person",): "Single adult ambulating through frame, no carried items visible.",
-    ("backpack", "person"): "Adult with shoulder pack, posture suggests moderate load.",
-    ("airplane",): "Small quadcopter form, low altitude, civilian pattern.",
-    ("car",): "Passenger sedan, civilian color scheme, no markings.",
-    ("truck",): "Light transport class vehicle, civilian.",
-    ("cell phone", "person"): "Adult holding handheld device at eye level.",
-}
+# People-counting demo. Occupancy per zone is a smooth RANDOM WALK (±1 per
+# tick, biased toward staying) rather than an i.i.d. random crowd size, so
+# the counts drift like real foot traffic — people arrive and leave one at a
+# time — instead of strobing between unrelated numbers every tick. The two
+# zones walk independently, so the COMBINED total still wanders above and
+# below the threshold on its own and trips the crowd FLAG hands-off.
+_FAKE_MAX_OCCUPANCY = 6
+# Step distribution: mostly hold, sometimes ±1 (gentle drift).
+_FAKE_STEPS = (-1, 0, 0, 0, +1)
+# Per-node current occupancy, persisted across ticks (module-level state).
+_fake_occupancy: dict[str, int] = {}
+
+# Fine-tune: occasionally a person is carrying a backpack. Only surfaces if
+# the operator has armed the backpack trigger (filter in run_fake_node).
+_FAKE_BACKPACK_PROB = 0.25
 
 
-def _fake_one_event(node_id: str, simulate_offline: bool) -> Event | None:
-    scenes = []
-    for s in _FAKE_SCENES:
-        scenes.extend([s] * s["weight"])
-    scene = random.choice(scenes)
-    if not scene["hits"]:
-        return None
-    hits = [
-        Detection(label=label, confidence=conf, bbox=(0.0, 0.0, 100.0, 100.0))
-        for label, conf in scene["hits"]
-    ]
-    labels_key = tuple(sorted({h.label for h in hits}))
-    desc = None if simulate_offline else _FAKE_DESCRIPTIONS.get(labels_key)
+def _fake_step_occupancy(node_id: str) -> int:
+    """Advance this zone's occupancy by one smooth random-walk step."""
+    cur = _fake_occupancy.get(node_id)
+    if cur is None:
+        cur = random.randint(1, 3)  # seed somewhere reasonable
+    cur = max(0, min(_FAKE_MAX_OCCUPANCY, cur + random.choice(_FAKE_STEPS)))
+    _fake_occupancy[node_id] = cur
+    return cur
+
+
+def _spread_bbox(i: int, n: int) -> tuple[float, float, float, float]:
+    """Lay out up to `n` person boxes across the frame so the overlay shows
+    distinct track gates instead of a single stacked box. Source space is
+    the 1280x720 synthesized snapshot the dashboard renders in fake mode."""
+    w, h = 1280.0, 720.0
+    box_w, box_h = 150.0, 320.0
+    if n <= 1:
+        cx = w * 0.5
+    else:
+        # Evenly distribute centers across the middle 80% of the width.
+        cx = w * (0.1 + 0.8 * (i / (n - 1)))
+    # Slight vertical jitter (deterministic by index) so they don't form a
+    # perfect row — reads more like real foot traffic.
+    cy = h * (0.52 + 0.06 * ((i % 2) * 2 - 1))
+    return (cx - box_w / 2, cy - box_h / 2, cx + box_w / 2, cy + box_h / 2)
+
+
+def _fake_one_event(node_id: str, simulate_offline: bool) -> Event:
+    """One synthetic event reflecting this zone's current occupancy. Always
+    returns an Event (possibly with zero hits) so the dashboard count settles
+    to 0 promptly when the zone empties, instead of waiting for staleness."""
+    n = _fake_step_occupancy(node_id)
+
+    hits: list[Detection] = []
+    for i in range(n):
+        conf = round(random.uniform(0.62, 0.93), 2)
+        hits.append(Detection(label="person", confidence=conf, bbox=_spread_bbox(i, n)))
+    # One of the people might be carrying a backpack (high-value object).
+    if n and random.random() < _FAKE_BACKPACK_PROB:
+        bx1, by1, bx2, by2 = hits[0].bbox
+        hits.append(
+            Detection(
+                label="backpack",
+                confidence=round(random.uniform(0.55, 0.8), 2),
+                bbox=(bx1 + 20, by1 + 90, bx1 + 110, by1 + 200),
+            )
+        )
+
+    desc = None
+    if n and not simulate_offline:
+        carried = any(h.label == "backpack" for h in hits)
+        desc = (
+            f"{n} adult(s) in frame"
+            + (", one carrying a shoulder pack" if carried else "")
+            + ", civilian foot traffic."
+        )
     return Event(
         node=node_id,
         ts=time.time(),
@@ -270,17 +316,17 @@ def run_fake_node(
         elapsed = time.time() - started
         offline = offline_after_sec is not None and elapsed > offline_after_sec
         event = _fake_one_event(node_id, simulate_offline=offline)
-        if event is not None:
-            # Trigger filter still applies — gives the live-update demo something to gate.
-            event.yolo_hits = [h for h in event.yolo_hits if triggers.contains(h.label)]
-            if event.yolo_hits:
-                sign_event(event)
-                emitter.emit(event)
-                labels = [h.label for h in event.yolo_hits]
-                marker = " [offline]" if offline else ""
-                print(f"[{node_id}] emitted: {labels}{marker}", flush=True)
-        # Add some jitter so the two nodes drift in/out of correlator window naturally.
-        time.sleep(cadence_sec * (0.7 + random.random() * 0.6))
+        # Trigger filter still applies — gives the live-update demo something
+        # to gate. We emit EVERY tick (even with zero hits) so the zone count
+        # settles to 0 promptly when the zone empties.
+        event.yolo_hits = [h for h in event.yolo_hits if triggers.contains(h.label)]
+        sign_event(event)
+        emitter.emit(event)
+        labels = [h.label for h in event.yolo_hits] or ["empty"]
+        marker = " [offline]" if offline else ""
+        print(f"[{node_id}] emitted: {labels}{marker}", flush=True)
+        # Mild jitter so the two zones don't update in lockstep.
+        time.sleep(cadence_sec * (0.85 + random.random() * 0.3))
 
 
 # ── Entrypoint ──────────────────────────────────────────────────────────
@@ -302,6 +348,14 @@ def main() -> None:
     )
     parser.add_argument("--node-id", default=os.environ.get("NODE_ID", "sensor-fake"))
     parser.add_argument("--rtsp-url", default=os.environ.get("RTSP_URL"))
+    parser.add_argument(
+        "--cameras",
+        default=os.environ.get("EDGE_CAMERAS"),
+        help="Booth mode: comma-separated USB webcam indices (or RTSP URLs), "
+        "one per zone, run in ONE process. e.g. --cameras 0,1 maps index 0 → "
+        "sensor-north and index 1 → sensor-south. Run `esc-test-cameras "
+        "--list` first to find your indices.",
+    )
     parser.add_argument("--yolo-model", default=os.environ.get("YOLO_MODEL", "yolo11s.engine"))
     parser.add_argument(
         "--drone-yolo-model",
@@ -353,8 +407,41 @@ def main() -> None:
             )
         return
 
+    # ── Booth mode: two USB webcams, one process ─────────────────────
+    # `--cameras 0,1` runs sensor-north + sensor-south as threads in this
+    # single process — the mirror of `--fake --multi`, but with real
+    # capture. This is the one-command path for the conference booth Mac.
+    if args.cameras:
+        sources = [s.strip() for s in str(args.cameras).split(",") if s.strip()]
+        if not sources:
+            raise SystemExit("--cameras given but no indices/URLs parsed")
+        zone_names = ("sensor-north", "sensor-south", "sensor-east", "sensor-west")
+        threads = []
+        for idx, src in enumerate(sources):
+            node = zone_names[idx] if idx < len(zone_names) else f"sensor-{idx}"
+            db = args.db or f"{node}.db"
+            # device index stays an int so pipeline picks the webcam path;
+            # anything non-numeric (rtsp://...) passes through unchanged.
+            source: str | int = int(src) if src.isdigit() else src
+            t = threading.Thread(
+                target=run_real,
+                args=(node, source, args.orchestrator, db, args.yolo_model),
+                kwargs={"drone_yolo_model": args.drone_yolo_model},
+                daemon=True,
+                name=node,
+            )
+            t.start()
+            threads.append(t)
+            print(f"[{node}] booth camera thread started on source={src!r}", flush=True)
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("shutting down", flush=True)
+        return
+
     if not args.rtsp_url:
-        raise SystemExit("real mode requires RTSP_URL or --rtsp-url")
+        raise SystemExit("real mode requires RTSP_URL, --rtsp-url, or --cameras")
     db = args.db or f"/data/{args.node_id}.db"
     run_real(
         args.node_id,

@@ -2,7 +2,9 @@
 
 Edge sensors today ship every frame to the cloud and wait for someone to decide whether what they saw mattered. That costs you bandwidth on a contested link, latency on every decision, emissions an adversary can detect, and a single point of failure they will exploit.
 
-This repo is a working reference for **moving the workload to the data**: YOLO + Gemini cascade on a Jetson, a FastAPI/WebSocket fusion node on a laptop, two RTSP cameras, multi-sector correlation, S3 archive — built on [Expanso Edge](https://expanso.io). Detection happens local; cloud is augmentation; pipeline updates push live; nothing is lost when the link drops.
+This repo is a working reference for **moving the workload to the data**: YOLO + Gemini cascade on the edge, a FastAPI/WebSocket fusion node on a laptop, two cameras, a **cross-zone people tally that merges both feeds into one combined count**, S3 archive — built on [Expanso Edge](https://expanso.io). Detection happens local; cloud is augmentation; pipeline updates push live; nothing is lost when the link drops.
+
+**Headline demo (booth):** two cameras watch two zones; the fusion node counts people in each and **merges the counts**. Neither zone alone trips the alarm — but when the **combined** total across both cameras exceeds the threshold (default 5), the dashboard throws a full-screen **CROWD FLAG**. The merge is the point: 3 people north + 3 people south = 6 → FLAG.
 
 ---
 
@@ -12,7 +14,7 @@ Five outcomes a perimeter operator would actually ask for:
 
 1. **Detection runs local. Always.** YOLO v8 on a Jetson, sub-50ms inference. No network call required to know what you're looking at.
 2. **Cloud is a bonus, not a precondition.** When a contact warrants richer context, the *edge* decides to call Gemini Flash for a description — only on the events that need it. The cloud being unreachable doesn't stop the sensor from working.
-3. **Sensors correlate themselves.** A local fusion node merges contacts from N sensors within a configurable window. Multi-sector alerts fire without a round-trip to a TOC.
+3. **Zones merge at the edge.** A local fusion node sums the people count across both cameras into one combined total and flags when it exceeds the threshold — the cross-zone merge happens on the laptop, no round-trip to a TOC. One busy zone is fine; it's the *combined* crowd that matters.
 4. **Mission parameters update in seconds.** Push a new threat class (e.g., `drone`) once from the cloud control plane and every sensor on the network picks it up within ~1 second. No restart, no firmware push, no truck roll.
 5. **Zero loss when the link drops.** When the WAN goes away the sensors keep detecting and the local dashboard keeps painting; events buffer to disk via Expanso Edge's offline queue. On reconnect, the cluster pulls the latest pipeline definition from the cloud and drains the buffered events to S3 — with the new transformation applied. Provenance preserved end-to-end.
 
@@ -20,7 +22,7 @@ Five outcomes a perimeter operator would actually ask for:
 
 ## Run it on a laptop in 60 seconds
 
-No GPU, no cameras, no Jetson required — uses synthetic events and procedurally generated camera feeds.
+No GPU, no cameras, no Jetson required — synthetic crowd events + procedurally generated camera feeds. The fake sensors emit varying crowd sizes per zone, so the combined total drifts above and below the threshold on its own and the CROWD FLAG fires hands-off.
 
 ```bash
 uv sync                                                # one-time
@@ -28,18 +30,51 @@ uv sync                                                # one-time
 # Terminal 1 — fusion node (dashboard backend)
 uv run edge-orchestrator --port 8080
 
-# Terminal 2 — synthetic sensor pair
+# Terminal 2 — synthetic sensor pair (crowd scenes)
 uv run edge-sensor --fake --multi --orchestrator http://localhost:8080 --cadence 0.6
 ```
 
-Open `http://localhost:8080`, hit F11.
+## Run it at the booth — through Expanso Edge (the real path)
 
-| Key | Action | Maps to |
-|---|---|---|
-| `F1` | Cloud DOWN — banner appears within ~3s (auto-detected by WAN probe) | outcome 5 |
-| `F2` | Cloud UP — buffered events drain to S3 with current pipeline applied | outcome 5 |
-| `F3` | Synthetic fused alert (full-screen takeover) | outcome 3 |
-| `F4` | Push live trigger update — adds `drone` to the watch list across all sensors | outcome 4 |
+The capture, the merge, and the archive all run **as Expanso Edge pipeline
+jobs** deployed from `jobs/*.yaml`, not as loose processes. `go2rtc` bridges
+the two USB webcams to RTSP (and serves low-latency WebRTC to the dashboard);
+each stage is a job you can watch in `cloud.expanso.io`:
+
+| Expanso job | What runs in it |
+|---|---|
+| `sensor-north`, `sensor-south` | USB webcam → go2rtc RTSP → `edge-sensor` (YOLO capture) |
+| `fusion-node` | `edge-orchestrator` — the **people-count merge** (`zones.py`) + dashboard |
+| `fuse` | standalone, observable copy of the cross-zone merge (`scripts/fuse-correlator.py`) |
+| `armyx-tech-event-archive` | Bloblang fan-out to S3 with store-and-forward |
+
+```bash
+# 1. Bridge both USB webcams (renders go2rtc.yaml for the current AVFoundation
+#    indices, then starts go2rtc on :8554 RTSP + :1984 WebRTC).
+./scripts/render-go2rtc-yaml.sh && ./bin/go2rtc -config go2rtc.yaml &
+
+# 2. Deploy every stage as an Expanso Edge job.
+expanso-cli profile select <your-profile>
+for j in orchestrator-job sensor-north-job sensor-south-job fuse-job event-archive-job; do
+  expanso-cli job deploy jobs/$j.yaml
+done
+expanso-cli job list        # sensor-north / sensor-south / fusion-node / fuse all RUNNING
+```
+
+Open the dashboard on the 42" monitor, hit F11. Crowd threshold is
+`EDGE_CROWD_THRESHOLD` (default 5), set in both `fusion-node` and `fuse` jobs.
+
+> **Quick local check (NOT Expanso):** `uv run edge-sensor --cameras 0,1` runs
+> both webcams in one bare process, bypassing go2rtc and Expanso Edge. Handy
+> for a 30-second "do the cameras work + does the merge flag" smoke test on a
+> laptop — but it is **not** the booth path. The booth runs the Expanso jobs above.
+
+| Key | Action |
+|---|---|
+| `F1` | Cloud DOWN — banner appears within ~3s (auto-detected by WAN probe) |
+| `F2` | Cloud UP — buffered events drain to S3 with current pipeline applied |
+| `F3` | Rehearsal: fire a synthetic CROWD FLAG takeover (6 people, 3+3) |
+| `F4` | Push live trigger update — adds `backpack`+`drone` to the watch list |
 
 The dashboard has two views: `OPS` (live operations — cameras, events, triggers, platform strip) and `ARCH` (light-themed architecture diagram with animated data-flow lines).
 

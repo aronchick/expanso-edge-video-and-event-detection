@@ -1,23 +1,30 @@
-# Edge-ISR cross-sector fusion — runs at the edge as an Expanso pipeline,
-# visible in cloud.expanso.io alongside sensor-north / sensor-south.
+# Edge-ISR cross-zone PEOPLE-COUNT MERGE — runs at the edge as an Expanso
+# pipeline, visible in cloud.expanso.io alongside sensor-north / sensor-south
+# / fusion-node. This is the headline merge expressed as its own observable
+# pipeline: it sums per-zone people counts across both cameras and fires when
+# the COMBINED total exceeds the threshold (default 5) — neither zone alone
+# trips it. Same logic as the in-orchestrator ZoneCounter (zones.py).
 #
 # Pipeline stages (multistep, demonstrably running on the laptop node):
-#   INPUT:      subprocess running scripts/fuse-correlator.py, which
-#               tails events.ndjson and emits JSON fused alerts whenever
-#               both sensors see the same triggered class within 5s
-#               (8s cooldown per class).
+#   INPUT:      subprocess running scripts/fuse-correlator.py, which tails
+#               events.ndjson, MERGES per-zone person counts, and emits a
+#               JSON crowd alert when the combined total crosses the
+#               threshold (edge-triggered, 8s cooldown).
 #   STEP 1:     parse the correlator's JSON
 #   STEP 2:     filter to fused_alert == true (defensive)
 #   STEP 3:     add archive lineage (pipeline, version, fused_at_iso)
 #   STEP 4:     sign with a fuse-sha256 over the full record
 #   OUTPUT:     fan_out
 #                 ├─ stdout            (visible: expanso-cli job logs fuse)
-#                 ├─ fused-alerts.ndjson (audit log)
-#                 └─ POST orchestrator/fused-alert  (dashboard alert strip)
+#                 └─ fused-alerts.ndjson (audit log)
+#               The dashboard tally + FLAG are driven by the in-orchestrator
+#               ZoneCounter; this pipeline is the observable, independently-
+#               deployed copy of the merge for the cloud-console narrative.
 #
-# The fusion logic ITSELF is Python (Bento's cache_resources schema in
-# this build rejected the pure-Bloblang version). The Python lives in
-# scripts/fuse-correlator.py — small, single-purpose, reviewable.
+# The merge logic ITSELF is Python (Bento's cache_resources schema in this
+# build rejected the pure-Bloblang version). The Python lives in
+# scripts/fuse-correlator.py — small, single-purpose, reviewable. The crowd
+# threshold is injected inline below so this job and the orchestrator agree.
 
 name: fuse
 type: pipeline
@@ -31,13 +38,19 @@ config:
     subprocess:
       name: /usr/bin/env
       args:
+        # Crowd-flag rule — keep in sync with the orchestrator (zones.py).
+        # MIN_TOTAL across both zones, with the per-zone/peak shaping from the
+        # EDGE_CROWD_MIN_* defaults (>=1 each, >=2 in one). So both merge paths
+        # agree: flag when 3+ span BOTH cameras. Injected inline (env-style
+        # first arg to /usr/bin/env) rather than edited into a .env file.
+        - EDGE_CROWD_THRESHOLD=3
         - uv
         - run
         - --project
-        - /Users/daaronch/code/demos/demo-drone-detection
+        - /Users/daaronch/code/second-brain/projects/demos/demo-drone-detection
         - python
-        - /Users/daaronch/code/demos/demo-drone-detection/scripts/fuse-correlator.py
-        - /Users/daaronch/code/demos/demo-drone-detection/events.ndjson
+        - /Users/daaronch/code/second-brain/projects/demos/demo-drone-detection/scripts/fuse-correlator.py
+        - /Users/daaronch/code/second-brain/projects/demos/demo-drone-detection/events.ndjson
       codec: lines
       restart_on_exit: true
       max_buffer: 1048576
@@ -69,13 +82,5 @@ config:
         - stdout:
             codec: lines
         - file:
-            path: /Users/daaronch/code/demos/demo-drone-detection/.demo-state/fused-alerts.ndjson
+            path: /Users/daaronch/code/second-brain/projects/demos/demo-drone-detection/.demo-state/fused-alerts.ndjson
             codec: lines
-        - drop_on:
-            error: true
-            output:
-              http_client:
-                url: http://localhost:8080/fused-alert
-                verb: POST
-                headers:
-                  Content-Type: application/json

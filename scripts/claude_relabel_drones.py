@@ -35,14 +35,12 @@ import argparse
 import json
 import shutil
 import subprocess
-import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Optional
 
 import cv2
-
 
 DATASET = Path("dataset-3class")
 IMAGES = DATASET / "images"
@@ -210,7 +208,7 @@ def main() -> int:
     print(f"claude bin       : {claude_bin}")
     print(f"empty drone frames: {len(candidates)}")
     print(f"workers          : {args.workers}")
-    print(f"prompt          : refusal-aware (NO_DRONE | bbox json)")
+    print("prompt          : refusal-aware (NO_DRONE | bbox json)")
     print()
 
     if not candidates:

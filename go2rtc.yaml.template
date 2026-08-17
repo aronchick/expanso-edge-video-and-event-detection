@@ -1,14 +1,24 @@
 # go2rtc laptop demo config TEMPLATE.
 #
 # IMPORTANT: Do not edit go2rtc.yaml directly — it is REGENERATED at every
-# `just up` from this template, with the placeholders below substituted to
-# whatever AVFoundation indices the two AnkerWork C310 webcams happen to
-# have RIGHT NOW. macOS reorders devices between processes (we've observed
-# [0]/[1] swap between enumerations); pinning indices statically is fragile.
+# `just up` from this template by scripts/render-go2rtc-yaml.sh.
+#
+# go2rtc.yaml is REGENERATED at every `just up` from this template by
+# scripts/render-go2rtc-yaml.sh, which picks the FIRST TWO AnkerWork C310
+# cameras BY NAME (arbitrary order — the units are identical) and substitutes
+# their current AVFoundation indices below. Resolution happens at render time,
+# in the permitted parent context, because a go2rtc exec child cannot enumerate
+# cameras: macOS gates `-list_devices` behind a camera permission the child
+# never gets (it can still OPEN a device by index). render and the go2rtc
+# launch are coupled, so the index is resolved seconds before capture — the
+# macOS device-reorder window is tiny. If go2rtc is left running across a
+# device reshuffle, re-run `just up` (re-render + relaunch) to refresh.
 #
 # Placeholders (substituted by scripts/render-go2rtc-yaml.sh):
-#   __ANKER_OUTSIDE_IDX__ → AnkerWork C310 index used by cam-outside
-#   __ANKER_INSIDE_IDX__  → AnkerWork C310 index used by cam-inside
+#   __CAM_OUTSIDE_ARG__ → AVFoundation index for cam-outside (first Anker)
+#   __CAM_INSIDE_ARG__  → AVFoundation index for cam-inside  (second Anker)
+# The CAMERA_TEST / EDGE_CAM_* override modes substitute non-Anker indices here
+# instead (Brio, built-in) for testing without the Ankers.
 #
 # Stream names MUST match data-stream="..." in public/edge/index.html:
 #   - cam-outside  →  Sector North
@@ -35,17 +45,20 @@ api:
 rtsp:
   listen: "127.0.0.1:8554"
 
-# Why exec:ffmpeg instead of ffmpeg:device?video=N — go2rtc's device URL
-# hardcodes 29.97 fps (NTSC). macOS AVFoundation webcams only support 30 fps
-# exactly, so ffmpeg fails with "Selected framerate (29.970030) is not
-# supported by the device" before producing any frames. Building the ffmpeg
-# command explicitly lets us pin -framerate 30 to match.
+# Capture is a SINGLE external ffmpeg (scripts/dual-cam-capture.sh) that opens
+# BOTH Ankers in one process and PUBLISHES each into the passive streams below
+# via RTSP. One process = one device enumeration = the two feeds can never be
+# the same camera. It downscales/caps each to a light 480p@15 stream.
 streams:
-  cam-outside:
-    - 'exec:ffmpeg -hide_banner -loglevel error -f avfoundation -framerate 30 -video_size 1280x720 -i "__ANKER_OUTSIDE_IDX__" -c:v libx264 -preset ultrafast -tune zerolatency -profile:v baseline -pix_fmt yuv420p -g 30 -bf 0 -f rtsp -rtsp_transport tcp {output}'
-
-  cam-inside:
-    - 'exec:ffmpeg -hide_banner -loglevel error -f avfoundation -framerate 30 -video_size 1280x720 -i "__ANKER_INSIDE_IDX__" -c:v libx264 -preset ultrafast -tune zerolatency -profile:v baseline -pix_fmt yuv420p -g 30 -bf 0 -f rtsp -rtsp_transport tcp {output}'
+  # PASSIVE RTSP-ingest streams. scripts/dual-cam-capture.sh runs a SINGLE
+  # ffmpeg that opens BOTH AnkerWork cameras and PUBLISHES them here via RTSP
+  # (rtsp://127.0.0.1:8554/cam-outside and /cam-inside). One process => one
+  # enumeration => each physical camera gets exactly one index => the two feeds
+  # can NEVER be the same camera. (The old per-stream `exec` model spawned two
+  # separate ffmpeg processes that, with two identical-named C310s and macOS's
+  # per-process index assignment, could collide on the same device.)
+  cam-outside: []
+  cam-inside: []
 
 # Low log noise — go2rtc is chatty by default
 log:

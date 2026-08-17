@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live Cameras · Expanso</title>
+<style>
+  :root { --bg:#0e1322; --surface:#15181d; --border:#2a3344; --text:#f4f6f8;
+          --dim:#9aa3ad; --brand:#6d4aff; --ok:#15a34a; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:16px/1.4 -apple-system, system-ui, "IBM Plex Sans", sans-serif; }
+  header { padding:14px 22px; border-bottom:1px solid var(--border);
+           font-weight:700; letter-spacing:.02em; display:flex; align-items:center; gap:12px; }
+  header .brand { color:var(--brand); letter-spacing:.18em; }
+  header .sub { color:var(--dim); font-weight:400; font-size:14px; }
+  .live { margin-left:auto; color:var(--ok); font-family:"IBM Plex Mono", ui-monospace, monospace;
+          font-size:13px; letter-spacing:.12em; }
+  .live::before { content:"● "; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; padding:20px; }
+  .cam { background:var(--surface); border:1px solid var(--border);
+         border-radius:12px; overflow:hidden; }
+  .cam h2 { margin:0; padding:10px 16px; font-size:13px; color:var(--dim);
+            letter-spacing:.14em; text-transform:uppercase;
+            font-family:"IBM Plex Mono", ui-monospace, monospace; }
+  iframe { width:100%; aspect-ratio:4/3; border:0; display:block; background:#000; }
+  @media (max-width:900px){ .grid{ grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+  <header>
+    <span class="brand">EXPANSO</span>
+    <span class="sub">live camera preview · verifying capture</span>
+    <span class="live">LIVE</span>
+  </header>
+  <div class="grid">
+    <div class="cam">
+      <h2>Sector North · cam-outside</h2>
+      <iframe id="north" allow="autoplay" referrerpolicy="no-referrer"></iframe>
+    </div>
+    <div class="cam">
+      <h2>Sector South · cam-inside</h2>
+      <iframe id="south" allow="autoplay" referrerpolicy="no-referrer"></iframe>
+    </div>
+  </div>
+  <script>
+    // Embed go2rtc's own live player per stream. Use the page's hostname so
+    // this also works when opened from another device on the LAN; go2rtc's
+    // signaling/API is on :1984.
+    const base = `${location.protocol}//${location.hostname}:1984/stream.html`;
+    document.getElementById('north').src = `${base}?src=cam-outside`;
+    document.getElementById('south').src = `${base}?src=cam-inside`;
+  </script>
+</body>
+</html>

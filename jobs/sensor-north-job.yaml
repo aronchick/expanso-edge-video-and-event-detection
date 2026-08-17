@@ -44,13 +44,13 @@ config:
         # the package + deps installed. (When uv on this box gets newer,
         # this can flip back to `--from git+...@SHA` for true reproducibility.)
         - --project
-        - /Users/daaronch/code/demos/demo-drone-detection
+        - /Users/daaronch/code/second-brain/projects/demos/demo-drone-detection
         - edge-sensor
         - --node-id=sensor-north
         - --orchestrator=http://localhost:8080
         - --rtsp-url=rtsp://localhost:8554/cam-outside
         - --yolo-model=/Users/daaronch/drone-3class-v2.pt
-        - --db=/Users/daaronch/code/demos/demo-drone-detection/.demo-state/sensor-north.db
+        - --db=/Users/daaronch/code/second-brain/projects/demos/demo-drone-detection/.demo-state/sensor-north.db
       codec: lines
       restart_on_exit: true
       max_buffer: 1048576

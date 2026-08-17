@@ -17,13 +17,13 @@ config:
         - run
         # See sensor-north-job.yaml for the --project vs --from rationale.
         - --project
-        - /Users/daaronch/code/demos/demo-drone-detection
+        - /Users/daaronch/code/second-brain/projects/demos/demo-drone-detection
         - edge-sensor
         - --node-id=sensor-south
         - --orchestrator=http://localhost:8080
         - --rtsp-url=rtsp://localhost:8554/cam-inside
         - --yolo-model=/Users/daaronch/drone-3class-v2.pt
-        - --db=/Users/daaronch/code/demos/demo-drone-detection/.demo-state/sensor-south.db
+        - --db=/Users/daaronch/code/second-brain/projects/demos/demo-drone-detection/.demo-state/sensor-south.db
       codec: lines
       restart_on_exit: true
       max_buffer: 1048576

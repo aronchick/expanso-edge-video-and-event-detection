@@ -239,7 +239,6 @@ class Detector:
         out = frame.copy()
         h, w = out.shape[:2]
         font = cv2.FONT_HERSHEY_SIMPLEX
-        amber = (38, 167, 255)  # BGR for #ffa726
         text_white = (220, 230, 240)
         text_dim = (160, 175, 190)
 
@@ -253,12 +252,18 @@ class Detector:
         cv2.putText(out, "REC", (w - 64, 38), font, 0.45, text_white, 1, cv2.LINE_AA)
 
         if event is not None:
-            for i, hit in enumerate(event.yolo_hits):
+            # Live per-zone people count, baked top-center so it's readable
+            # even on the raw MJPEG feed (before the dashboard tally).
+            n_person = sum(1 for hit in event.yolo_hits if hit.label == "person")
+            if n_person:
+                badge = f"{n_person} PERSON" + ("S" if n_person != 1 else "")
+                _draw_count_badge(out, w, badge, _class_color_bgr("person"))
+            for hit in event.yolo_hits:
                 x1, y1, x2, y2 = (int(v) for v in hit.bbox)
-                _draw_track_gate(out, x1, y1, x2, y2, amber)
-                label_text = f"TRK-{i + 1:03d} {hit.label.upper()} {int(hit.confidence * 100)}"
-                cv2.putText(
-                    out, label_text, (x1, max(y1 - 8, 18)), font, 0.55, amber, 1, cv2.LINE_AA
+                color = _class_color_bgr(hit.label)
+                _draw_track_gate(out, x1, y1, x2, y2, color)
+                _draw_label_chip(
+                    out, x1, y1, f"{hit.label.upper()} {int(hit.confidence * 100)}%", color
                 )
 
         return out
@@ -339,19 +344,48 @@ def _call_gemini(api_key: str, jpg_bytes: bytes, timeout: float = 1.5) -> str:
             raise
 
 
+# Per-class colors (BGR). Kept in sync with snapshots._CLASS_COLOR_BGR and
+# the dashboard's _CLASS_COLORS: person = green, backpack = amber, drone = red.
+_CLASS_COLOR_BGR: dict[str, tuple] = {
+    "person": (90, 230, 60),
+    "backpack": (38, 167, 255),
+    "drone": (60, 60, 240),
+    "airplane": (60, 60, 240),
+}
+
+
+def _class_color_bgr(label: str) -> tuple:
+    return _CLASS_COLOR_BGR.get(str(label).lower(), (38, 167, 255))
+
+
 def _draw_track_gate(img: np.ndarray, x1: int, y1: int, x2: int, y2: int, color: tuple) -> None:
-    """L-shaped corner brackets — track-gate style, matches the orchestrator
-    snapshot synth aesthetic. Module-level so the class boundary stays clean."""
-    leg = max(12, min((x2 - x1) // 5, (y2 - y1) // 5, 24))
-    # Top-left
-    cv2.line(img, (x1, y1), (x1 + leg, y1), color, 2, cv2.LINE_AA)
-    cv2.line(img, (x1, y1), (x1, y1 + leg), color, 2, cv2.LINE_AA)
-    # Top-right
-    cv2.line(img, (x2, y1), (x2 - leg, y1), color, 2, cv2.LINE_AA)
-    cv2.line(img, (x2, y1), (x2, y1 + leg), color, 2, cv2.LINE_AA)
-    # Bottom-left
-    cv2.line(img, (x1, y2), (x1 + leg, y2), color, 2, cv2.LINE_AA)
-    cv2.line(img, (x1, y2), (x1, y2 - leg), color, 2, cv2.LINE_AA)
-    # Bottom-right
-    cv2.line(img, (x2, y2), (x2 - leg, y2), color, 2, cv2.LINE_AA)
-    cv2.line(img, (x2, y2), (x2, y2 - leg), color, 2, cv2.LINE_AA)
+    """Thin full rectangle + thick corner brackets — bold enough to read on a
+    42" booth monitor. Matches the orchestrator snapshot synth aesthetic."""
+    cv2.rectangle(img, (x1, y1), (x2, y2), color, 2, cv2.LINE_AA)
+    leg = max(18, min((x2 - x1) // 4, (y2 - y1) // 4, 40))
+    t = 4
+    for cx_, cy_, dx, dy in ((x1, y1, 1, 1), (x2, y1, -1, 1), (x1, y2, 1, -1), (x2, y2, -1, -1)):
+        cv2.line(img, (cx_, cy_), (cx_ + dx * leg, cy_), color, t, cv2.LINE_AA)
+        cv2.line(img, (cx_, cy_), (cx_, cy_ + dy * leg), color, t, cv2.LINE_AA)
+
+
+def _draw_label_chip(img: np.ndarray, x1: int, y1: int, text: str, color: tuple) -> None:
+    """Filled label chip with dark text — legible at booth distance."""
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    scale, thick = 0.7, 2
+    (tw, th), _ = cv2.getTextSize(text, font, scale, thick)
+    pad = 8
+    cy2 = max(y1, th + 2 * pad + 2)
+    cv2.rectangle(img, (x1, cy2 - th - 2 * pad), (x1 + tw + 2 * pad, cy2), color, -1, cv2.LINE_AA)
+    cv2.putText(img, text, (x1 + pad, cy2 - pad), font, scale, (20, 24, 28), thick, cv2.LINE_AA)
+
+
+def _draw_count_badge(img: np.ndarray, w: int, text: str, color: tuple) -> None:
+    """Top-center filled badge showing the live person count for this zone."""
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    scale, thick = 1.0, 2
+    (tw, th), _ = cv2.getTextSize(text, font, scale, thick)
+    pad = 12
+    x1 = (w - tw) // 2 - pad
+    cv2.rectangle(img, (x1, 12), (x1 + tw + 2 * pad, 12 + th + 2 * pad), color, -1, cv2.LINE_AA)
+    cv2.putText(img, text, (x1 + pad, 12 + th + pad), font, scale, (20, 24, 28), thick, cv2.LINE_AA)

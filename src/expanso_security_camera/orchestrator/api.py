@@ -44,6 +44,7 @@ from expanso_security_camera.orchestrator.snapshots import (
 )
 from expanso_security_camera.orchestrator.store import EventStore
 from expanso_security_camera.orchestrator.triggers import TriggerStore
+from expanso_security_camera.orchestrator.zones import ZoneCounter
 
 PUBLIC_DIR = Path(__file__).parent.parent.parent.parent / "public" / "edge"
 
@@ -86,6 +87,11 @@ def create_app(
     # Correlator needs the trigger store so Rule 3 (drone-after-update)
     # can check whether "drone" is currently armed.
     correlator = Correlator(store, triggers=triggers)
+    # Cross-zone people tally — the headline of the people-counting demo.
+    # Sums person counts across both cameras and flags on the combined
+    # total crossing the threshold (default 5). Independent of the
+    # correlator, which now only handles backpack/drone object alerts.
+    zones = ZoneCounter()
     metrics = Metrics()
     jobs = JobsStatus()
     snapshots_path = Path(snapshots_dir)
@@ -143,6 +149,19 @@ def create_app(
         fake_cache.update(event)
         await manager.broadcast({"type": "event", "data": event})
 
+        # ── Cross-zone people tally (the merge) ──────────────────────
+        # Update this zone's live count, push the combined tally to every
+        # dashboard, then check whether the COMBINED total just crossed
+        # the threshold. The crowd FLAG is the demo's headline alert.
+        zones.record(event)
+        await manager.broadcast({"type": "zones", "data": zones.snapshot()})
+        crowd_alert = zones.evaluate_alert()
+        if crowd_alert:
+            store.insert({**crowd_alert, "node": "fusion-node"})
+            metrics.record_fused()
+            await manager.broadcast({"type": "alert", "data": crowd_alert})
+
+        # ── Object-class alerts (backpack / drone, opt-in) ───────────
         alert = correlator.evaluate(event)
         if alert:
             # Tag alert events as originating from the fusion-node so
@@ -181,6 +200,13 @@ def create_app(
     @app.get("/metrics")
     async def get_metrics() -> dict:
         return metrics.snapshot()
+
+    @app.get("/zones")
+    async def get_zones() -> dict:
+        # Polled by the dashboard at the same cadence as /metrics so the
+        # per-zone counts + combined total stay live even between sensor
+        # heartbeats (and so a stalled zone decays to 0 on schedule).
+        return zones.snapshot()
 
     @app.get("/jobs")
     async def get_jobs() -> dict:
@@ -423,21 +449,29 @@ def create_app(
         Old path /demo/fused-test still works (alias below) so anything
         in muscle memory keeps functioning.
         """
+        # Rehearsal preview of the headline crowd FLAG: 3 + 3 = 6 people
+        # across both zones, over a threshold of 5. Mirrors the real
+        # crowd_threshold alert shape so the dashboard takeover looks
+        # identical to the live moment.
         synthetic = {
             "type": "alert",
-            "rule": "synthetic",
+            "rule": "crowd_threshold",
             "ts": time.time(),
+            "total": 6,
+            "threshold": zones.threshold,
             "sectors": ["sensor-north", "sensor-south"],
             "contacts": [
                 {
                     "sector": "sensor-north",
-                    "yolo_hits": ["person", "backpack"],
-                    "description": "Adult with shoulder pack.",
+                    "count": 3,
+                    "yolo_hits": ["person", "person", "person"],
+                    "description": "3 person(s) in zone",
                 },
                 {
                     "sector": "sensor-south",
-                    "yolo_hits": ["drone"],
-                    "description": "Small quadcopter, civilian pattern.",
+                    "count": 3,
+                    "yolo_hits": ["person", "person", "person"],
+                    "description": "3 person(s) in zone",
                 },
             ],
         }
@@ -458,6 +492,7 @@ def create_app(
         backfill = store.recent(since_ts=time.time() - 30, limit=100)
         await ws.send_json({"type": "backfill", "data": backfill})
         await ws.send_json({"type": "triggers", "data": triggers.get()})
+        await ws.send_json({"type": "zones", "data": zones.snapshot()})
         await ws.send_json({"type": "cloud", "data": {"up": metrics.is_cloud_up()}})
         await ws.send_json({"type": "jobs", "data": jobs.get()})
         await ws.send_json({"type": "metrics", "data": metrics.snapshot()})

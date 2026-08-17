@@ -17,11 +17,13 @@ from pathlib import Path
 import yaml
 
 DEFAULT_TRIGGERS: list[str] = [
-    # Beat 0 / Beat 3 lights-up state — TWO chips, nothing else.
-    # Beat 4 (F4) adds "drone" → end state is exactly ["person","backpack","drone"].
-    # Don't add anything else. Three chips total at end is the entire chip story.
+    # People-counting demo: person is the whole story at the start. The
+    # cross-zone tally (zones.py) sums person counts across both cameras
+    # and flags on the combined total. Backpack / drone are opt-in extras
+    # the operator can arm mid-demo (ghost chip / F4) to show a live
+    # pipeline update, but they are NOT in the default set so the booth
+    # demo opens clean on "count the people."
     "person",
-    "backpack",
 ]
 
 

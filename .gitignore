@@ -75,3 +75,6 @@ internal/
 jetson
 *.mov
 *.MOV
+
+# nohup output from backgrounded demo processes
+nohup.out

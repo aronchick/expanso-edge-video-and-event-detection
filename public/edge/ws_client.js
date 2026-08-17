@@ -46,6 +46,7 @@ ws.onmessage = (msg) => {
     // surfaces alerts during a partial roll-out.
     case 'fused':    enqueueAlert(m.data); break;
     case 'triggers': renderTriggers(m.data); break;
+    case 'zones':    renderZones(m.data); break;
     case 'cloud':    setCloudState(m.data.up); break;
     case 'jobs':     renderJobs(m.data); break;
     case 'metrics':  renderMetrics(m.data); break;
@@ -258,91 +259,112 @@ function updateSectorStatus(node, signal) {
 
   el.textContent = status;
   el.className = 'sector-status ' + status;
+
+  // Mirror onto the zone-count card's status badge so the right column
+  // reflects the same live/offline/stopped state as the camera tile.
+  const zoneEl = document.getElementById(`zone-status-${node}`);
+  if (zoneEl) {
+    zoneEl.textContent = status;
+    zoneEl.className = 'zone-card-status ' + status;
+  }
 }
 
-// ── Fusion tile (replaces the old full-screen overlay) ─────────────
-// Always visible. STANDBY when no recent multi-sector correlation; ACTIVE
-// for 6s when one fires (LED + border light up, detail line fills with
-// the contact summary), then collapses back to STANDBY with `last:` ts.
+// ── Zone tally (the merge) + crowd FLAG ────────────────────────────
+// renderZones drives the always-visible per-zone counts + combined total.
+// The crowd alert renders INSIDE the combined (counts) card — its .over
+// FLAG state plus an in-card alert line — never as a floating interstitial.
 
-let alertLastTs = 0;
-let alertActiveUntil = 0;
+const ZONE_ORDER = ['sensor-north', 'sensor-south'];
+let lastZoneSnapshot = null;
 
-function enqueueAlert(f) {
-  // No queue any more — tiles can't queue, so we just take the latest.
-  // Multiple rapid fusions still each light up; the most recent wins.
-  renderFusionTile(f);
-  pingTopology('sensor-north', '#ffa726');
-  pingTopology('sensor-south', '#ffa726');
+// Render the live per-zone counts + combined total. Called from the WS
+// 'zones' push and the /zones poll. Pure display — the FLAG drama is in
+// enqueueAlert, fired server-side on the threshold crossing.
+function renderZones(z) {
+  if (!z) return;
+  lastZoneSnapshot = z;
+  const counts = z.counts || {};
+  for (const zone of ZONE_ORDER) {
+    const el = document.getElementById(`zone-count-${zone}`);
+    if (el) {
+      const n = counts[zone] || 0;
+      if (el.textContent !== String(n)) {
+        el.textContent = String(n);
+        // tiny bump so a changing count visibly ticks
+        el.classList.remove('bumped');
+        void el.offsetWidth;
+        el.classList.add('bumped');
+      }
+      const unit = document.getElementById(`zone-unit-${zone}`);
+      if (unit) unit.textContent = (n === 1) ? 'person' : 'people';
+    }
+  }
+  const total = z.total || 0;
+  const thresh = (z.threshold != null) ? z.threshold : 5;
+  setText('combined-total', String(total));
+  setText('combined-threshold', `/ ${thresh}`);
+
+  // Threshold meter — fill proportional to total/threshold, clamped, and
+  // it goes red past the line.
+  const bar = document.getElementById('combined-bar');
+  if (bar) {
+    const pct = Math.max(0, Math.min(1, total / Math.max(1, thresh)));
+    bar.style.width = `${(pct * 100).toFixed(0)}%`;
+  }
+
+  const n = counts['sensor-north'] || 0;
+  const s = counts['sensor-south'] || 0;
+  setText('combined-breakdown', `north ${n} + south ${s} = ${total}`);
+
+  const card = document.getElementById('combined-card');
+  const stateEl = document.getElementById('combined-state');
+  const over = !!z.over;
+  if (card) card.classList.toggle('over', over);
+  if (stateEl) {
+    stateEl.textContent = over ? 'FLAG · CROWD' : 'CLEAR';
+    stateEl.className = 'combined-state ' + (over ? 'flag' : 'clear');
+  }
+  // In-card alert line — driven from the LIVE counts so it always matches
+  // the total shown above (no stale crossing-moment latch).
+  // The alert line ALWAYS occupies its row (reserved via CSS min-height) so
+  // the card height — and everything below it — never shifts. We only change
+  // the text, never the element's presence.
+  const alertEl = document.getElementById('combined-alert');
+  if (alertEl) {
+    if (over) {
+      alertEl.textContent = `⚠ CROWD · ${total} people across both zones (north ${n} + south ${s})`;
+    } else {
+      alertEl.textContent = '';
+      if (card) card.classList.remove('flash');
+    }
+  }
 }
 
-// Human-readable label for each correlator rule. Falls back to the raw
-// rule string for any new rule wired up server-side without a label here.
+// Human-readable label per alert rule (crowd_threshold is the headline).
 const ALERT_RULE_LABELS = {
+  crowd_threshold:      'CROWD · BOTH ZONES',
   backpack_detected:    'BACKPACK DETECTED',
-  multiple_persons:     'MULTIPLE PERSONS',
   drone_after_update:   'DRONE DETECTED',
-  cross_sector_person:  'PERSON · BOTH SECTORS',
   synthetic:            'SYNTHETIC (REHEARSAL)',
-  // Legacy keys kept so a degraded rolling deploy where the orchestrator
-  // hasn't been respawned yet doesn't display the raw snake_case string.
-  person_with_backpack: 'BACKPACK DETECTED',
-  person_cross_sector:  'PERSON · BOTH SECTORS',
 };
 
-function renderFusionTile(f) {
-  const tile = document.getElementById('alert-tile');
-  const stateEl = document.getElementById('alert-state');
-  const detailEl = document.getElementById('alert-detail');
-  const metaEl = document.getElementById('alert-meta');
-  if (!tile || !stateEl || !detailEl || !metaEl) return;
-
-  // Build a compact one-line summary like:
-  //   "PERSON + BACKPACK — NORTH · person+backpack"
-  //   "PERSON · BOTH SECTORS — NORTH+SOUTH · person / person"
-  // The rule label leads so the audience reads the trigger before the
-  // raw class list.
-  const sectors = (f.sectors || []).map((s) => s.replace('sensor-', '').toUpperCase()).join('+');
-  const contactSummary = (f.contacts || [])
-    .map((c) => (c.yolo_hits || []).join('+') || '(none)')
-    .join(' / ');
-  const ruleLabel = ALERT_RULE_LABELS[f.rule] || (f.rule || 'ALERT').toUpperCase();
-  const detail = sectors
-    ? `${ruleLabel} — ${sectors} · ${contactSummary}`
-    : `${ruleLabel} — ${contactSummary}`;
-
-  stateEl.textContent = 'ACTIVE';
-  detailEl.textContent = detail;
-  alertLastTs = (f && f.ts) ? f.ts : (Date.now() / 1000);
-  metaEl.textContent = `last: ${fmtIsoUtc(alertLastTs)}`;
-
-  // Restart the active class so the pulse animation runs cleanly each fire
-  tile.classList.remove('active');
-  void tile.offsetWidth; // restart animation
-  tile.classList.add('active');
-
-  alertActiveUntil = Date.now() + 6000;
+// Crowd FLAG fires server-side on the threshold crossing. The card is
+// already in its .over coral state with the in-card alert line (both from
+// renderZones' live counts); here we just pulse the card once for emphasis
+// at the moment of crossing. No floating interstitial.
+function enqueueAlert(_f) {
+  const card = document.getElementById('combined-card');
+  if (card) {
+    card.classList.add('over');           // ensure flagged immediately
+    card.classList.remove('flash');
+    void card.offsetWidth;                // restart the one-shot pulse
+    card.classList.add('flash');
+    clearTimeout(enqueueAlert._t);
+    enqueueAlert._t = setTimeout(() => { if (card) card.classList.remove('flash'); }, 1500);
+  }
+  pingTopology('sensor-north', '#f03c3c');
+  pingTopology('sensor-south', '#f03c3c');
 }
-
-// Drive the STANDBY decay: every 250ms, if we're past the active window,
-// collapse the tile back to standby and update the "last:" age. Sub-second
-// tick so the alert tile feels reactive on transition.
-setInterval(() => {
-  const tile = document.getElementById('alert-tile');
-  const stateEl = document.getElementById('alert-state');
-  const detailEl = document.getElementById('alert-detail');
-  const metaEl = document.getElementById('alert-meta');
-  if (!tile) return;
-  if (Date.now() >= alertActiveUntil && tile.classList.contains('active')) {
-    tile.classList.remove('active');
-    stateEl.textContent = 'STANDBY';
-    detailEl.textContent = 'no alerts';
-  }
-  // Always refresh the "last:" time display when we have a fusion history
-  if (alertLastTs > 0 && metaEl) {
-    metaEl.textContent = `last: ${fmtIsoUtc(alertLastTs)}`;
-  }
-}, 250);
 
 // ISO 8601 UTC format helper — `2026-05-02T11:48:14Z`. Per the design spec
 // (refine-dashboard-design-vocabulary), the dashboard uses ISO 8601 UTC for
@@ -684,12 +706,14 @@ function archLastFrameAgeString(eventsPerMin) {
 // Both are pure in-memory reads, so 500ms is cheap.
 setInterval(async () => {
   try {
-    const [m, s] = await Promise.all([
+    const [m, s, z] = await Promise.all([
       fetch('/metrics').then((r) => r.json()),
       fetch('/s3').then((r) => r.json()),
+      fetch('/zones').then((r) => r.json()),
     ]);
     renderMetrics(m);
     renderS3(s);
+    renderZones(z);
   } catch (e) { /* offline; ignore */ }
 }, 500);
 
@@ -932,6 +956,38 @@ function applyTabFromHash() {
 window.addEventListener('hashchange', applyTabFromHash);
 applyTabFromHash();
 
+// ── Auto-rotate: OPS (cameras) → ARCH (diagram) → OPS … for unattended booth
+// display. Cycles every AUTO_ROTATE_MS. A manual tab click pauses rotation so a
+// presenter can hold a view; it resumes after AUTO_ROTATE_IDLE_MS of no clicks.
+// Uses history.replaceState so the cycling never pollutes browser back-history.
+const AUTO_ROTATE_VIEWS = ['ops', 'arch'];
+const AUTO_ROTATE_MS = 5000;
+const AUTO_ROTATE_IDLE_MS = 45000;
+let autoRotateTimer = null;
+let autoRotateResume = null;
+
+function autoRotateTick() {
+  const current = (window.location.hash || '#ops').slice(1).toLowerCase();
+  const i = AUTO_ROTATE_VIEWS.indexOf(current);
+  const next = AUTO_ROTATE_VIEWS[(i + 1) % AUTO_ROTATE_VIEWS.length];
+  history.replaceState(null, '', `#${next}`);
+  applyTabFromHash();
+}
+function startAutoRotate() {
+  if (autoRotateTimer) return;
+  autoRotateTimer = setInterval(autoRotateTick, AUTO_ROTATE_MS);
+}
+function pauseAutoRotateForInteraction() {
+  if (autoRotateTimer) { clearInterval(autoRotateTimer); autoRotateTimer = null; }
+  if (autoRotateResume) clearTimeout(autoRotateResume);
+  autoRotateResume = setTimeout(startAutoRotate, AUTO_ROTATE_IDLE_MS);
+}
+// Manual tab clicks → presenter is driving; pause the carousel.
+for (const a of document.querySelectorAll('.tab-switcher .tab')) {
+  a.addEventListener('click', pauseAutoRotateForInteraction);
+}
+startAutoRotate();
+
 // ── ARCH view: anchor SVG curves to live element geometry ─────────────
 // SVG paths can't follow elements declaratively. Read the live geometry
 // of source + destination boxes via getBoundingClientRect(), write fresh
@@ -1062,6 +1118,23 @@ const SECTOR_SOURCE_W_FALLBACK = 640;
 const SECTOR_SOURCE_H_FALLBACK = 360;
 const _bboxClearTimers = {};    // sector -> setTimeout handle for clear-after-hold
 
+// Which feed layer is live per sector: 'mjpeg' (baked boxes already in the
+// image) or 'webrtc' (raw video, needs the canvas overlay). Default mjpeg —
+// SectorFeed flips it to webrtc only once frames actually arrive.
+const feedMode = { 'sensor-north': 'mjpeg', 'sensor-south': 'mjpeg' };
+
+// Per-class overlay colors — kept in sync with the Python baked-box palette
+// (snapshots._CLASS_COLOR_BGR / detector._CLASS_COLOR_BGR).
+const _CLASS_COLORS = {
+  person: '#3ce65a',    // green
+  backpack: '#ffa726',  // amber
+  drone: '#f03c3c',     // red
+  airplane: '#f03c3c',
+};
+function classColor(label) {
+  return _CLASS_COLORS[String(label).toLowerCase()] || '#ffa726';
+}
+
 class SectorFeed {
   constructor(sectorEl) {
     this.stream = sectorEl.dataset.stream;
@@ -1097,6 +1170,7 @@ class SectorFeed {
     if (this.mode === 'mjpeg' && this.pc === null) return;
     console.warn(`[feed] ${this.sector} → MJPEG (${reason})`);
     this.mode = 'mjpeg';
+    feedMode[this.sector] = 'mjpeg';
     this.video.style.opacity = '0';
     this.img.style.opacity = '1';
     if (this.video.srcObject) this.video.srcObject = null;
@@ -1114,6 +1188,7 @@ class SectorFeed {
     if (this.mode === 'webrtc') return;
     console.log(`[feed] ${this.sector} → WebRTC`);
     this.mode = 'webrtc';
+    feedMode[this.sector] = 'webrtc';
     this.video.style.opacity = '1';
     this.img.style.opacity = '0';
   }
@@ -1251,15 +1326,32 @@ class SectorFeed {
 }
 
 function _drawTrackGate(ctx, x1, y1, x2, y2, color) {
-  const leg = Math.max(14, Math.min((x2 - x1) / 4, (y2 - y1) / 4, 32));
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 3;
+  const leg = Math.max(18, Math.min((x2 - x1) / 4, (y2 - y1) / 4, 44));
+  // Thin full rectangle (faint) for the body, bold brackets for the corners —
+  // reads as a track gate at booth distance on a 42" monitor.
   ctx.lineJoin = 'miter';
-  // 4 corner brackets
+  ctx.strokeStyle = color;
+  ctx.globalAlpha = 0.45;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = 5;
   ctx.beginPath(); ctx.moveTo(x1, y1 + leg); ctx.lineTo(x1, y1); ctx.lineTo(x1 + leg, y1); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(x2 - leg, y1); ctx.lineTo(x2, y1); ctx.lineTo(x2, y1 + leg); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(x1, y2 - leg); ctx.lineTo(x1, y2); ctx.lineTo(x1 + leg, y2); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(x2 - leg, y2); ctx.lineTo(x2, y2); ctx.lineTo(x2, y2 - leg); ctx.stroke();
+}
+
+function _drawLabelChip(ctx, x1, y1, text, color) {
+  ctx.font = '700 15px "IBM Plex Mono", ui-monospace, monospace';
+  const w = ctx.measureText(text).width;
+  const padX = 7, h = 22;
+  const top = Math.max(0, y1 - h);
+  ctx.fillStyle = color;
+  ctx.fillRect(x1, top, w + padX * 2, h);
+  ctx.fillStyle = '#0b0d10';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x1 + padX, top + h / 2 + 1);
 }
 
 function drawBboxOverlay(sector, hits) {
@@ -1281,17 +1373,21 @@ function drawBboxOverlay(sector, hits) {
   // by min(cw/sw, ch/sh) and centered, leaving letterbox bars on whichever
   // axis has slack. Use Math.min (not max — that would be cover semantics
   // and put boxes outside the video onto the letterbox bars).
+  // Source dims: prefer the live WebRTC video; fall back to the MJPEG
+  // <img>'s natural size (the snapshot is 1280x720) so overlay coords line
+  // up with whichever layer is actually showing; finally the static
+  // fallback. Both layers use object-fit: contain, so the projection math
+  // (Math.min + center) is identical for either.
   const video = document.getElementById(`video-${sector}`);
-  const sw = (video && video.videoWidth) || SECTOR_SOURCE_W_FALLBACK;
-  const sh = (video && video.videoHeight) || SECTOR_SOURCE_H_FALLBACK;
+  const img = document.getElementById(`feed-${sector}`);
+  let sw = (video && video.videoWidth) || 0;
+  let sh = (video && video.videoHeight) || 0;
+  if (!sw || !sh) { sw = (img && img.naturalWidth) || SECTOR_SOURCE_W_FALLBACK; sh = (img && img.naturalHeight) || SECTOR_SOURCE_H_FALLBACK; }
   const scale = Math.min(cw / sw, ch / sh);
   const renderedW = sw * scale;
   const renderedH = sh * scale;
   const offsetX = (cw - renderedW) / 2;
   const offsetY = (ch - renderedH) / 2;
-
-  ctx.font = 'bold 13px "IBM Plex Mono", ui-monospace, monospace';
-  ctx.textBaseline = 'bottom';
 
   for (let i = 0; i < hits.length; i++) {
     const hit = hits[i];
@@ -1301,10 +1397,10 @@ function drawBboxOverlay(sector, hits) {
     const y1 = y1s * scale + offsetY;
     const x2 = x2s * scale + offsetX;
     const y2 = y2s * scale + offsetY;
-    _drawTrackGate(ctx, x1, y1, x2, y2, '#ffa726');
-    const labelText = `TRK-${String(i + 1).padStart(3, '0')} ${displayLabel(hit.label).toUpperCase()} ${Math.round((hit.confidence || 0) * 100)}`;
-    ctx.fillStyle = '#ffa726';
-    ctx.fillText(labelText, x1, Math.max(y1 - 4, 14));
+    const color = classColor(hit.label);
+    _drawTrackGate(ctx, x1, y1, x2, y2, color);
+    const labelText = `${displayLabel(hit.label).toUpperCase()} ${Math.round((hit.confidence || 0) * 100)}%`;
+    _drawLabelChip(ctx, x1, y1, labelText, color);
   }
 }
 
@@ -1316,6 +1412,14 @@ function drawBboxOverlay(sector, hits) {
 // while still keeping the bracket up most frames at ~2 events/sec/sector.
 function pushBboxOverlay(e) {
   if (!e || !e.node || !e.yolo_hits) return;
+  // In MJPEG mode the boxes are already baked into the frame (sensor's
+  // detector.annotate, or the synthesized fake feed). Drawing the canvas
+  // overlay too would double them up — slightly offset by transport lag —
+  // which looks broken. Only overlay on raw WebRTC video.
+  if (feedMode[e.node] !== 'webrtc') {
+    drawBboxOverlay(e.node, []); // keep the canvas clear
+    return;
+  }
   drawBboxOverlay(e.node, e.yolo_hits);
   if (_bboxClearTimers[e.node]) clearTimeout(_bboxClearTimers[e.node]);
   _bboxClearTimers[e.node] = setTimeout(() => {

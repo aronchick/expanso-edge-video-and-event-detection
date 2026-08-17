@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Synced Recordings · Expanso</title>
+<style>
+  :root { --bg:#0e1322; --surface:#15181d; --border:#2a3344; --text:#f4f6f8;
+          --dim:#9aa3ad; --brand:#6d4aff; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:16px/1.4 -apple-system, system-ui, "IBM Plex Sans", sans-serif; }
+  header { padding:14px 22px; border-bottom:1px solid var(--border);
+           font-weight:700; letter-spacing:.02em; }
+  header .brand { color:var(--brand); letter-spacing:.18em; }
+  .controls { display:flex; gap:10px; align-items:center; padding:14px 22px; }
+  button { background:var(--brand); color:#fff; border:0; border-radius:8px;
+           padding:10px 16px; font-weight:700; cursor:pointer; font-size:15px; }
+  button.secondary { background:var(--surface); border:1px solid var(--border); }
+  button:active { transform: translateY(1px); }
+  .time { color:var(--dim); font-family:"IBM Plex Mono", ui-monospace, monospace; margin-left:auto; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; padding:0 22px 22px; }
+  .cam { background:var(--surface); border:1px solid var(--border);
+         border-radius:12px; overflow:hidden; }
+  .cam h2 { margin:0; padding:10px 16px; font-size:13px; color:var(--dim);
+            letter-spacing:.14em; text-transform:uppercase;
+            font-family:"IBM Plex Mono", ui-monospace, monospace; }
+  video { width:100%; display:block; background:#000; aspect-ratio:4/3; }
+  @media (max-width: 900px) { .grid { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+  <header><span class="brand">EXPANSO</span> · synced recordings</header>
+  <div class="controls">
+    <button id="play">▶ Play both</button>
+    <button id="pause" class="secondary">⏸ Pause</button>
+    <button id="restart" class="secondary">⏮ Restart</button>
+    <span class="time" id="time">0.0s</span>
+  </div>
+  <div class="grid">
+    <div class="cam">
+      <h2>Sector North · cam-outside</h2>
+      <video id="a" src="cam-outside.mp4" playsinline preload="auto"></video>
+    </div>
+    <div class="cam">
+      <h2>Sector South · cam-inside</h2>
+      <video id="b" src="cam-inside.mp4" playsinline preload="auto"></video>
+    </div>
+  </div>
+  <script>
+    // Two independently-recorded files, played back in lockstep. Video A is
+    // the master clock; B is nudged to match whenever it drifts > 0.25s.
+    const a = document.getElementById('a');
+    const b = document.getElementById('b');
+    const t = document.getElementById('time');
+    const playBoth = () => { b.currentTime = a.currentTime; a.play(); b.play(); };
+    document.getElementById('play').onclick = playBoth;
+    document.getElementById('pause').onclick = () => { a.pause(); b.pause(); };
+    document.getElementById('restart').onclick = () => { a.currentTime = 0; b.currentTime = 0; playBoth(); };
+    a.addEventListener('timeupdate', () => {
+      if (Math.abs(b.currentTime - a.currentTime) > 0.25) b.currentTime = a.currentTime;
+      t.textContent = a.currentTime.toFixed(1) + 's';
+    });
+    a.addEventListener('seeked', () => { b.currentTime = a.currentTime; });
+    a.addEventListener('play', () => { if (b.paused) b.play(); });
+    a.addEventListener('pause', () => { if (!b.paused) b.pause(); });
+  </script>
+</body>
+</html>

@@ -34,7 +34,6 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-
 DATASET_DIR = Path("dataset-drone")
 IMAGES_DIR = DATASET_DIR / "images"
 META_DIR = DATASET_DIR / "meta"

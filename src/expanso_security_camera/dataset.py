@@ -61,9 +61,7 @@ TARGETS: dict[str, dict] = {
 
 def _target_config(target: str) -> dict:
     if target not in TARGETS:
-        raise SystemExit(
-            f"Unknown --target {target!r}; valid: {', '.join(TARGETS.keys())}"
-        )
+        raise SystemExit(f"Unknown --target {target!r}; valid: {', '.join(TARGETS.keys())}")
     return TARGETS[target]
 
 
@@ -147,8 +145,10 @@ def capture(
     frame_idx = len(list(images_dir.glob("*.jpg")))
 
     cfg = _target_config(target)
-    print(f"Capturing {camera_id} → {cfg['dataset_dir']}: "
-          f"{expected_boxes} {cfg['subject_singular']}(s) expected")
+    print(
+        f"Capturing {camera_id} → {cfg['dataset_dir']}: "
+        f"{expected_boxes} {cfg['subject_singular']}(s) expected"
+    )
     print(f"  {total_frames} frames over {duration}s ({fps} fps)")
 
     if countdown > 0:
@@ -212,9 +212,7 @@ def capture(
 # ── Step 2: Label (batch Claude vision on all captured frames) ──────────
 
 
-def _call_gemini_for_boxes(
-    image_path: str, expected_boxes: int, target: str = "box"
-) -> list[dict]:
+def _call_gemini_for_boxes(image_path: str, expected_boxes: int, target: str = "box") -> list[dict]:
     """Ask Gemini Flash to identify bounding boxes around the target subject.
 
     Returns list of {"bbox": [x1, y1, x2, y2]} dicts in pixel coords.

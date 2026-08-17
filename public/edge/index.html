@@ -19,16 +19,8 @@
   <div class="queue"><span id="queue-count">0</span> events queued · YOLO still firing</div>
 </div>
 
-<!-- Alert event overlay (full-screen takeover when correlator fires) -->
-<div id="alert-overlay" class="alert-overlay">
-  <div class="alert-headline">
-    <span class="icon">⚠</span>
-    <span>ALERT</span>
-    <span class="icon">⚠</span>
-  </div>
-  <div id="alert-contacts" class="alert-contacts"></div>
-  <div id="alert-meta" class="alert-meta"></div>
-</div>
+<!-- (The crowd alert now renders inside the combined counts card — see
+     #combined-alert — not as a floating overlay.) -->
 
 <!-- "Pipeline updated" big-signal overlay. Fires when a new class lands
      in the live trigger set (e.g. operator hits F4 → drone is added).
@@ -51,7 +43,8 @@
   <header class="header">
     <div class="brand">
       <span class="dot"></span>
-      <span>Edge ISR · Expanso</span>
+      <span class="brand-mark" aria-hidden="true">⬢</span>
+      <span>Edge ISR · <span class="brand-expanso">EXPANSO</span></span>
     </div>
     <nav class="tab-switcher" role="tablist" aria-label="View">
       <a class="tab is-active" data-tab="ops"     role="tab" aria-selected="true"  href="#ops">OPS</a>
@@ -81,17 +74,6 @@
   <section class="triggers-bar" aria-label="Active trigger classes">
     <span class="triggers-bar-label">TRIGGERS</span>
     <div id="trigger-chips" class="trigger-chips"></div>
-  </section>
-
-  <!-- Alert tile — always visible. STANDBY when the correlator hasn't
-       matched any rule recently; ACTIVE (red pulse) when an alert fires.
-       Collapses back to STANDBY after 6s with a "last:" timestamp. -->
-  <section class="alert-tile" id="alert-tile">
-    <div class="alert-light" id="alert-light"></div>
-    <div class="alert-label">ALERT</div>
-    <div class="alert-state" id="alert-state">STANDBY</div>
-    <div class="alert-detail" id="alert-detail">no alerts</div>
-    <div class="alert-meta" id="alert-meta">last: —</div>
   </section>
 
   <!-- Camera tiles use WebRTC (via go2rtc on :1984) for true real-time video,
@@ -130,15 +112,63 @@
     </div>
   </section>
 
-  <section class="events-panel events-north">
-    <h2>Recent · sector north</h2>
-    <div id="events-sensor-north" class="events-list"></div>
+  <!-- Right column: combined merge card on top, two per-zone counts below,
+       as ONE flex column that fills the full camera height (no dead space). -->
+  <div class="tally">
+
+  <!-- ── COMBINED tally (the merge) ──────────────────────────────────
+       The headline: two zones' people counts MERGED into one combined
+       total. Goes FLAG (coral) when the COMBINED total exceeds the
+       threshold — not when any single zone does. north + south → combined. -->
+  <section class="combined-card" id="combined-card" aria-label="Combined people count across both zones">
+    <div class="combined-head">
+      <span class="combined-eyebrow">COMBINED · BOTH ZONES</span>
+      <span class="combined-state clear" id="combined-state">CLEAR</span>
+    </div>
+    <div class="combined-body">
+      <div class="combined-total-wrap">
+        <span class="combined-total" id="combined-total">0</span>
+        <span class="combined-of" id="combined-threshold">/ 5</span>
+      </div>
+      <div class="combined-meter">
+        <div class="combined-meter-fill" id="combined-bar"></div>
+        <div class="combined-meter-mark" id="combined-mark"></div>
+      </div>
+      <div class="combined-breakdown" id="combined-breakdown">north 0 + south 0</div>
+      <!-- In-card crowd alert line — replaces the old floating interstitial.
+           Always occupies its row (reserved height) so the card never
+           reflows; text is empty until the combined total crosses. -->
+      <div class="combined-alert" id="combined-alert"></div>
+    </div>
   </section>
 
-  <section class="events-panel events-south">
-    <h2>Recent · sector south</h2>
-    <div id="events-sensor-south" class="events-list"></div>
+  <!-- Per-zone live people count. Big number reads from across a hall;
+       the recent-event ticker underneath shows the live stream feeding it. -->
+  <section class="zone-card zone-north" id="zone-card-sensor-north" aria-label="Zone north people count">
+    <div class="zone-card-head">
+      <span class="zone-card-title">ZONE NORTH</span>
+      <span class="zone-card-status" id="zone-status-sensor-north">—</span>
+    </div>
+    <div class="zone-card-count-wrap">
+      <span class="zone-card-count" id="zone-count-sensor-north">0</span>
+      <span class="zone-card-unit" id="zone-unit-sensor-north">people</span>
+    </div>
+    <div id="events-sensor-north" class="events-list zone-ticker"></div>
   </section>
+
+  <section class="zone-card zone-south" id="zone-card-sensor-south" aria-label="Zone south people count">
+    <div class="zone-card-head">
+      <span class="zone-card-title">ZONE SOUTH</span>
+      <span class="zone-card-status" id="zone-status-sensor-south">—</span>
+    </div>
+    <div class="zone-card-count-wrap">
+      <span class="zone-card-count" id="zone-count-sensor-south">0</span>
+      <span class="zone-card-unit" id="zone-unit-sensor-south">people</span>
+    </div>
+    <div id="events-sensor-south" class="events-list zone-ticker"></div>
+  </section>
+
+  </div><!-- /.tally -->
 
   <!-- Bottom strip: Expanso wordmark + tier dots + inline pipeline statuses (single line).
        Tier strip merged here per user direction. -->
