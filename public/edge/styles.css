@@ -80,7 +80,7 @@ body {
     radial-gradient(ellipse 70% 40% at 50% 112%, rgba(255,107,74,0.05), transparent 70%),
     var(--bg);
   color: var(--text);
-  font: var(--t-body)/1.45 "IBM Plex Sans", "Inter Tight", "Inter", -apple-system, system-ui, sans-serif;
+  font: var(--t-body)/1.45 "IBM Plex Sans", sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overflow: hidden;
@@ -253,7 +253,7 @@ body.tab-archive .archive-view { display: flex; }
 .metric-pill {
   font-size: var(--t-body);
   padding: 0.3em 0.75em;
-  border-radius: 999px;
+  border-radius: 9999px;
   background: var(--surface-2);
   border: 1px solid var(--border);
   display: inline-flex;
@@ -274,7 +274,7 @@ body.tab-archive .archive-view { display: flex; }
 .cloud-pill {
   font-size: var(--t-body);
   padding: 0.3em 0.75em;
-  border-radius: 999px;
+  border-radius: 9999px;
   background: rgba(61, 220, 132, 0.12);
   color: var(--ok);
   border: 1px solid var(--ok);
@@ -383,7 +383,7 @@ body.tier-edge-down #tier-edge {
   width: 0.85em;
   height: 0.85em;
   background: var(--text-mono);
-  border-radius: 1px;
+  border-radius: 2px;
   flex-shrink: 0;
   transition: background var(--m-fast), box-shadow var(--m-fast);
 }
@@ -482,7 +482,7 @@ body.tier-edge-down #tier-edge {
 .chip {
   font-size: var(--t-body);
   padding: 0.2em 0.7em;
-  border-radius: 999px;
+  border-radius: 9999px;
   background: rgba(127, 184, 220, 0.12);
   color: var(--expanso);
   border: 1px solid rgba(127, 184, 220, 0.4);
@@ -592,7 +592,7 @@ body.tier-edge-down #tier-edge {
 .sector-status {
   font-size: var(--t-body);
   padding: 0.15em 0.7em;
-  border-radius: 999px;
+  border-radius: 9999px;
   background: var(--surface-2);
   color: var(--text-dim);
   border: 1px solid var(--border);
@@ -707,7 +707,7 @@ body.tier-edge-down #tier-edge {
     linear-gradient(90deg, rgba(255,167,38,0.06), transparent 30%),
     var(--surface-2);
   border-left: 3px solid var(--alert);
-  border-radius: 3px;
+  border-radius: 4px;
   padding: 0.25rem 0.6rem 0.3rem;
   animation: slide-in var(--m-base) ease-out;
   /* Single-line compressed event row — fixed thin height. */
@@ -820,7 +820,7 @@ body.tier-edge-down #tier-edge {
   color: #7fb8dc;                  /* same blue as the gemini metric pill */
   background: rgba(127, 184, 220, 0.12);
   border: 1px solid rgba(127, 184, 220, 0.45);
-  border-radius: 999px;
+  border-radius: 9999px;
   padding: 0.05em 0.55em;
   flex-shrink: 0;
   white-space: nowrap;
@@ -895,7 +895,7 @@ body.tier-edge-down #tier-edge {
   gap: 0.45em;
   font-size: var(--t-body);
   padding: 0.25em 0.75em;
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--surface-2);
   border: 1px solid var(--border);
   font-family: "IBM Plex Mono", ui-monospace, monospace;
@@ -1461,7 +1461,7 @@ body.show-topology .topology { display: block; }
   gap: 0.05rem;
   background: rgba(11, 13, 16, 0.45);
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: 4px;
   padding: 0.3rem 0.5rem;
 }
 .arch-livestat-label {
@@ -1495,7 +1495,7 @@ body.show-topology .topology { display: block; }
   color: var(--text-dim);
   background: rgba(255,255,255,0.02);
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: 4px;
   padding: 0.15em 0.55em;
   letter-spacing: 0.04em;
   white-space: nowrap;
@@ -1527,7 +1527,7 @@ body.show-topology .topology { display: block; }
     var(--border) 0%,
     rgba(127, 184, 220, 0.55) 50%,
     var(--text-mono) 100%);
-  border-radius: 1.5px;
+  border-radius: 2px;
 }
 .arch-arrow-stem::after {
   /* Arrowhead at the right end */
@@ -1609,7 +1609,7 @@ body.show-topology .topology { display: block; }
   letter-spacing: 0.04em;
   background: rgba(11, 13, 16, 0.6);
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: 4px;
   padding: 0.2em 0.55em;
   min-width: 5.5rem;
 }
@@ -1736,7 +1736,7 @@ body.show-topology .topology { display: block; }
 .arch-tile {
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: 4px;
   padding: 0.5rem 0.75rem;
   display: flex;
   flex-direction: column;
@@ -1941,7 +1941,7 @@ body.show-topology .topology { display: block; }
   transform: translate(-50%, -50%);   /* center on the (x,y) JS sets */
   background: rgba(11, 13, 16, 0.6);
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: 4px;
   padding: 0.2em 0.55em;
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: var(--t-caption);
@@ -2010,7 +2010,7 @@ body.show-topology .topology { display: block; }
   letter-spacing: 0.04em;
   background: rgba(127,184,220,0.08);
   border: 1px solid rgba(127,184,220,0.45);
-  border-radius: 3px;
+  border-radius: 4px;
   padding: 0.2em 0.55em;
   color: var(--expanso);
   white-space: nowrap;
@@ -2058,7 +2058,7 @@ body.show-topology .topology { display: block; }
 .arch-legend__line {
   width: 2.4rem;
   height: 3px;
-  border-radius: 1.5px;
+  border-radius: 2px;
   background: linear-gradient(90deg,
     var(--border) 0%,
     var(--ok) 50%,
@@ -2112,7 +2112,7 @@ body.show-topology .topology { display: block; }
   flex-shrink: 0;
   padding: 0.1em 0.5em;
   border: 1px solid rgba(109,74,255,0.40);
-  border-radius: 3px;
+  border-radius: 4px;
   background: rgba(109,74,255,0.07);
   transition: background var(--m-fast), color var(--m-fast);
 }
@@ -2152,7 +2152,7 @@ body.show-topology .topology { display: block; }
 .platform-jobs-inline .job-inline.down    .job-inline-status { color: var(--critical); }
 .platform-jobs-inline .job-inline-led {
   width: 0.55em; height: 0.55em;
-  border-radius: 1px;  /* square LED, matching the design vocab */
+  border-radius: 2px;  /* square LED, matching the design vocab */
   background: var(--text-mono);
   flex-shrink: 0;
 }
@@ -2519,7 +2519,7 @@ body.tab-arch .arch-arrow-meta--out {
   background: var(--surface);
   border: 1px solid var(--border);
   box-shadow: 0 1px 4px rgba(15,23,42,0.08);
-  border-radius: 3px;
+  border-radius: 4px;
   padding: 0.2em 0.55em;
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: var(--t-caption);
@@ -2626,7 +2626,7 @@ body.tab-arch .platform-jobs-inline .job-inline.failed  .job-inline-led { backgr
 }
 
 .pipeline-update-headline {
-  font-family: "Inter Tight", "IBM Plex Sans", sans-serif;
+  font-family: "IBM Plex Sans", sans-serif;
   font-size: clamp(3rem, 9vw, 7rem);
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -2773,7 +2773,7 @@ body.tab-arch .platform-jobs-inline .job-inline.failed  .job-inline-led { backgr
   font-weight: 700;
   letter-spacing: 0.12em;
   padding: 0.15rem 0.7rem;
-  border-radius: 999px;
+  border-radius: 9999px;
   text-transform: uppercase;
 }
 .combined-state.clear { color: var(--ok); border: 1px solid rgba(21,163,74,0.35); }
@@ -2808,14 +2808,14 @@ body.tab-arch .platform-jobs-inline .job-inline.failed  .job-inline-led { backgr
   position: relative;
   height: 0.7rem;
   background: rgba(20,26,46,0.08);
-  border-radius: 999px;
+  border-radius: 9999px;
   overflow: hidden;
 }
 .combined-meter-fill {
   height: 100%;
   width: 0%;
   background: linear-gradient(90deg, var(--ok), var(--alert));
-  border-radius: 999px;
+  border-radius: 9999px;
   transition: width var(--m-base) ease, background var(--m-base) ease;
 }
 .combined-breakdown {

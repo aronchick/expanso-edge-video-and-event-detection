@@ -5,23 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Architecture — Box Transfer Monitor</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="fonts/fonts.css">
   <script>
     tailwind.config = { theme: { extend: {
-      fontFamily: { sans: ['DM Sans', 'system-ui'], mono: ['JetBrains Mono', 'monospace'] },
+      fontFamily: { sans: ['IBM Plex Sans', 'sans-serif'], mono: ['IBM Plex Mono', 'monospace'] },
       fontSize: { base: ['16px', '1.6'] },
     }}}
   </script>
   <style>
     * { -webkit-font-smoothing: antialiased; }
     body { background: #000; color: #fff; }
-    .ml { font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; }
-    .card { background: #111; border: 1px solid #333; border-radius: 12px; padding: 20px; }
-    .item { background: #1a1a1a; border-radius: 6px; padding: 8px 12px; color: #ccc; margin-bottom: 4px; }
+    .ml { font-family: 'IBM Plex Mono', monospace; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; }
+    .card { background: #111; border: 1px solid #333; border-radius: 16px; padding: 20px; }
+    .item { background: #1a1a1a; border-radius: 8px; padding: 8px 12px; color: #ccc; margin-bottom: 4px; }
     .arrow { text-align: center; padding: 10px 0; }
-    .arrow-text { font-family: 'JetBrains Mono', monospace; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #fff; background: #333; display: inline-block; padding: 4px 14px; border-radius: 20px; }
+    .arrow-text { font-family: 'IBM Plex Mono', monospace; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #fff; background: #333; display: inline-block; padding: 4px 14px; border-radius: 16px; }
     .arrow svg { display: inline-block; vertical-align: middle; }
-    .term { background: #0d0d0d; border: 1px solid #333; border-radius: 12px; overflow: hidden; }
+    .term { background: #0d0d0d; border: 1px solid #333; border-radius: 16px; overflow: hidden; }
     .term-bar { background: #1a1a1a; padding: 8px 14px; border-bottom: 1px solid #333; display: flex; align-items: center; gap: 7px; }
     .term-dot { width: 12px; height: 12px; border-radius: 50%; }
     .term pre { padding: 16px; margin: 0; font-size: 14px; line-height: 1.5; overflow-x: auto; color: #e0e0e0; }

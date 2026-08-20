@@ -1,0 +1,67 @@
+/* Self-hosted typefaces. Nothing here touches the network at run time.
+ *
+ * This demo used to pull seven faces from fonts.googleapis.com across five
+ * requests on three pages: DM Sans, Inter, Inter Tight, IBM Plex Sans, IBM Plex
+ * Mono, JetBrains Mono and Space Grotesk. Two of them (DM Sans, Space Grotesk)
+ * were loaded and never referenced by a single rule. On a conference floor with
+ * contested wifi that arrangement renders the booth screen in fallback faces,
+ * which is a live-demo failure rather than a style preference.
+ *
+ * Everything now resolves to one superfamily -- IBM Plex Sans for text, IBM
+ * Plex Mono for data and labels. Both are SIL OFL 1.1. Latin subset only;
+ * 144 KB for all seven files.
+ *
+ * url() is resolved relative to this stylesheet, so any page can link it at
+ * whatever depth it sits without rewriting paths.
+ */
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("ibm-plex-sans-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("ibm-plex-sans-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("ibm-plex-sans-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("ibm-plex-sans-700.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("ibm-plex-mono-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("ibm-plex-mono-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("ibm-plex-mono-600.woff2") format("woff2");
+}
