@@ -25,6 +25,7 @@ import argparse
 import asyncio
 import os
 import time
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 import uvicorn
@@ -362,7 +363,7 @@ def create_app(
         # drop, residential bufferbloat, ISP queue) is not real WAN loss. Real
         # loss persists for many seconds. Require N consecutive failures before
         # painting the red banner; recover on first success.
-        DOWN_THRESHOLD = 3  # 3 × 3s probe interval ≈ 9s of confirmed loss
+        down_threshold = 3  # 3 × 3s probe interval ≈ 9s of confirmed loss
         consecutive_failures = 0
         last_broadcast = metrics.is_cloud_up()
         await asyncio.sleep(2.0)
@@ -377,7 +378,7 @@ def create_app(
                         last_broadcast = True
                 else:
                     consecutive_failures += 1
-                    if consecutive_failures >= DOWN_THRESHOLD and last_broadcast:
+                    if consecutive_failures >= down_threshold and last_broadcast:
                         metrics.set_cloud(False)
                         await manager.broadcast({"type": "cloud", "data": {"up": False}})
                         last_broadcast = False
@@ -385,9 +386,17 @@ def create_app(
                 pass  # never let the monitor crash the app
             await asyncio.sleep(3.0)
 
-    @app.on_event("startup")
-    async def _start_wan_monitor() -> None:
-        asyncio.create_task(wan_monitor_loop())
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        task = asyncio.create_task(wan_monitor_loop())
+        try:
+            yield
+        finally:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+
+    app.router.lifespan_context = lifespan
 
     @app.post("/demo/wan-down")
     async def wan_down() -> dict:
@@ -508,9 +517,9 @@ def create_app(
         # Stale CSS/JS during the live demo silently breaks behavior (the user
         # gets the new code only after a hard refresh) — eliminate that risk.
         from starlette.responses import FileResponse
-        from starlette.staticfiles import StaticFiles as _SF
+        from starlette.staticfiles import StaticFiles
 
-        class NoCacheStatic(_SF):
+        class NoCacheStatic(StaticFiles):
             def file_response(self, *args, **kwargs):  # type: ignore[override]
                 resp = super().file_response(*args, **kwargs)
                 if isinstance(resp, FileResponse):

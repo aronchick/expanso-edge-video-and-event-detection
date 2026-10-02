@@ -49,7 +49,7 @@ def iter_frames(video: Path, fps: float):
     ]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=1 << 22)
     assert proc.stdout is not None and proc.stderr is not None
-    SOI, EOI = b"\xff\xd8\xff", b"\xff\xd9"
+    start_marker, end_marker = b"\xff\xd8\xff", b"\xff\xd9"
     buf = bytearray()
     idx = 0
     try:
@@ -59,10 +59,10 @@ def iter_frames(video: Path, fps: float):
                 break
             buf.extend(chunk)
             while True:
-                soi = buf.find(SOI)
+                soi = buf.find(start_marker)
                 if soi < 0:
                     break
-                eoi = buf.find(EOI, soi)
+                eoi = buf.find(end_marker, soi)
                 if eoi < 0:
                     if soi > 0:
                         del buf[:soi]
@@ -140,21 +140,21 @@ def main() -> int:
 
         # Figure out the image size from the JPEG so we can normalize.
         with Image.open(BytesIO(jpeg)) as im:
-            W, H = im.size
+            width, height = im.size
 
         x1, y1, x2, y2 = hit["bbox"]
         # Clamp into the frame, just in case.
-        x1 = max(0.0, min(float(x1), W))
-        x2 = max(0.0, min(float(x2), W))
-        y1 = max(0.0, min(float(y1), H))
-        y2 = max(0.0, min(float(y2), H))
+        x1 = max(0.0, min(float(x1), width))
+        x2 = max(0.0, min(float(x2), width))
+        y1 = max(0.0, min(float(y1), height))
+        y2 = max(0.0, min(float(y2), height))
         if x2 <= x1 or y2 <= y1:
             n_skipped += 1
             continue
-        cx = ((x1 + x2) / 2.0) / W
-        cy = ((y1 + y2) / 2.0) / H
-        w = (x2 - x1) / W
-        h = (y2 - y1) / H
+        cx = ((x1 + x2) / 2.0) / width
+        cy = ((y1 + y2) / 2.0) / height
+        w = (x2 - x1) / width
+        h = (y2 - y1) / height
 
         base = f"{args.subject}_{stem}_{idx:05d}"
         (images_dir / f"{base}.jpg").write_bytes(jpeg)

@@ -43,7 +43,7 @@ def main() -> int:
         print(f"no images in {IMAGES}", file=sys.stderr)
         return 1
 
-    label_stems = {l.stem for l in labels}
+    label_stems = {label.stem for label in labels}
     pairs: list[tuple[Path, Path]] = []
     skipped_no_label = 0
     skipped_empty = 0

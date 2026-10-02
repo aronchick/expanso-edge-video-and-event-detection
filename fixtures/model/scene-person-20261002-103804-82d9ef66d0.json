@@ -1,0 +1,10 @@
+{
+ "prompt_sha256": "82d9ef66d00023929c2a67e65c08c57883f2d4a988a90f1ecea2bcc9b5914a44",
+ "name": "scene-person",
+ "backend": "gemini",
+ "model": "gemini-3.8-flash-low",
+ "recorded_at": "2026-10-02T10:38:04-0700",
+ "system_sha256": "cef5b8852fdf9881e54a6cb2e85b750c51d3be86dc5c300434a289ee390d11a1",
+ "prompt_head": "Detected object labels: person.",
+ "text": "One person was detected."
+}

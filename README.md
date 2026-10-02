@@ -4,7 +4,7 @@ Built off potential user requirements for perimeter security and low-latency edg
 
 Edge sensors today ship every frame to the cloud and wait for someone to decide whether what they saw mattered. That costs you bandwidth on a contested link, latency on every decision, emissions an adversary can detect, and a single point of failure they will exploit.
 
-This repo is a working reference for **moving the workload to the data**: YOLO + Gemini cascade on the edge, a FastAPI/WebSocket fusion node on a laptop, two cameras, a **cross-zone people tally that merges both feeds into one combined count**, S3 archive — built on [Expanso Edge](https://expanso.io). Detection happens local; cloud is augmentation; pipeline updates push live; nothing is lost when the link drops.
+This repo is a working reference for **moving the workload to the data**: local YOLO detection, recorded analyst summaries through the demo-kit model gateway, a FastAPI/WebSocket fusion node on a laptop, two cameras, a **cross-zone people tally that merges both feeds into one combined count**, and an S3 archive, built on [Expanso Edge](https://expanso.io). Detection stays local. Rehearsals replay committed answers with no model calls; live answers are recorded deliberately through a capped subscription backend.
 
 **Headline demo (booth):** two cameras watch two zones; the fusion node counts people in each and **merges the counts**. Neither zone alone trips the alarm — but when the **combined** total across both cameras exceeds the threshold (default 5), the dashboard throws a full-screen **CROWD FLAG**. The merge is the point: 3 people north + 3 people south = 6 → FLAG.
 

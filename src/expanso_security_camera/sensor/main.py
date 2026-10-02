@@ -15,7 +15,7 @@ Required env vars in real mode:
   RTSP_URL              rtsp://...
   NODE_ID               sensor-north | sensor-south
   ORCHESTRATOR_URL      http://192.168.50.30:8080
-  GOOGLE_API_KEY        Gemini API key (also accepts GEMINI_API_KEY)
+MODEL_GATEWAY_URL     Local demo-kit gateway (defaults to 127.0.0.1:18143)
 
 Optional:
   YOLO_MODEL            path to .engine or .pt (default: yolo11s.engine)

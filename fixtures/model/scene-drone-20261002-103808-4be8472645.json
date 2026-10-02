@@ -1,0 +1,10 @@
+{
+ "prompt_sha256": "4be8472645781ca173380ff6a9df4946e202e669042c3fd792ae513473b1e9bf",
+ "name": "scene-drone",
+ "backend": "gemini",
+ "model": "gemini-3.8-flash-low",
+ "recorded_at": "2026-10-02T10:38:08-0700",
+ "system_sha256": "cef5b8852fdf9881e54a6cb2e85b750c51d3be86dc5c300434a289ee390d11a1",
+ "prompt_head": "Detected object labels: drone.",
+ "text": "A drone was detected."
+}

@@ -711,3 +711,25 @@ bump-sha:
 # same findings as warnings while retrofitting an older demo.
 video-check:
     @uv run -s ../_demo-kit/lint-demo-ui.py . --video-strict
+
+# Model gateway: fixture replay is the default. Only an operator may opt into
+# a subscription backend for a bounded recording pass.
+gateway-up:
+    mkdir -p .runtime
+    nohup uv run -s ../_demo-kit/model-gateway.py serve --config model-gateway.toml > .runtime/gateway.log 2>&1 & echo $! > .runtime/gateway.pid
+
+gateway-down:
+    -[ -f .runtime/gateway.pid ] && kill "$(cat .runtime/gateway.pid)" 2>/dev/null && rm .runtime/gateway.pid
+
+gateway-status:
+    @uv run -s ../_demo-kit/model-gateway.py status --config model-gateway.toml
+
+provider-check:
+    @uv run -s ../_demo-kit/lint-demo-providers.py .
+
+test:
+    uv run pytest
+
+check: provider-check
+    uv run ruff check .
+    uv run pytest

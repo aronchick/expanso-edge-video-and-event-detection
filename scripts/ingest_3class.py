@@ -65,7 +65,9 @@ def _laplacian_variance(gray: np.ndarray) -> float:
     return float(cv2.Laplacian(gray, cv2.CV_64F).var())
 
 
-def _yolo_bbox_line(cls_idx: int, x1: float, y1: float, x2: float, y2: float, w: int, h: int) -> str:
+def _yolo_bbox_line(
+    cls_idx: int, x1: float, y1: float, x2: float, y2: float, w: int, h: int
+) -> str:
     xc = (x1 + x2) / 2 / w
     yc = (y1 + y2) / 2 / h
     bw = (x2 - x1) / w
@@ -78,7 +80,9 @@ def _yolo_bbox_line(cls_idx: int, x1: float, y1: float, x2: float, y2: float, w:
 # ──────────────────────────────────────────────────────────────────────────
 
 
-def sample_frames(video_path: Path, fps: float, min_sharpness: float, keep_top: int) -> list[tuple[float, np.ndarray, int]]:
+def sample_frames(
+    video_path: Path, fps: float, min_sharpness: float, keep_top: int
+) -> list[tuple[float, np.ndarray, int]]:
     """Sample frames from video, filter by sharpness, return top-K sharpest."""
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
@@ -201,7 +205,9 @@ def label_person_via_coco(image_path: Path) -> list[tuple[int, float, float, flo
     return out
 
 
-def label_person_backpack_via_coco(image_path: Path) -> list[tuple[int, float, float, float, float]]:
+def label_person_backpack_via_coco(
+    image_path: Path,
+) -> list[tuple[int, float, float, float, float]]:
     """Auto-label persons + backpacks in one pass."""
     model = _coco_model()
     frame = cv2.imread(str(image_path))

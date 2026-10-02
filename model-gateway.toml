@@ -1,0 +1,18 @@
+# Rehearsal replays committed answers. Live recording is an explicit,
+# subscription-backed operator action; the edge pipeline never chooses it.
+port = 18143
+fixtures = "fixtures/model"
+state = ".runtime/gateway"
+timeout_s = 240
+
+[caps]
+per_run = 4
+per_minute = 2
+per_day = 20
+
+[models]
+gemini = "gemini-3.8-flash-low"
+claude = "sonnet"
+codex = ""
+kimi = ""
+local = "ministral-3:3b"

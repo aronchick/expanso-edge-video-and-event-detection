@@ -2,7 +2,7 @@
 
 Three-step workflow:
     1. CAPTURE: Raw frames only — fast, no YOLO (on Jetson)
-    2. LABEL:   Batch YOLO labeling + optional Claude validation (offline)
+    2. LABEL:   Batch local YOLO labeling + optional human review (offline)
     3. EXPORT + FINETUNE
 
     # Capture (fast — just grabs frames, no inference)
@@ -13,7 +13,7 @@ Three-step workflow:
     # Label all frames in batch (runs YOLO once on everything)
     uv run esc-dataset label
 
-    # Optional: validate with Claude CLI
+    # Optional: render numbered candidates for human review
     uv run esc-dataset validate
 
     # Export + fine-tune
@@ -24,7 +24,6 @@ Three-step workflow:
 from __future__ import annotations
 
 import json
-import os
 import random
 import shutil
 import sys
@@ -209,95 +208,28 @@ def capture(
     print(f"  Total dataset: {total_dataset} images at {images_dir}")
 
 
-# ── Step 2: Label (batch Claude vision on all captured frames) ──────────
+# ── Step 2: Label (local YOLO on all captured frames) ──────────────────
 
 
-def _call_gemini_for_boxes(image_path: str, expected_boxes: int, target: str = "box") -> list[dict]:
-    """Ask Gemini Flash to identify bounding boxes around the target subject.
-
-    Returns list of {"bbox": [x1, y1, x2, y2]} dicts in pixel coords.
-    Uses the REST API directly — no SDK needed.
-
-    `target` selects the subject vocabulary (box vs drone vs ...).
-    """
-    import base64
-    import urllib.request
+def _call_local_yolo_for_boxes(
+    image_path: str, expected_boxes: int, target: str = "box"
+) -> list[dict]:
+    """Run local open-vocabulary YOLO; no provider or network call is made."""
+    from ultralytics import YOLO
 
     cfg = _target_config(target)
-
-    api_key = os.environ.get("GOOGLE_API_KEY", "")
-    if not api_key:
-        raise RuntimeError("GOOGLE_API_KEY not set")
-
-    # Read and encode image
-    with open(image_path, "rb") as f:
-        img_b64 = base64.b64encode(f.read()).decode("utf-8")
-
-    # Get image dimensions for the response
-    frame = cv2.imread(image_path)
-    h, w = frame.shape[:2]
-
-    prompt = (
-        f"This security camera image ({w}x{h} pixels) contains exactly "
-        f"{expected_boxes} {cfg['subject_for_count']}. For each "
-        f"{cfg['subject_singular']}, return its tight bounding box as pixel "
-        f"coordinates. Return ONLY a JSON array of objects with x1, y1, x2, y2 "
-        f"integer keys (pixel values). "
-        f'Example: [{{"x1":10,"y1":20,"x2":100,"y2":200}}]. No explanation.'
+    model = YOLO("yolov8s-worldv2.pt")
+    model.set_classes([cfg["subject_singular"]])
+    result = model(image_path, verbose=False, conf=0.08)[0]
+    ranked = sorted(
+        zip(result.boxes.conf, result.boxes.xyxy),
+        key=lambda item: float(item[0]),
+        reverse=True,
     )
-
-    payload = json.dumps(
-        {
-            "contents": [
-                {
-                    "parts": [
-                        {"inline_data": {"mime_type": "image/jpeg", "data": img_b64}},
-                        {"text": prompt},
-                    ]
-                }
-            ],
-            "generationConfig": {"temperature": 0.1, "maxOutputTokens": 4096},
-        }
-    ).encode("utf-8")
-
-    url = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"gemini-3-flash-preview:generateContent?key={api_key}"
-    )
-    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
-
-    # Retry with backoff on rate limit
-    for attempt in range(5):
-        try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-            break
-        except urllib.error.HTTPError as e:
-            if e.code == 429 and attempt < 4:
-                wait = 2**attempt  # 1, 2, 4, 8s
-                time.sleep(wait)
-                continue
-            raise
-
-    text = data["candidates"][0]["content"]["parts"][0]["text"]
-
-    # Strip markdown code fences if present
-    text = text.replace("```json", "").replace("```", "").strip()
-
-    # Parse JSON array of bbox objects
-    start = text.find("[")
-    end = text.rfind("]")
-    if start == -1 or end == -1:
-        return []
-    try:
-        boxes = json.loads(text[start : end + 1])
-        return [
-            {"bbox": [int(b["x1"]), int(b["y1"]), int(b["x2"]), int(b["y2"])]}
-            for b in boxes
-            if all(k in b for k in ("x1", "y1", "x2", "y2"))
-        ]
-    except (json.JSONDecodeError, TypeError, KeyError):
-        return []
+    return [
+        {"bbox": [int(value) for value in box]}
+        for _, box in ranked[:expected_boxes]
+    ]
 
 
 def _label_one(img_path: Path, target: str = "box") -> tuple[str, int, str | None]:
@@ -318,7 +250,7 @@ def _label_one(img_path: Path, target: str = "box") -> tuple[str, int, str | Non
         expected = meta.get("expected_boxes", 8)
 
     try:
-        dets = _call_gemini_for_boxes(str(img_path), expected, target=target)
+        dets = _call_local_yolo_for_boxes(str(img_path), expected, target=target)
 
         lines = []
         for d in dets:
@@ -336,7 +268,7 @@ def _label_one(img_path: Path, target: str = "box") -> tuple[str, int, str | Non
             cv2.rectangle(review, (bx1, by1), (bx2, by2), (0, 255, 0), 2)
         cv2.putText(
             review,
-            f"{len(dets)}/{expected} {cfg['class_names'][0]} [Gemini]",
+            f"{len(dets)}/{expected} {cfg['class_names'][0]} [local YOLO]",
             (10, 25),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
@@ -351,7 +283,7 @@ def _label_one(img_path: Path, target: str = "box") -> tuple[str, int, str | Non
 
 
 def label(sample_every: int = 1, workers: int = 10, target: str = "box") -> None:
-    """Batch-label captured frames using Gemini vision, parallelized.
+    """Batch-label captured frames using local YOLO.
 
     Args:
         sample_every: Label every Nth frame (1 = all, 5 = every 5th)
@@ -360,7 +292,6 @@ def label(sample_every: int = 1, workers: int = 10, target: str = "box") -> None
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    cfg = _target_config(target)
     _, images_dir, labels_dir, review_dir, _ = _dirs(target)
 
     images = sorted(images_dir.glob("*.jpg"))
@@ -380,15 +311,14 @@ def label(sample_every: int = 1, workers: int = 10, target: str = "box") -> None
     for d in (labels_dir, review_dir):
         d.mkdir(parents=True, exist_ok=True)
 
-    # Start conservative, ramp up if no 429s
-    print(f"Labeling {len(to_label)} images for target={target!r} via Gemini Flash")
+    print(f"Labeling {len(to_label)} images for target={target!r} via local YOLO")
 
     labeled = 0
     errors = 0
     start = time.time()
 
     # Process in batches to control rate
-    batch_size = min(workers, 5)
+    batch_size = 1
     for batch_start in range(0, len(to_label), batch_size):
         batch = to_label[batch_start : batch_start + batch_size]
 
@@ -398,11 +328,7 @@ def label(sample_every: int = 1, workers: int = 10, target: str = "box") -> None
                 stem, n_boxes, err = future.result()
                 if err:
                     errors += 1
-                    if "429" in str(err):
-                        # Back off on rate limit
-                        batch_size = max(1, batch_size - 1)
-                        time.sleep(5)
-                    elif errors <= 5 or errors % 20 == 0:
+                    if errors <= 5 or errors % 20 == 0:
                         print(f"  ERROR {stem}: {err}")
                 else:
                     labeled += 1
@@ -422,7 +348,7 @@ def label(sample_every: int = 1, workers: int = 10, target: str = "box") -> None
     print(f"  Review → {REVIEW_DIR}/")
 
 
-# ── Step 3: Validate (optional, Claude CLI) ─────────────────────────────
+# ── Step 3: Review (optional, local rendering) ─────────────────────────
 
 
 def _draw_numbered_candidates(frame, dets: list[dict]) -> np.ndarray:
@@ -437,44 +363,21 @@ def _draw_numbered_candidates(frame, dets: list[dict]) -> np.ndarray:
     return img
 
 
-def _call_claude_cli(image_path: str, prompt: str) -> list[int]:
-    """Call Claude via CLI — uses OAuth login, no API key needed."""
-    import shutil
-    import subprocess
-
-    claude_bin = shutil.which("claude") or str(Path.home() / ".local" / "bin" / "claude")
-    result = subprocess.run(
-        [claude_bin, "-p", prompt, image_path, "--output-format", "text"],
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"claude CLI failed: {result.stderr.strip()}")
-    return _parse_indices(result.stdout)
-
-
 def _parse_indices(text: str) -> list[int]:
-    text = text.strip()
+    """Parse a one-based JSON array into zero-based candidate indexes."""
     start = text.find("[")
     end = text.rfind("]")
     if start == -1 or end == -1:
         return []
     try:
         indices = json.loads(text[start : end + 1])
-        return [i - 1 for i in indices if isinstance(i, int) and i >= 1]
     except (json.JSONDecodeError, TypeError):
         return []
+    return [index - 1 for index in indices if isinstance(index, int) and index >= 1]
 
 
 def validate(sample_every: int = 10, target: str = "box") -> None:
-    """Offline validation: send sampled frames to Claude CLI.
-
-    For every Nth image, draws all YOLO candidates on the frame,
-    sends to `claude -p`, asks which candidates are real targets.
-    Rewrites the label file with the validated detections.
-    """
-    import tempfile
+    """Render numbered local candidates for a bounded human review."""
 
     cfg = _target_config(target)
     _, images_dir, labels_dir, review_dir, meta_dir = _dirs(target)
@@ -490,12 +393,10 @@ def validate(sample_every: int = 10, target: str = "box") -> None:
     paired = [(img, meta_dir / f"{img.stem}.json") for img in images if img.stem in meta_stems]
 
     to_validate = paired[::sample_every]
-    print(f"Validating {len(to_validate)} of {len(paired)} frames via claude CLI")
+    print(f"Rendering {len(to_validate)} of {len(paired)} frames for review")
     print()
 
     validated = 0
-    errors = 0
-
     for idx, (img_path, meta_path) in enumerate(to_validate):
         meta = json.loads(meta_path.read_text())
         expected = meta["expected_boxes"]
@@ -508,65 +409,21 @@ def validate(sample_every: int = 10, target: str = "box") -> None:
         if frame is None:
             continue
 
-        h, w = frame.shape[:2]
-
         annotated = _draw_numbered_candidates(frame, all_candidates)
-
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
-            tmp_path = f.name
-            cv2.imwrite(tmp_path, annotated, [cv2.IMWRITE_JPEG_QUALITY, 80])
-
-        n = len(all_candidates)
-        prompt = (
-            f"This security camera image has exactly {expected} {cfg['subject_for_count']} "
-            f"(some may be partially occluded). I've drawn {n} numbered candidate "
-            f"bounding boxes (#1-#{n}). Which candidates are correctly on real "
-            f"{cfg['subject_plural']}? Return ONLY a JSON array of candidate numbers. "
-            f"Example: [1, 3, 5]. No explanation."
+        cv2.putText(
+            annotated,
+            f"expected {expected} {cfg['class_names'][0]}",
+            (10, 25),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 255, 0),
+            2,
         )
+        cv2.imwrite(str(review_dir / f"{img_path.stem}-review.jpg"), annotated)
+        validated += 1
+        print(f"  [{idx + 1}/{len(to_validate)}] {img_path.stem}")
 
-        try:
-            valid_indices = _call_claude_cli(tmp_path, prompt)
-            dets = [all_candidates[j] for j in valid_indices if j < len(all_candidates)]
-
-            lines = []
-            for d in dets:
-                x1, y1, x2, y2 = d["bbox"]
-                xc = (x1 + x2) / 2 / w
-                yc = (y1 + y2) / 2 / h
-                bw = (x2 - x1) / w
-                bh = (y2 - y1) / h
-                lines.append(f"0 {xc:.6f} {yc:.6f} {bw:.6f} {bh:.6f}")
-            (labels_dir / f"{img_path.stem}.txt").write_text("\n".join(lines))
-
-            review = frame.copy()
-            for d in dets:
-                bx1, by1, bx2, by2 = map(int, d["bbox"])
-                cv2.rectangle(review, (bx1, by1), (bx2, by2), (0, 255, 0), 2)
-            cv2.putText(
-                review,
-                f"{len(dets)}/{expected} {cfg['class_names'][0]} [validated]",
-                (10, 25),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (0, 255, 0),
-                2,
-            )
-            cv2.imwrite(str(review_dir / f"{img_path.stem}.jpg"), review)
-
-            validated += 1
-            print(
-                f"  [{idx + 1}/{len(to_validate)}] {img_path.stem}: "
-                f"{len(dets)}/{expected} validated"
-            )
-
-        except Exception as e:
-            errors += 1
-            print(f"  [{idx + 1}/{len(to_validate)}] {img_path.stem}: ERROR {e}")
-        finally:
-            os.unlink(tmp_path)
-
-    print(f"\nDone! {validated} validated, {errors} errors")
+    print(f"\nDone! {validated} review frames written; labels were not changed")
 
 
 # ── Step 4: Export ──────────────────────────────────────────────────────
@@ -591,7 +448,7 @@ def export_dataset(val_split: float = 0.2, target: str = "box") -> None:
         print("No matched image/label pairs. Run 'label' first.")
         return
 
-    # Filter out empty label files (Gemini found 0 detections — bad
+    # Filter out empty label files (local YOLO found 0 detections — bad
     # training signal). Drop instead of poison the dataset.
     nonempty = []
     empty = 0
@@ -689,22 +546,6 @@ def main() -> None:
             countdown=_parse_arg("--countdown", 0, int),
             target=target,
         )
-
-    elif cmd == "models":
-        import urllib.request
-
-        api_key = os.environ.get("GOOGLE_API_KEY", "")
-        if not api_key:
-            print("Set GOOGLE_API_KEY first")
-            sys.exit(1)
-        url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-        with urllib.request.urlopen(url, timeout=10) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        for m in data.get("models", []):
-            name = m["name"].replace("models/", "")
-            methods = ", ".join(m.get("supportedGenerationMethods", []))
-            if "generateContent" in methods:
-                print(f"  {name}")
 
     elif cmd == "label":
         label(sample_every=_parse_arg("--sample-every", 1, int), target=target)

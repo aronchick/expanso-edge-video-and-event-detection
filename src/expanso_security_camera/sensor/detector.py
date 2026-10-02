@@ -2,30 +2,27 @@
 
 Stage 1: local YOLO (TensorRT engine on Jetson, .pt fallback elsewhere).
          Always on, sub-50ms per frame on Orin.
-Stage 2: Gemini Flash. Fires only on YOLO hits, rate-limited per node.
+Stage 2: a recorded analyst summary from the demo-kit model gateway. It fires
+only on YOLO hits and is rate-limited per node.
 
 The class set that triggers Gemini is read from the orchestrator at
 runtime via TriggerClient — that's the live-update knob for the demo.
 
-Gemini calls go through urllib.request to match the existing
-dataset.py pattern (no SDK dependency). On any failure (timeout, 429,
-network), we fall back to a canned description per Appendix A so the
-demo keeps flowing.
+The gateway sees stable detection labels, not frames. Per-frame vision stays
+local; fixture mode is the default and live recording is an explicit operator
+action behind the gateway's single-flight guard, caps, and kill switch.
 """
 
 from __future__ import annotations
 
-import base64
-import json
 import os
 import time
-import urllib.error
-import urllib.request
 from typing import Optional
 
 import cv2
 import numpy as np
 
+from expanso_security_camera.model_gateway import ask as ask_model_gateway
 from expanso_security_camera.sensor.schema import Detection, Event
 from expanso_security_camera.sensor.triggers_client import TriggerClient
 
@@ -70,16 +67,12 @@ _WANTED_LABELS = {"person", "backpack", "drone", "airplane"}
 # sees the cloud-reachback pill tick at a calm cadence (~8/min total across
 # both sensors) instead of a firehose. Override per-deploy with EDGE_GEMINI_COOLDOWN_SEC.
 GEMINI_COOLDOWN_SEC = float(os.environ.get("EDGE_GEMINI_COOLDOWN_SEC", "15.0"))
-GEMINI_MODEL = "gemini-3-flash-preview"
+ANALYST_MODEL = "model-gateway"
 
-GEMINI_PROMPT = """You are an edge sensor analyst. Look at this frame from
-a perimeter camera and respond in ONE short sentence covering:
-- what is visible (objects, persons, vehicles)
-- any tactically relevant details (carried items, posture, vehicle type)
-- whether this differs from a typical civilian scene
-
-Do not speculate beyond what is visible. If nothing notable is in frame,
-say "no notable activity"."""
+ANALYST_SYSTEM = """You summarize local object detections for a perimeter
+camera. Return one short sentence. Use only the labels provided. Do not infer
+appearance, posture, intent, identity, or anything that local detection did
+not establish."""
 
 # Canned descriptions for graceful Gemini-down fallback (Appendix A).
 CANNED_DESCRIPTIONS: dict[tuple[str, ...] | str, str] = {
@@ -113,7 +106,6 @@ class Detector:
         triggers: TriggerClient,
         model_path: str = "yolo11s.engine",
         drone_model_path: str | None = None,
-        gemini_api_key: str | None = None,
     ) -> None:
         from ultralytics import YOLO  # heavy import, defer until construction
 
@@ -134,11 +126,6 @@ class Detector:
         if self.drone_model is not None:
             self.drone_model(dummy, verbose=False)
 
-        self.api_key = (
-            gemini_api_key
-            or os.environ.get("GOOGLE_API_KEY")
-            or os.environ.get("GEMINI_API_KEY", "")
-        )
         self._last_gemini_ts = 0.0
         self.model_name = os.path.basename(model_path).split(".")[0]
 
@@ -225,7 +212,7 @@ class Detector:
             gemini_description=gemini_desc,
             model_versions={
                 "yolo": self.model_name,
-                "gemini": GEMINI_MODEL if gemini_used else None,
+                "gemini": ANALYST_MODEL if gemini_used else None,
             },
         )
 
@@ -269,79 +256,31 @@ class Detector:
         return out
 
     def _maybe_describe(
-        self, frame: np.ndarray, hits: list[Detection], ts: float
+        self, _frame: np.ndarray, hits: list[Detection], ts: float
     ) -> tuple[Optional[str], bool]:
         """Return (description, used_gemini)."""
         if ts - self._last_gemini_ts < GEMINI_COOLDOWN_SEC:
             return None, False
-        if not self.api_key:
-            return _canned_for(hits), False
-
         try:
-            _, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
-            text = _call_gemini(self.api_key, jpg.tobytes())
+            labels = sorted({hit.label for hit in hits})
+            prompt = "Detected object labels: " + ", ".join(labels) + "."
+            fixture = "scene-" + "-".join(labels)
+            result = ask_model_gateway(
+                prompt,
+                system=ANALYST_SYSTEM,
+                fixture=fixture,
+                timeout=1.5,
+            )
+            text = str(result["text"]).strip()
             self._last_gemini_ts = ts
             return text, True
         except Exception as e:
             # CRITICAL: update the cooldown timestamp even on failure. Otherwise,
-            # when WAN is down, every detection immediately re-attempts Gemini
-            # (since the cooldown check sees a stale `_last_gemini_ts`), and
-            # the synchronous urllib call blocks the yolo worker for the full
-            # timeout on EACH detection. The result is event/bbox stutter that
-            # tracks the timeout cadence, not the cooldown. (Beat 5A bug.)
+            # Without this, every detection would immediately re-attempt the
+            # gateway and block the YOLO worker until its timeout.
             self._last_gemini_ts = ts
-            print(f"[{self.node_id}] gemini call failed: {e}", flush=True)
+            print(f"[{self.node_id}] model gateway unavailable: {e}", flush=True)
             return _canned_for(hits), False
-
-
-def _call_gemini(api_key: str, jpg_bytes: bytes, timeout: float = 1.5) -> str:
-    """Single-shot Gemini call. Retries 429 with exponential backoff.
-
-    Timeout is intentionally short (1.5s) — when the WAN is healthy, Gemini
-    Flash returns in 200-800ms; when the WAN is down, we'd rather give up fast
-    than block the synchronous yolo worker (which would visibly stutter the
-    bbox overlay and event stream). The cooldown still throttles attempt rate.
-    """
-    url = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{GEMINI_MODEL}:generateContent?key={api_key}"
-    )
-    payload = json.dumps(
-        {
-            "contents": [
-                {
-                    "parts": [
-                        {
-                            "inline_data": {
-                                "mime_type": "image/jpeg",
-                                "data": base64.b64encode(jpg_bytes).decode("utf-8"),
-                            }
-                        },
-                        {"text": GEMINI_PROMPT},
-                    ]
-                }
-            ],
-            "generationConfig": {"temperature": 0.2, "maxOutputTokens": 256},
-        }
-    ).encode("utf-8")
-
-    for attempt in range(4):
-        try:
-            req = urllib.request.Request(
-                url,
-                data=payload,
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-            text = data["candidates"][0]["content"]["parts"][0]["text"]
-            return text.strip()
-        except urllib.error.HTTPError as e:
-            if e.code == 429 and attempt < 3:
-                time.sleep(2**attempt)
-                continue
-            raise
 
 
 # Per-class colors (BGR). Kept in sync with snapshots._CLASS_COLOR_BGR and
