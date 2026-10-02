@@ -1,5 +1,7 @@
 # Expanso Edge — Video & Event Detection
 
+Built off potential user requirements for perimeter security and low-latency edge vision cascades.
+
 Edge sensors today ship every frame to the cloud and wait for someone to decide whether what they saw mattered. That costs you bandwidth on a contested link, latency on every decision, emissions an adversary can detect, and a single point of failure they will exploit.
 
 This repo is a working reference for **moving the workload to the data**: YOLO + Gemini cascade on the edge, a FastAPI/WebSocket fusion node on a laptop, two cameras, a **cross-zone people tally that merges both feeds into one combined count**, S3 archive — built on [Expanso Edge](https://expanso.io). Detection happens local; cloud is augmentation; pipeline updates push live; nothing is lost when the link drops.

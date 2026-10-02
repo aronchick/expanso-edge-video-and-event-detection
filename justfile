@@ -704,3 +704,10 @@ bump-sha:
       rm -f "$f.bak"
     done
     git --no-pager diff --stat {{job_files}}
+
+# --- shared demo-kit gate -------------------------------------------------
+# Video-readiness: type size at playback scale, dark theme, fixed widths, and
+# a beat script. Strict for new work; run `--video` (not strict) to see the
+# same findings as warnings while retrofitting an older demo.
+video-check:
+    @uv run -s ../_demo-kit/lint-demo-ui.py . --video-strict
