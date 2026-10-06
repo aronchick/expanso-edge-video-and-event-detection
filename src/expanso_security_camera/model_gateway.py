@@ -12,9 +12,7 @@ GATEWAY_URL = os.environ.get("MODEL_GATEWAY_URL", "http://127.0.0.1:18143")
 
 def ask(prompt: str, *, system: str = "", fixture: str = "", timeout: float = 3.0) -> dict:
     """Ask once; the gateway owns replay, authentication, caps, and caching."""
-    payload = json.dumps(
-        {"prompt": prompt, "system": system, "fixture": fixture}
-    ).encode()
+    payload = json.dumps({"prompt": prompt, "system": system, "fixture": fixture}).encode()
     request = urllib.request.Request(
         f"{GATEWAY_URL}/ask",
         data=payload,

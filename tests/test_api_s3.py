@@ -22,8 +22,8 @@ from expanso_security_camera.orchestrator.api import create_app
 @pytest.fixture
 def app(tmp_path, monkeypatch):
     # Ensure the watcher boots in laptop-dev mode (no real bucket).
-    monkeypatch.delenv("ARMYX_S3_BUCKET", raising=False)
-    monkeypatch.delenv("ARMYX_JETSON_HOST", raising=False)
+    monkeypatch.delenv("EDGE_ISR_S3_BUCKET", raising=False)
+    monkeypatch.delenv("EDGE_ISR_JETSON_HOST", raising=False)
 
     a = create_app(
         db_path=str(tmp_path / "orch.db"),
@@ -95,7 +95,7 @@ class TestS3EndpointWithMockedClient:
             snapshots_dir=str(tmp_path / "snap"),
             ndjson_path=str(tmp_path / "e.ndjson"),
             fake_mode=True,
-            s3_bucket="armyx-tech-edge-events-demo",
+            s3_bucket="edge-isr-events-demo",
             jetson_host="",
         )
         watcher = captured["watcher"]
@@ -118,7 +118,7 @@ class TestS3EndpointWithMockedClient:
         r = client.get("/s3")
         body = r.json()
         assert body["enabled"] is True
-        assert body["bucket"] == "armyx-tech-edge-events-demo"
+        assert body["bucket"] == "edge-isr-events-demo"
         assert body["object_count"] == 47
         assert len(body["recent_keys"]) == 1
 

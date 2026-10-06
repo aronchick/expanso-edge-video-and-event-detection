@@ -64,14 +64,14 @@ class TestS3State:
 
 class TestS3WatcherUnconfigured:
     def test_no_bucket_disables_watcher(self, monkeypatch):
-        monkeypatch.delenv("ARMYX_S3_BUCKET", raising=False)
+        monkeypatch.delenv("EDGE_ISR_S3_BUCKET", raising=False)
         w = S3Watcher(bucket=None)
         snap = w.snapshot()
         assert snap["enabled"] is False
         assert snap["bucket"] == ""
 
     def test_start_is_noop_when_disabled(self, monkeypatch):
-        monkeypatch.delenv("ARMYX_S3_BUCKET", raising=False)
+        monkeypatch.delenv("EDGE_ISR_S3_BUCKET", raising=False)
         w = S3Watcher(bucket=None)
         w.start()
         # Thread shouldn't have been created.

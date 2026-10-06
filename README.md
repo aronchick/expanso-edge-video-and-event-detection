@@ -48,7 +48,7 @@ each stage is a job you can watch in `cloud.expanso.io`:
 | `sensor-north`, `sensor-south` | USB webcam → go2rtc RTSP → `edge-sensor` (YOLO capture) |
 | `fusion-node` | `edge-orchestrator` — the **people-count merge** (`zones.py`) + dashboard |
 | `fuse` | standalone, observable copy of the cross-zone merge (`scripts/fuse-correlator.py`) |
-| `armyx-tech-event-archive` | Bloblang fan-out to S3 with store-and-forward |
+| `event-archive` | Bloblang fan-out to S3 with store-and-forward |
 
 ```bash
 # 1. Bridge both USB webcams (renders go2rtc.yaml for the current AVFoundation

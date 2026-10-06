@@ -3,14 +3,23 @@
 // textContent / createElement so the dashboard is XSS-safe.
 
 const ws = new WebSocket(`ws://${location.host}/ws`);
+
 const lastSeen = { 'sensor-north': 0, 'sensor-south': 0 };
+
 const lastEventLabel = { 'sensor-north': '', 'sensor-south': '' };
+
 const lastEventTs = { 'sensor-north': 0, 'sensor-south': 0 };
+
 const knownTriggers = new Set();
+
 let firstTriggerLoad = true;
+
 let cloudUp = true;
+
 let queuedOfflineCount = 0;
+
 const alertQueue = [];
+
 let alertShowing = false;
 
 // Rolling 60s window of Gemini reachback timestamps (ms). Same pattern as
@@ -20,18 +29,23 @@ const geminiCallTimestamps = [];
 
 // Topology canvas state
 const topo = document.getElementById('topology');
+
 const topoCtx = topo.getContext('2d');
+
 const topoArrows = []; // { from, to, color, ttl }
 
 // ── WebSocket handlers ──────────────────────────────────────────────
 
 ws.onopen = () => console.log('ws connected');
+
 ws.onclose = () => {
   console.log('ws disconnected; auto-reload in 2s');
   setTimeout(() => location.reload(), 2000);
 };
+
 ws.onmessage = (msg) => {
   const m = JSON.parse(msg.data);
+
   switch (m.type) {
     case 'backfill':
       m.data.slice().reverse().forEach((e) => {
@@ -61,7 +75,9 @@ function handleEvent(e) {
   const sector = e.node;
   lastSeen[sector] = Date.now();
   lastEventTs[sector] = e.ts;
+
   if (e.queued_offline) queuedOfflineCount += 1;
+
   if (e.gemini_description) bumpGeminiReachback();
   renderEvent(e);
   updateSectorStatus(sector, 'event');
@@ -80,16 +96,21 @@ function bumpGeminiReachback() {
 
 function refreshGeminiPill(flash = false) {
   const cutoff = Date.now() - 60000;
+
   while (geminiCallTimestamps.length && geminiCallTimestamps[0] < cutoff) {
     geminiCallTimestamps.shift();
   }
+
   const valueEl = document.getElementById('metric-gemini');
+
   if (valueEl) valueEl.textContent = String(geminiCallTimestamps.length);
   // Mirror to ARCH Gemini branch counter + particle-flow rate
   setText('arch-counter-gemini-flow', `${geminiCallTimestamps.length} /min`);
   setFlowRate('arch-flow-gemini', geminiCallTimestamps.length);
+
   if (flash) {
     const pill = document.getElementById('metric-gemini-pill');
+
     if (pill) {
       pill.classList.remove('bumped');
       void pill.offsetWidth; // restart animation
@@ -108,20 +129,27 @@ setInterval(() => refreshGeminiPill(false), 250);
 // (Backfill on WS reconnect can otherwise re-emit events that the live stream
 //  also delivers, producing the "person 87% · person 87%" double-render bug.)
 const _seenEvents = new Map();  // node -> Set of dedup keys
+
 function _dedupKey(e) {
   const labels = (e.yolo_hits || []).map((h) => `${h.label}:${(h.confidence || 0).toFixed(2)}`).join('|');
+
   return `${e.ts || 0}:${labels}`;
 }
 
 function renderEvent(e) {
   const container = document.getElementById(`events-${e.node}`);
+
   if (!container) return;
 
   let seen = _seenEvents.get(e.node);
+
   if (!seen) { seen = new Set(); _seenEvents.set(e.node, seen); }
+
   const key = _dedupKey(e);
+
   if (seen.has(key)) return;  // already rendered, skip
   seen.add(key);
+
   // Cap memory — keep only last 50 keys per node
   if (seen.size > 50) {
     const first = seen.values().next().value;
@@ -148,6 +176,7 @@ function renderEvent(e) {
 
   const yolo = document.createElement('span');
   yolo.className = 'yolo' + (isEmpty ? ' empty' : '');
+
   if (isEmpty) {
     yolo.textContent = 'empty';
   } else {
@@ -161,6 +190,7 @@ function renderEvent(e) {
         sep.textContent = ' · ';
         yolo.appendChild(sep);
       }
+
       const display = displayLabel(h.label);
       const cls = String(display).toLowerCase();
       const span = document.createElement('span');
@@ -169,6 +199,7 @@ function renderEvent(e) {
       yolo.appendChild(span);
     });
   }
+
   row1.appendChild(yolo);
 
   // Gemini-Augmented pill — sits inline next to the labels so it's
@@ -190,6 +221,7 @@ function renderEvent(e) {
   // a frame that has nothing to describe.
   if (!isEmpty) {
     const desc = document.createElement('div');
+
     if (e.gemini_description) {
       desc.className = 'event-desc';
       desc.textContent = `"${e.gemini_description}"`;
@@ -197,6 +229,7 @@ function renderEvent(e) {
       desc.className = 'event-desc local';
       desc.textContent = 'cloud analyst unavailable · local-only';
     }
+
     root.appendChild(desc);
   }
 
@@ -208,6 +241,7 @@ function renderEvent(e) {
   }
 
   container.insertBefore(root, container.firstChild);
+
   // Show up to 8 single-line events per panel — fills the column instead of leaving 70% empty.
   while (container.children.length > 8) container.lastChild.remove();
 }
@@ -215,6 +249,7 @@ function renderEvent(e) {
 function updateOverlay(sector, e) {
   const labelEl = document.getElementById(`overlay-${sector === 'sensor-north' ? 'north' : 'south'}-label`);
   const tsEl = document.getElementById(`overlay-${sector === 'sensor-north' ? 'north' : 'south'}-ts`);
+
   if (!labelEl || !tsEl) return;
   const labels = (e.yolo_hits || []).map((h) => displayLabel(h.label)).join(", ");
   labelEl.textContent = labels || 'awaiting motion';
@@ -235,11 +270,13 @@ function updateSectorStatus(node, signal) {
   //   4. Boot, nothing observed yet                     → "connecting"
   // Callers pass the signal that just changed; we compute the final state.
   const el = document.getElementById(`status-${node}`);
+
   if (!el) return;
 
   const jobRunning = sensorJobRunning[node];
 
   let status;
+
   if (jobRunning === false) {
     // Highest priority: if the cluster says the sensor's job is stopped,
     // nothing else matters — even a stale "live" signal would be wrong.
@@ -263,6 +300,7 @@ function updateSectorStatus(node, signal) {
   // Mirror onto the zone-count card's status badge so the right column
   // reflects the same live/offline/stopped state as the camera tile.
   const zoneEl = document.getElementById(`zone-status-${node}`);
+
   if (zoneEl) {
     zoneEl.textContent = status;
     zoneEl.className = 'zone-card-status ' + status;
@@ -275,6 +313,7 @@ function updateSectorStatus(node, signal) {
 // FLAG state plus an in-card alert line — never as a floating interstitial.
 
 const ZONE_ORDER = ['sensor-north', 'sensor-south'];
+
 let lastZoneSnapshot = null;
 
 // Render the live per-zone counts + combined total. Called from the WS
@@ -284,10 +323,13 @@ function renderZones(z) {
   if (!z) return;
   lastZoneSnapshot = z;
   const counts = z.counts || {};
+
   for (const zone of ZONE_ORDER) {
     const el = document.getElementById(`zone-count-${zone}`);
+
     if (el) {
       const n = counts[zone] || 0;
+
       if (el.textContent !== String(n)) {
         el.textContent = String(n);
         // tiny bump so a changing count visibly ticks
@@ -295,10 +337,13 @@ function renderZones(z) {
         void el.offsetWidth;
         el.classList.add('bumped');
       }
+
       const unit = document.getElementById(`zone-unit-${zone}`);
+
       if (unit) unit.textContent = (n === 1) ? 'person' : 'people';
     }
   }
+
   const total = z.total || 0;
   const thresh = (z.threshold != null) ? z.threshold : 5;
   setText('combined-total', String(total));
@@ -307,6 +352,7 @@ function renderZones(z) {
   // Threshold meter — fill proportional to total/threshold, clamped, and
   // it goes red past the line.
   const bar = document.getElementById('combined-bar');
+
   if (bar) {
     const pct = Math.max(0, Math.min(1, total / Math.max(1, thresh)));
     bar.style.width = `${(pct * 100).toFixed(0)}%`;
@@ -319,22 +365,27 @@ function renderZones(z) {
   const card = document.getElementById('combined-card');
   const stateEl = document.getElementById('combined-state');
   const over = !!z.over;
+
   if (card) card.classList.toggle('over', over);
+
   if (stateEl) {
     stateEl.textContent = over ? 'FLAG · CROWD' : 'CLEAR';
     stateEl.className = 'combined-state ' + (over ? 'flag' : 'clear');
   }
+
   // In-card alert line — driven from the LIVE counts so it always matches
   // the total shown above (no stale crossing-moment latch).
   // The alert line ALWAYS occupies its row (reserved via CSS min-height) so
   // the card height — and everything below it — never shifts. We only change
   // the text, never the element's presence.
   const alertEl = document.getElementById('combined-alert');
+
   if (alertEl) {
     if (over) {
       alertEl.textContent = `⚠ CROWD · ${total} people across both zones (north ${n} + south ${s})`;
     } else {
       alertEl.textContent = '';
+
       if (card) card.classList.remove('flash');
     }
   }
@@ -354,6 +405,7 @@ const ALERT_RULE_LABELS = {
 // at the moment of crossing. No floating interstitial.
 function enqueueAlert(_f) {
   const card = document.getElementById('combined-card');
+
   if (card) {
     card.classList.add('over');           // ensure flagged immediately
     card.classList.remove('flash');
@@ -362,6 +414,7 @@ function enqueueAlert(_f) {
     clearTimeout(enqueueAlert._t);
     enqueueAlert._t = setTimeout(() => { if (card) card.classList.remove('flash'); }, 1500);
   }
+
   pingTopology('sensor-north', '#f03c3c');
   pingTopology('sensor-south', '#f03c3c');
 }
@@ -372,6 +425,7 @@ function enqueueAlert(_f) {
 function fmtIsoUtc(epochSeconds) {
   if (!epochSeconds || !isFinite(epochSeconds)) return '—';
   const d = new Date(epochSeconds * 1000);
+
   return d.toISOString().slice(0, 19) + 'Z';
 }
 
@@ -384,13 +438,16 @@ function renderTriggers(list) {
   (list || []).forEach((t) => knownTriggers.add(t));
 
   container.replaceChildren();
+
   for (const t of (list || [])) {
     const chip = document.createElement('span');
     const display = displayLabel(t);
     chip.className = `chip chip--${String(display).toLowerCase()}`;
+
     if (!firstTriggerLoad && !previous.has(t)) {
       chip.classList.add('added');
     }
+
     chip.textContent = display;
     container.appendChild(chip);
   }
@@ -406,6 +463,7 @@ function renderTriggers(list) {
   const displaysDrone = (list || []).some(
     (t) => displayLabel(t).toLowerCase() === 'drone'
   );
+
   if (!displaysDrone) {
     const ghost = document.createElement('span');
     ghost.className = 'chip chip--drone chip--ghost';
@@ -413,9 +471,11 @@ function renderTriggers(list) {
     ghost.title = 'Click to arm drone detection';
     ghost.setAttribute('role', 'button');
     ghost.setAttribute('tabindex', '0');
+
     const arm = async () => {
       ghost.classList.add('arming');
       const next = Array.from(new Set([...knownTriggers, 'drone']));
+
       try {
         await fetch('/triggers', {
           method: 'POST',
@@ -426,6 +486,7 @@ function renderTriggers(list) {
         ghost.classList.remove('arming');
       }
     };
+
     ghost.addEventListener('click', arm);
     ghost.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); arm(); }
@@ -450,8 +511,10 @@ function renderTriggers(list) {
 // will now flag it.
 function showPipelineUpdateOverlay(newClass) {
   const overlay = document.getElementById('pipeline-update-overlay');
+
   if (!overlay) return;
   const subjectEl = overlay.querySelector('.pipeline-update-class');
+
   if (subjectEl) subjectEl.textContent = displayLabel(newClass).toUpperCase();
   overlay.classList.remove('show');
   void overlay.offsetWidth; // restart entry animation
@@ -466,6 +529,7 @@ function showPipelineUpdateOverlay(newClass) {
 // Alias the display so the demo narrative reads correctly without needing
 // custom YOLO weights. Backend still uses "airplane" for matching.
 const _LABEL_ALIASES = { airplane: 'drone' };
+
 function displayLabel(label) {
   return _LABEL_ALIASES[String(label).toLowerCase()] || label;
 }
@@ -476,6 +540,7 @@ function setCloudState(up) {
   cloudUp = up;
   const banner = document.getElementById('cloud-banner');
   const pill = document.getElementById('cloud-pill');
+
   if (up) {
     banner.classList.remove('show');
     document.body.classList.remove('cloud-down');
@@ -493,6 +558,7 @@ function setCloudState(up) {
 
 function reflectQueueCount() {
   const q = document.getElementById('queue-count');
+
   if (q) q.textContent = String(queuedOfflineCount);
 }
 
@@ -503,14 +569,18 @@ function renderJobs(list) {
   container.replaceChildren();
   let running = 0, total = 0, failed = 0;
   let anySensorRunning = false;
+
   for (const j of (list || [])) {
     total += 1;
     // Case-insensitive status match — the fusion-node's WS payload sometimes
     // sends mixed-case status strings ("Running" vs "running") depending on
     // whether it came from the synthetic fallback or `expanso-cli job list`.
     const status = String(j.status || '').toLowerCase();
+
     if (status === 'running') running += 1;
+
     if (status === 'failed') failed += 1;
+
     if (status === 'running' && /^sensor-/.test(j.name)) anySensorRunning = true;
 
     // Inline format for the bottom strip: ■ name STATUS
@@ -522,7 +592,7 @@ function renderJobs(list) {
     item.appendChild(led);
     const name = document.createElement('span');
     name.className = 'job-inline-name';
-    name.textContent = j.name.replace(/^armyx-tech-/, '').replace(/^edge-/, '');
+    name.textContent = j.name.replace(/^edge-/, '');
     item.appendChild(name);
     const statusEl = document.createElement('span');
     statusEl.className = 'job-inline-status';
@@ -530,6 +600,7 @@ function renderJobs(list) {
     item.appendChild(statusEl);
     container.appendChild(item);
   }
+
   document.getElementById('footer-jobs').textContent = `${running}/${total}` + (failed ? ` (${failed} failed)` : '');
   // Mirror to ARCH control-plane counter + particle-flow rate. Job-state
   // changes are rare (often 4/4 steady), so derive the rate from the running
@@ -582,25 +653,31 @@ function renderMetrics(m) {
 
 // Rolling 60s window to derive fused/min from the cumulative metric.
 const fusedHistory = []; // { t: ms, total: number }
+
 function fusedRollingPush(totalFused) {
   const now = Date.now();
   fusedHistory.push({ t: now, total: totalFused });
+
   // Trim to last 65s
   while (fusedHistory.length > 1 && now - fusedHistory[0].t > 65000) {
     fusedHistory.shift();
   }
 }
+
 function fusedPerMinute() {
   if (fusedHistory.length < 2) return 0;
   const a = fusedHistory[0];
   const b = fusedHistory[fusedHistory.length - 1];
   const dt = (b.t - a.t) / 1000;
+
   if (dt <= 0) return 0;
+
   return Math.max(0, Math.round((b.total - a.total) * (60 / dt)));
 }
 
 function setText(id, value) {
   const el = document.getElementById(id);
+
   if (el) el.textContent = value;
 }
 
@@ -610,14 +687,18 @@ function setText(id, value) {
 // they smear). 0 → 6s (very slow standby), >=120/min → 0.4s (firehose).
 function rateToDurationSec(perMin) {
   const r = Math.max(0, Number(perMin) || 0);
+
   if (r <= 0) return 6.0;
   // Linear-ish map between 1/min (3s) and 120/min (0.4s).
   const minDur = 0.4, maxDur = 3.0, peak = 120;
   const t = Math.min(1, r / peak);
+
   return Math.max(minDur, maxDur - (maxDur - minDur) * t);
 }
+
 function setFlowRate(elementId, perMin) {
   const el = document.getElementById(elementId);
+
   if (!el) return;
   const dur = rateToDurationSec(perMin).toFixed(2);
   el.style.animationDuration = `${dur}s`;
@@ -626,20 +707,27 @@ function setFlowRate(elementId, perMin) {
 // Rolling window for the cloud-control-plane particle: jobs-running count
 // changes are rare, so we treat absolute changes as activity.
 const jobsHistory = []; // { t: ms, running: number }
+
 let jobsLastRunning = -1;
+
 let jobsChangeStamps = []; // ms timestamps of state changes in the last 60s
+
 function jobsRollingPush(running) {
   const now = Date.now();
+
   if (jobsLastRunning !== -1 && jobsLastRunning !== running) {
     jobsChangeStamps.push(now);
   }
+
   jobsLastRunning = running;
   jobsChangeStamps = jobsChangeStamps.filter((t) => now - t < 60000);
   jobsHistory.push({ t: now, running });
+
   while (jobsHistory.length > 1 && now - jobsHistory[0].t > 65000) {
     jobsHistory.shift();
   }
 }
+
 function jobsChangePerMinute() {
   // Floor at 6/min so the cloud→jetson dot always has a visible heartbeat,
   // since job state usually sits steady at 4/4.
@@ -648,19 +736,24 @@ function jobsChangePerMinute() {
 
 // Rolling window for the S3 particle: derive object-count delta per minute.
 const s3History = []; // { t: ms, count: number }
+
 function s3RollingPush(count) {
   const now = Date.now();
   s3History.push({ t: now, count });
+
   while (s3History.length > 1 && now - s3History[0].t > 65000) {
     s3History.shift();
   }
 }
+
 function s3DeltaPerMinute() {
   if (s3History.length < 2) return 0;
   const a = s3History[0];
   const b = s3History[s3History.length - 1];
   const dt = (b.t - a.t) / 1000;
+
   if (dt <= 0) return 0;
+
   return Math.max(0, Math.round((b.count - a.count) * (60 / dt)));
 }
 
@@ -669,36 +762,51 @@ function s3DeltaPerMinute() {
 // the last 5s. The <img src="/stream/..."> elements emit `load` each time
 // a fresh JPEG arrives, so we tally those and divide.
 const _archFrameStamps = []; // ms timestamps
+
 function _onMjpegFrame() { _archFrameStamps.push(Date.now()); }
+
 for (const id of ['feed-sensor-north', 'feed-sensor-south']) {
   const img = document.getElementById(id);
+
   if (img) img.addEventListener('load', _onMjpegFrame);
 }
+
 function archFpsString(eventsPerMin) {
   const now = Date.now();
+
   while (_archFrameStamps.length && now - _archFrameStamps[0] > 5000) {
     _archFrameStamps.shift();
   }
+
   const fps = _archFrameStamps.length / 5;
+
   if (fps > 0) return fps.toFixed(1);
   // Fallback when on ARCH tab (cameras hidden, MJPEG not loading): derive
   // a coarse fps from events/min — each event corresponds to ~1 detection
   // frame from one of two sensors, so total frames ~ epm/60 * 2 (rough).
   const proxy = (Number(eventsPerMin) || 0) / 30;
+
   if (proxy > 0) return `~${proxy.toFixed(1)}`;
+
   return '—';
 }
+
 function archLastFrameAgeString(eventsPerMin) {
   if (_archFrameStamps.length) {
     const last = _archFrameStamps[_archFrameStamps.length - 1];
     const ageS = (Date.now() - last) / 1000;
+
     if (ageS < 1) return '<1s';
+
     if (ageS < 60) return `${Math.round(ageS)}s`;
+
     return `${Math.round(ageS / 60)}m`;
   }
+
   // No MJPEG load → if events are flowing, frames are arriving on the
   // sensor side too. Show the live-events freshness as a proxy.
   if ((Number(eventsPerMin) || 0) > 0) return 'live';
+
   return '—';
 }
 
@@ -711,6 +819,7 @@ setInterval(async () => {
       fetch('/s3').then((r) => r.json()),
       fetch('/zones').then((r) => r.json()),
     ]);
+
     renderMetrics(m);
     renderS3(s);
     renderZones(z);
@@ -730,6 +839,7 @@ setInterval(async () => {
 // "live → offline" transition has at most a quarter-second lag.
 setInterval(() => {
   const now = Date.now();
+
   for (const node of Object.keys(lastSeen)) {
     if (lastSeen[node] && now - lastSeen[node] > 8000) updateSectorStatus(node, 'offline');
   }
@@ -745,7 +855,9 @@ setInterval(() => {
 setInterval(() => {
   for (const node of ['sensor-north', 'sensor-south']) {
     const img = document.getElementById(`feed-${node}`);
+
     if (!img) continue;
+
     // naturalWidth === 0 means the stream broke; reload it.
     if (img.complete && img.naturalWidth === 0) {
       img.src = `/stream/${node}?reconnect=${Date.now()}`;
@@ -759,9 +871,13 @@ let s3LastCount = 0;
 
 function fmtAge(seconds) {
   if (seconds == null || !isFinite(seconds)) return '—';
+
   if (seconds < 1) return 'just now';
+
   if (seconds < 60) return `${Math.round(seconds)}s ago`;
+
   if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
+
   return `${Math.round(seconds / 3600)}h ago`;
 }
 
@@ -780,6 +896,7 @@ function renderS3(state) {
     bucketEl.textContent = state.last_error || 'add bucket via .env or expanso job';
     setText('arch-counter-s3-flow', 'standby');
     setFlowRate('arch-flow-s3', 0);
+
     return;
   }
 
@@ -797,6 +914,7 @@ function renderS3(state) {
     void countWrap.offsetWidth; // force reflow so the animation restarts
     countWrap.classList.add('bumped');
   }
+
   s3LastCount = state.object_count;
 
   if (state.last_poll_ok === false) {
@@ -818,6 +936,7 @@ function renderS3(state) {
   }
 
   recentEl.replaceChildren();
+
   for (const obj of (state.recent_keys || [])) {
     const li = document.createElement('li');
     li.dataset.key = obj.key;
@@ -841,19 +960,24 @@ async function openS3Modal(key) {
   title.textContent = key;
   body.textContent = 'loading…';
   modal.classList.add('show');
+
   try {
     const r = await fetch(`/s3/object?key=${encodeURIComponent(key)}`);
     const data = await r.json();
+
     if (data.error) {
       body.textContent = `error: ${data.error}`;
+
       return;
     }
+
     // Pretty-print JSON if the body parses; otherwise show raw
     try {
       body.textContent = JSON.stringify(JSON.parse(data.body), null, 2);
     } catch (e) {
       body.textContent = data.body;
     }
+
     if (data.truncated) body.textContent += '\n\n… (truncated)';
   } catch (e) {
     body.textContent = `fetch failed: ${e}`;
@@ -863,12 +987,14 @@ async function openS3Modal(key) {
 document.getElementById('s3-modal-close').addEventListener('click', () => {
   document.getElementById('s3-modal').classList.remove('show');
 });
+
 document.getElementById('s3-modal').addEventListener('click', (ev) => {
   // Click on the backdrop (not the card) closes the modal.
   if (ev.target && ev.target.id === 's3-modal') {
     ev.currentTarget.classList.remove('show');
   }
 });
+
 document.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape') {
     document.getElementById('s3-modal').classList.remove('show');
@@ -893,6 +1019,7 @@ function drawTopology() {
   // Edges (static guide)
   topoCtx.strokeStyle = '#262b33';
   topoCtx.lineWidth = 2;
+
   for (const sensor of ['sensor-north', 'sensor-south']) {
     const a = NODES[sensor], b = NODES['fusion-node'];
     topoCtx.beginPath(); topoCtx.moveTo(a.x, a.y); topoCtx.lineTo(b.x, b.y); topoCtx.stroke();
@@ -901,6 +1028,7 @@ function drawTopology() {
   // Animated arrows
   for (const arr of topoArrows) {
     const a = NODES[arr.from], b = NODES[arr.to];
+
     if (!a || !b) continue;
     const t = 1 - arr.ttl; // 0 → 1 progress
     const px = a.x + (b.x - a.x) * t;
@@ -911,6 +1039,7 @@ function drawTopology() {
     topoCtx.globalAlpha = 1;
     arr.ttl -= 0.04;
   }
+
   for (let i = topoArrows.length - 1; i >= 0; i--) if (topoArrows[i].ttl <= 0) topoArrows.splice(i, 1);
 
   // Nodes
@@ -924,6 +1053,7 @@ function drawTopology() {
     topoCtx.fillText(n.label, n.x, n.y);
   }
 }
+
 setInterval(drawTopology, 100);
 
 // ── Tab routing (URL-hash based, bookmarkable, opens in new tabs) ──
@@ -938,11 +1068,13 @@ function applyTabFromHash() {
   const target = TABS.includes(raw) ? raw : 'ops';
   document.body.classList.remove('tab-ops', 'tab-arch', 'tab-archive');
   document.body.classList.add(`tab-${target}`);
+
   for (const a of document.querySelectorAll('.tab-switcher .tab')) {
     const isActive = a.dataset.tab === target;
     a.classList.toggle('is-active', isActive);
     a.setAttribute('aria-selected', isActive ? 'true' : 'false');
   }
+
   // ARCH view curves need to retarget when the view becomes visible
   // (display: none → grid hides their geometry until tab-arch is set).
   if (target === 'arch') {
@@ -954,6 +1086,7 @@ function applyTabFromHash() {
 }
 
 window.addEventListener('hashchange', applyTabFromHash);
+
 applyTabFromHash();
 
 // ── Auto-rotate: OPS (cameras) → ARCH (diagram) → OPS … for unattended booth
@@ -961,9 +1094,13 @@ applyTabFromHash();
 // presenter can hold a view; it resumes after AUTO_ROTATE_IDLE_MS of no clicks.
 // Uses history.replaceState so the cycling never pollutes browser back-history.
 const AUTO_ROTATE_VIEWS = ['ops', 'arch'];
+
 const AUTO_ROTATE_MS = 5000;
+
 const AUTO_ROTATE_IDLE_MS = 45000;
+
 let autoRotateTimer = null;
+
 let autoRotateResume = null;
 
 function autoRotateTick() {
@@ -973,19 +1110,24 @@ function autoRotateTick() {
   history.replaceState(null, '', `#${next}`);
   applyTabFromHash();
 }
+
 function startAutoRotate() {
   if (autoRotateTimer) return;
   autoRotateTimer = setInterval(autoRotateTick, AUTO_ROTATE_MS);
 }
+
 function pauseAutoRotateForInteraction() {
   if (autoRotateTimer) { clearInterval(autoRotateTimer); autoRotateTimer = null; }
+
   if (autoRotateResume) clearTimeout(autoRotateResume);
   autoRotateResume = setTimeout(startAutoRotate, AUTO_ROTATE_IDLE_MS);
 }
+
 // Manual tab clicks → presenter is driving; pause the carousel.
 for (const a of document.querySelectorAll('.tab-switcher .tab')) {
   a.addEventListener('click', pauseAutoRotateForInteraction);
 }
+
 startAutoRotate();
 
 // ── ARCH view: anchor SVG curves to live element geometry ─────────────
@@ -1001,6 +1143,7 @@ startAutoRotate();
 // the merging-streams / fan-out look rather than a plain diagonal.
 function buildCurve(sx, sy, ex, ey) {
   const cpx = sx + (ex - sx) * 0.55;
+
   return `M ${sx} ${sy} C ${cpx} ${sy}, ${cpx} ${ey}, ${ex} ${ey}`;
 }
 
@@ -1012,8 +1155,10 @@ function updateCameraCurves() {
   const edge  = document.querySelector('.arch-box--jetson');
   const pathN = document.getElementById('cam-curve-north');
   const pathS = document.getElementById('cam-curve-south');
+
   if (!svg || !camN || !camS || !edge || !pathN || !pathS) return;
   const sR = svg.getBoundingClientRect();
+
   if (!sR.width || !sR.height) return;
 
   const nR = camN.getBoundingClientRect();
@@ -1040,8 +1185,10 @@ function updateEdgeOutCurves() {
   const mL    = document.getElementById('arch-meta-local');
   const mG    = document.getElementById('arch-meta-gemini');
   const mS    = document.getElementById('arch-meta-s3');
+
   if (!svg || !edge || !dL || !dG || !dS || !pL || !pG || !pS) return;
   const sR = svg.getBoundingClientRect();
+
   if (!sR.width || !sR.height) return;
 
   const eR = edge.getBoundingClientRect();
@@ -1053,6 +1200,7 @@ function updateEdgeOutCurves() {
     const dR = destEl.getBoundingClientRect();
     const ex = toX(dR.left), ey = toY(dR.top + dR.height / 2);
     pathEl.setAttribute('d', buildCurve(ox, oy, ex, ey));
+
     if (metaEl) {
       // Place meta chip at curve midpoint (approximated as path bbox center).
       const mx = (ox + ex) / 2;
@@ -1069,10 +1217,13 @@ function updateAllArchCurves() {
 }
 
 window.addEventListener('resize', () => requestAnimationFrame(updateAllArchCurves));
+
 window.addEventListener('load',   () => setTimeout(updateAllArchCurves, 100));
+
 if (window.ResizeObserver) {
   const ro = new ResizeObserver(() => requestAnimationFrame(updateAllArchCurves));
   const av = document.querySelector('.arch-view');
+
   if (av) ro.observe(av);
 }
 
@@ -1080,6 +1231,7 @@ if (window.ResizeObserver) {
 
 document.addEventListener('keydown', async (ev) => {
   if (ev.target && (ev.target.tagName === 'INPUT' || ev.target.tagName === 'TEXTAREA')) return;
+
   switch (ev.key) {
     case 'F1': ev.preventDefault(); await fetch('/demo/wan-down', { method: 'POST' }); break;
     case 'F2': ev.preventDefault(); await fetch('/demo/wan-up',   { method: 'POST' }); break;
@@ -1111,11 +1263,14 @@ document.addEventListener('keydown', async (ev) => {
 // runs at native ~25fps and ~150ms latency. WebRTC is the nice-to-have.
 
 const GO2RTC_BASE = `${location.protocol}//${location.hostname}:1984`;
+
 // Source dims are detected per-sector from the actual <video>'s videoWidth/Height
 // at draw time, NOT hardcoded — sensor's RTSP source can be sub-stream (640×360),
 // main (1280×720), or 4K depending on config. Fallback used until video has loaded.
 const SECTOR_SOURCE_W_FALLBACK = 640;
+
 const SECTOR_SOURCE_H_FALLBACK = 360;
+
 const _bboxClearTimers = {};    // sector -> setTimeout handle for clear-after-hold
 
 // Which feed layer is live per sector: 'mjpeg' (baked boxes already in the
@@ -1131,6 +1286,7 @@ const _CLASS_COLORS = {
   drone: '#f03c3c',     // red
   airplane: '#f03c3c',
 };
+
 function classColor(label) {
   return _CLASS_COLORS[String(label).toLowerCase()] || '#ffa726';
 }
@@ -1141,6 +1297,7 @@ class SectorFeed {
     this.sector = sectorEl.dataset.sector;
     this.video = document.getElementById(`video-${this.sector}`);
     this.img = document.getElementById(`feed-${this.sector}`);
+
     if (!this.video || !this.img || !this.stream || !this.sector) return;
 
     this.pc = null;
@@ -1173,9 +1330,15 @@ class SectorFeed {
     feedMode[this.sector] = 'mjpeg';
     this.video.style.opacity = '0';
     this.img.style.opacity = '1';
+
     if (this.video.srcObject) this.video.srcObject = null;
-    if (this.pc) { try { this.pc.close(); } catch (_) {} this.pc = null; }
+
+    if (this.pc) { try { this.pc.close(); } catch (_) {}
+
+ this.pc = null; }
+
     if (this.healthTimer) { clearInterval(this.healthTimer); this.healthTimer = null; }
+
     if (this.retryTimer) clearTimeout(this.retryTimer);
     // 15s retry — long enough to not pummel a dead service, short enough to
     // recover quickly when the Jetson sidecar finishes restarting.
@@ -1199,7 +1362,10 @@ class SectorFeed {
 
   async tryWebRTC() {
     if (this.retryTimer) { clearTimeout(this.retryTimer); this.retryTimer = null; }
-    if (this.pc) { try { this.pc.close(); } catch (_) {} this.pc = null; }
+
+    if (this.pc) { try { this.pc.close(); } catch (_) {}
+
+ this.pc = null; }
 
     this.log('tryWebRTC: starting handshake against', `${GO2RTC_BASE}/api/webrtc?src=${this.stream}`);
 
@@ -1209,16 +1375,20 @@ class SectorFeed {
 
       pc.onconnectionstatechange = () => {
         this.log('connectionState =', pc.connectionState);
+
         if (['failed', 'disconnected', 'closed'].includes(pc.connectionState)) {
           this.toMJPEG(`connectionState=${pc.connectionState}`);
         }
       };
+
       pc.oniceconnectionstatechange = () => {
         this.log('iceConnectionState =', pc.iceConnectionState);
       };
+
       pc.onicegatheringstatechange = () => {
         this.log('iceGatheringState =', pc.iceGatheringState);
       };
+
       pc.onicecandidate = (e) => {
         if (e.candidate) {
           this.log('local ICE candidate:', e.candidate.candidate);
@@ -1230,9 +1400,11 @@ class SectorFeed {
       pc.ontrack = (e) => {
         this.log('ontrack fired — track kind=', e.track?.kind, 'streams=', e.streams?.length);
         this.video.srcObject = e.streams[0];
+
         for (const r of pc.getReceivers()) {
           if (r.track && r.track.kind === 'video') r.playoutDelayHint = 0.15;
         }
+
         this.log('starting frame watchdog');
         this.startFrameWatchdog();
       };
@@ -1248,11 +1420,14 @@ class SectorFeed {
         await pc.setLocalDescription(offer);
         this.log('setLocalDescription done; POST to go2rtc…');
         const t0 = performance.now();
+
         const resp = await fetch(
           `${GO2RTC_BASE}/api/webrtc?src=${encodeURIComponent(this.stream)}`,
           { method: 'POST', body: pc.localDescription.sdp }
         );
+
         this.log(`fetch returned HTTP ${resp.status} in ${(performance.now() - t0).toFixed(0)}ms`);
+
         if (!resp.ok) throw new Error(`go2rtc HTTP ${resp.status}`);
         const answer = await resp.text();
         this.log('answer SDP received, length=', answer.length);
@@ -1280,29 +1455,40 @@ class SectorFeed {
     const hasVFC = 'requestVideoFrameCallback' in this.video;
     this.log(`watchdog start: hasVFC=${hasVFC}, video readyState=${this.video.readyState}, videoWidth=${this.video.videoWidth}`);
     let framesSeen = 0;
+
     if (hasVFC) {
       const onFrame = () => {
         if (!this.pc || this.pc.connectionState === 'closed') return;
         framesSeen++;
+
         if (framesSeen === 1) this.log('FIRST FRAME via rVFC');
+
         if (framesSeen % 30 === 0) this.log(`${framesSeen} frames received`);
         this.lastFrameAt = performance.now();
+
         if (this.mode !== 'webrtc') this.toWebRTC();
+
         try { this.video.requestVideoFrameCallback(onFrame); } catch (_) {}
       };
+
       try { this.video.requestVideoFrameCallback(onFrame); } catch (_) {}
     } else {
       let lastTime = -1;
+
       const poll = setInterval(() => {
         if (!this.pc || this.pc.connectionState === 'closed') {
           clearInterval(poll);
+
           return;
         }
+
         if (this.video.readyState >= 2 && this.video.currentTime !== lastTime) {
           lastTime = this.video.currentTime;
           framesSeen++;
+
           if (framesSeen === 1) this.log('FIRST FRAME via currentTime poll');
           this.lastFrameAt = performance.now();
+
           if (this.mode !== 'webrtc') this.toWebRTC();
         }
       }, 250);
@@ -1316,8 +1502,10 @@ class SectorFeed {
       if (!this.pc || this.pc.connectionState === 'closed') {
         clearInterval(this.healthTimer);
         this.healthTimer = null;
+
         return;
       }
+
       if (performance.now() - this.lastFrameAt > 3000) {
         this.toMJPEG('frame-stall');
       }
@@ -1356,15 +1544,19 @@ function _drawLabelChip(ctx, x1, y1, text, color) {
 
 function drawBboxOverlay(sector, hits) {
   const canvas = document.getElementById(`overlay-${sector}`);
+
   if (!canvas) return;
   // Match canvas internal dims to its display dims so 1px = 1px.
   const cw = canvas.clientWidth;
   const ch = canvas.clientHeight;
+
   if (canvas.width !== cw) canvas.width = cw;
+
   if (canvas.height !== ch) canvas.height = ch;
 
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, cw, ch);
+
   if (!hits || !hits.length) return;
 
   // Replicate the video element's `object-fit: contain` transform so bbox
@@ -1382,7 +1574,9 @@ function drawBboxOverlay(sector, hits) {
   const img = document.getElementById(`feed-${sector}`);
   let sw = (video && video.videoWidth) || 0;
   let sh = (video && video.videoHeight) || 0;
+
   if (!sw || !sh) { sw = (img && img.naturalWidth) || SECTOR_SOURCE_W_FALLBACK; sh = (img && img.naturalHeight) || SECTOR_SOURCE_H_FALLBACK; }
+
   const scale = Math.min(cw / sw, ch / sh);
   const renderedW = sw * scale;
   const renderedH = sh * scale;
@@ -1391,6 +1585,7 @@ function drawBboxOverlay(sector, hits) {
 
   for (let i = 0; i < hits.length; i++) {
     const hit = hits[i];
+
     if (!hit || !hit.bbox) continue;
     const [x1s, y1s, x2s, y2s] = hit.bbox;
     const x1 = x1s * scale + offsetX;
@@ -1412,15 +1607,19 @@ function drawBboxOverlay(sector, hits) {
 // while still keeping the bracket up most frames at ~2 events/sec/sector.
 function pushBboxOverlay(e) {
   if (!e || !e.node || !e.yolo_hits) return;
+
   // In MJPEG mode the boxes are already baked into the frame (sensor's
   // detector.annotate, or the synthesized fake feed). Drawing the canvas
   // overlay too would double them up — slightly offset by transport lag —
   // which looks broken. Only overlay on raw WebRTC video.
   if (feedMode[e.node] !== 'webrtc') {
     drawBboxOverlay(e.node, []); // keep the canvas clear
+
     return;
   }
+
   drawBboxOverlay(e.node, e.yolo_hits);
+
   if (_bboxClearTimers[e.node]) clearTimeout(_bboxClearTimers[e.node]);
   _bboxClearTimers[e.node] = setTimeout(() => {
     drawBboxOverlay(e.node, []);
@@ -1438,14 +1637,18 @@ window.addEventListener('DOMContentLoaded', () => {
 // Hook the WebSocket message dispatcher to push to the bbox overlay too.
 // (Reassigning `handleEvent` directly is fragile across linter reorderings.)
 const _origOnMessage = ws.onmessage;
+
 ws.onmessage = function (msg) {
   _origOnMessage.call(ws, msg);
+
   try {
     const m = JSON.parse(msg.data);
+
     if (m.type === 'event') {
       pushBboxOverlay(m.data);
     } else if (m.type === 'backfill' && Array.isArray(m.data)) {
       const recent = m.data[m.data.length - 1];
+
       if (recent && recent.node && recent.yolo_hits) pushBboxOverlay(recent);
     }
   } catch (_e) { /* not JSON or schema mismatch — ignore */ }

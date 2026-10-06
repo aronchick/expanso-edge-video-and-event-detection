@@ -1,5 +1,5 @@
-"""Polls the armyx-tech S3 archive bucket on the Mac side and exposes
-state to the dashboard.
+"""Polls the S3 archive bucket on the Mac side and exposes state to the
+dashboard.
 
 This is the visual proof for the demo's Beat D: judges see object count
 climb in lockstep with events while the cluster is online; plateau when
@@ -8,8 +8,8 @@ Mac retains its own internet path to S3 (independent of the Jetson's
 toggleable WAN), so this watcher keeps reporting the truth even while
 the Jetson is "off the world."
 
-Auth: reads ~/.aws/credentials profile [armyx-tech] (set up by
-scripts/bootstrap_armyx_tech.sh). Falls back to default chain.
+Auth: the standard AWS credential chain (environment, shared profile,
+instance role). Set EDGE_ISR_AWS_PROFILE to pin a named profile.
 
 Failure mode: if boto3 isn't installed or no bucket is configured, the
 watcher silently no-ops and surfaces empty state — the rest of the
@@ -80,10 +80,10 @@ class S3Watcher:
         self._lock = threading.Lock()
         self._stop = False
         self._state = S3State(
-            bucket=bucket or os.environ.get("ARMYX_S3_BUCKET", ""),
-            region=region or os.environ.get("ARMYX_AWS_REGION", "us-west-2"),
+            bucket=bucket or os.environ.get("EDGE_ISR_S3_BUCKET", ""),
+            region=region or os.environ.get("EDGE_ISR_AWS_REGION", "us-west-2"),
         )
-        self._profile = profile or os.environ.get("ARMYX_AWS_PROFILE", "armyx-tech")
+        self._profile = profile or os.environ.get("EDGE_ISR_AWS_PROFILE") or None
         self._prefix = prefix
         self._client = self._build_client()
         self._state.enabled = self._client is not None and bool(self._state.bucket)

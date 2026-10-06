@@ -8,7 +8,7 @@
 # on stdout — its real outputs are HTTP (port 8090, dashboard + sensor
 # ingest) and the events.ndjson tail consumed by the event-archive pipeline.
 #
-# Selector is empty: there is exactly one node attached to the armyx-tech
+# Selector is empty: there is exactly one node attached to the
 # cluster (security-camera-overseer / Jetson), so it always lands there.
 #
 # === DECLARATIVE EXECUTION ===
@@ -33,12 +33,12 @@
 #         sudo mkdir -p /opt/edge-isr/{orchestrator/snapshots,archive}
 #         sudo chown -R daaronch:daaronch /opt/edge-isr
 #   3. .env in /home/daaronch/security-cameras/.env still drives
-#      ARMYX_S3_BUCKET / AWS_PROFILE / JETSON_HOST (load_dotenv walks CWD).
+#      EDGE_ISR_S3_BUCKET / AWS_PROFILE / JETSON_HOST (load_dotenv walks CWD).
 #      uv will run the subprocess from its install dir, not the repo dir,
 #      so we inject those vars inline below for resilience.
 #
 # Deploy:
-#   expanso-cli profile select armyx-tech
+#   expanso-cli profile select <your-profile>
 #   expanso-cli job deploy jobs/orchestrator-job.yaml
 #   expanso-cli job start fusion-node
 
@@ -52,11 +52,11 @@ config:
       args:
         # S3 archive bucket — orchestrator's S3Watcher uses this to poll
         # the bucket and surface object counts on the dashboard's
-        # ARCHIVE tab. The agent .env currently lacks ARMYX_S3_BUCKET,
+        # ARCHIVE tab. The agent .env currently lacks EDGE_ISR_S3_BUCKET,
         # so we inject it inline here instead of editing the .env file
         # (which would force a full agent restart).
-        - ARMYX_S3_BUCKET=armyx-tech-edge-events-767397752906
-        - AWS_PROFILE=armyx-tech
+        - EDGE_ISR_S3_BUCKET=${EDGE_ISR_S3_BUCKET:}
+        - AWS_PROFILE=${AWS_PROFILE:default}
         - /home/daaronch/.local/bin/uv
         - run
         # Pulled from GitHub at a pinned SHA. To bump, push to main and

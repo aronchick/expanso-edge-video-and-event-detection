@@ -138,6 +138,7 @@ def _world_drone_model():
     global _DRONE_WORLD_MODEL
     if _DRONE_WORLD_MODEL is None:
         from ultralytics import YOLO
+
         # The repo ships yolov8s-worldv2.pt at the project root on the
         # Jetson. If it's missing, fall back to whatever is on PATH /
         # ultralytics will auto-download (it's on the Hub).
@@ -149,11 +150,13 @@ def _world_drone_model():
         # set_classes installs custom-text class prompts. Keep the list
         # tight: prompts that refer to small civilian quadcopters, NOT
         # full-size aircraft (which yolov8s-world conflates).
-        m.set_classes([
-            "small civilian quadcopter drone",
-            "consumer drone with rotors",
-            "small UAV",
-        ])
+        m.set_classes(
+            [
+                "small civilian quadcopter drone",
+                "consumer drone with rotors",
+                "small UAV",
+            ]
+        )
         _DRONE_WORLD_MODEL = m
     return _DRONE_WORLD_MODEL
 
@@ -184,6 +187,7 @@ def _coco_model():
     global _COCO_MODEL
     if _COCO_MODEL is None:
         from ultralytics import YOLO
+
         engine_path = "/home/daaronch/security-cameras/yolov8s.engine"
         if not Path(engine_path).exists():
             engine_path = "yolov8s.pt"
@@ -247,8 +251,7 @@ def main() -> int:
     p.add_argument("--fps", type=float, default=10.0)
     p.add_argument("--keep-top", type=int, default=400)
     p.add_argument("--min-sharpness", type=float, default=50.0)
-    p.add_argument("--prefix", default=None,
-                   help="Filename prefix (def: <subject>_<videostem>)")
+    p.add_argument("--prefix", default=None, help="Filename prefix (def: <subject>_<videostem>)")
     args = p.parse_args()
 
     video_path = Path(args.video).expanduser().resolve()
@@ -288,7 +291,7 @@ def main() -> int:
         try:
             dets = labeler(img_path)
         except Exception as e:
-            print(f"  [{i+1}/{len(keepers)}] {stem}: labeler error: {e}")
+            print(f"  [{i + 1}/{len(keepers)}] {stem}: labeler error: {e}")
             dets = []
 
         if not dets:
@@ -307,8 +310,16 @@ def main() -> int:
         for cls_idx, x1, y1, x2, y2 in dets:
             color = [(0, 255, 0), (0, 200, 255), (255, 80, 80)][cls_idx]  # B,G,R per class
             cv2.rectangle(review, (int(x1), int(y1)), (int(x2), int(y2)), color, 2)
-            cv2.putText(review, CLASS_NAMES_ORDERED[cls_idx], (int(x1), int(y1) - 4),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
+            cv2.putText(
+                review,
+                CLASS_NAMES_ORDERED[cls_idx],
+                (int(x1), int(y1) - 4),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                color,
+                1,
+                cv2.LINE_AA,
+            )
         cv2.imwrite(str(REVIEW / f"{stem}.jpg"), review, [cv2.IMWRITE_JPEG_QUALITY, 80])
 
         meta = {
@@ -323,7 +334,7 @@ def main() -> int:
         written += 1
 
         if (i + 1) % 25 == 0 or i + 1 == len(keepers):
-            print(f"  [{i+1}/{len(keepers)}] {written} labeled, {empty} empty")
+            print(f"  [{i + 1}/{len(keepers)}] {written} labeled, {empty} empty")
 
     print(f"\nDone. {written} usable frames, {empty} empty (skipped at export).")
     print(f"Total dataset-3class images: {len(list(IMAGES.glob('*.jpg')))}")

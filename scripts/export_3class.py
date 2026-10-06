@@ -32,8 +32,12 @@ CLASS_NAMES_ORDERED = ["person", "backpack", "drone"]
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--val-split", type=float, default=0.2,
-                   help="Fraction of usable frames held out for validation (def 0.2)")
+    p.add_argument(
+        "--val-split",
+        type=float,
+        default=0.2,
+        help="Fraction of usable frames held out for validation (def 0.2)",
+    )
     p.add_argument("--seed", type=int, default=42)
     args = p.parse_args()
 
@@ -67,8 +71,10 @@ def main() -> int:
                 pass
 
     if not pairs:
-        print(f"no usable image+label pairs (no_label={skipped_no_label}, empty={skipped_empty})",
-              file=sys.stderr)
+        print(
+            f"no usable image+label pairs (no_label={skipped_no_label}, empty={skipped_empty})",
+            file=sys.stderr,
+        )
         return 2
 
     print(f"{len(pairs)} usable pairs (no_label={skipped_no_label}, empty={skipped_empty})")
@@ -77,9 +83,11 @@ def main() -> int:
         print(f"  {idx}={name:<10} {class_counts.get(idx, 0)} instances")
 
     if not class_counts.get(2):
-        print("WARN: zero drone labels — model will not learn drone class. "
-              "Re-ingest the drone clip or check YOLO-World confidence threshold.",
-              file=sys.stderr)
+        print(
+            "WARN: zero drone labels — model will not learn drone class. "
+            "Re-ingest the drone clip or check YOLO-World confidence threshold.",
+            file=sys.stderr,
+        )
 
     rnd = random.Random(args.seed)
     rnd.shuffle(pairs)

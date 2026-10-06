@@ -165,7 +165,7 @@ The six decisions previously listed as open have been confirmed:
 - **Docs**: `DEMO_UI_SPEC.md` gains a back-reference pointer to the
   vocabulary spec; `STAGE_RUNBOOK.md` is unchanged regarding time
   formats (no toggle to document).
-- **Tests**: extend `tests/test_armyx_smoke.py` with file-level
+- **Tests**: extend `tests/test_edge_demo_smoke.py` with file-level
   assertions that the classification banner markup, the LED status
   classes, the ISO 8601 UTC formatter call sites, the callsign URL
   parameter handler, the Expanso logo asset reference, and the new

@@ -38,8 +38,8 @@ dataset/
 diagnostics/
 runs/
 
-# armyx-tech bootstrap secrets (AWS access keys)
-.armyx-tech-secrets/
+# Local AWS bootstrap secrets (access keys), never committed
+.*-secrets/
 .gstack/
 
 # Runtime SQLite stores + event logs (sensor + orchestrator)
@@ -79,3 +79,7 @@ jetson
 
 # nohup output from backgrounded demo processes
 nohup.out
+
+# Agent scratch and local permission files
+.claude/settings.local.json
+.claude/scheduled_tasks.lock

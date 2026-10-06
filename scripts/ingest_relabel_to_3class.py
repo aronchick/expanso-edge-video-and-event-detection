@@ -41,11 +41,21 @@ from PIL import Image
 
 def iter_frames(video: Path, fps: float):
     cmd = [
-        "ffmpeg", "-hide_banner", "-loglevel", "error",
-        "-i", str(video),
-        "-vf", f"fps={fps}",
-        "-c:v", "mjpeg", "-q:v", "3",
-        "-f", "image2pipe", "-",
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        str(video),
+        "-vf",
+        f"fps={fps}",
+        "-c:v",
+        "mjpeg",
+        "-q:v",
+        "3",
+        "-f",
+        "image2pipe",
+        "-",
     ]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=1 << 22)
     assert proc.stdout is not None and proc.stderr is not None
@@ -88,8 +98,9 @@ def main() -> int:
     p.add_argument("--video", type=Path, required=True)
     p.add_argument("--ndjson", type=Path, required=True)
     p.add_argument("--class-id", type=int, required=True)
-    p.add_argument("--subject", required=True,
-                   help="Tag used in output filenames, e.g. 'drone' or 'backpack'")
+    p.add_argument(
+        "--subject", required=True, help="Tag used in output filenames, e.g. 'drone' or 'backpack'"
+    )
     p.add_argument("--fps", type=float, default=5.0)
     p.add_argument("--dataset-dir", type=Path, default=Path("dataset-3class"))
     p.add_argument("--min-conf", type=float, default=0.25)
@@ -166,8 +177,10 @@ def main() -> int:
         if n_written and n_written % 200 == 0:
             print(f"[progress] written={n_written} skipped={n_skipped}", flush=True)
 
-    print(f"[done] subject={args.subject} class_id={args.class_id} "
-          f"written={n_written} skipped={n_skipped} → {args.dataset_dir}")
+    print(
+        f"[done] subject={args.subject} class_id={args.class_id} "
+        f"written={n_written} skipped={n_skipped} → {args.dataset_dir}"
+    )
     return 0
 
 

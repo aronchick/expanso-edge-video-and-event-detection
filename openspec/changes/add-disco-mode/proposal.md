@@ -67,7 +67,7 @@ NON-goals (explicitly out of scope for hackathon):
 - **Docs**: `STAGE_RUNBOOK.md` (one row in keystroke table for F5),
   `HACKATHON_SCRIPT.md` (one paragraph on the EMSO framing — when to
   flip mode mid-demo if the audience is EW-leaning).
-- **Tests**: extend `tests/test_armyx_smoke.py` with a check that
+- **Tests**: extend `tests/test_edge_demo_smoke.py` with a check that
   `?mode=disco` URL param is honored and that `disco-labels.js`
   exists with the expected key set.
 - **No** AWS, Expanso, Jetson, or sensor-side changes.

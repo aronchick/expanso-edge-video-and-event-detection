@@ -24,7 +24,7 @@
 
 ## 4. Smoke tests
 
-- [ ] 4.1 `test_disco_labels_file_exists_with_required_keys` in `tests/test_armyx_smoke.py` — assert the export object has the canonical keys (per spec)
+- [ ] 4.1 `test_disco_labels_file_exists_with_required_keys` in `tests/test_edge_demo_smoke.py` — assert the export object has the canonical keys (per spec)
 - [ ] 4.2 `test_dashboard_html_has_waterfall_canvas` — grep for the two canvas IDs in `index.html`
 - [ ] 4.3 `test_ws_client_handles_mode_param_and_f5` — grep for `mode=disco`, `localStorage`, and an `F5` case in `ws_client.js`
 

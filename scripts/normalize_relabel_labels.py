@@ -45,15 +45,27 @@ def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("input", type=Path)
     p.add_argument("--out", type=Path, default=None)
-    p.add_argument("--class", dest="canonical_class", default="drone",
-                   help="Canonical class name to assign to all kept hits.")
-    p.add_argument("--iou", type=float, default=0.5,
-                   help="IoU threshold above which two hits in the same frame "
-                        "are considered duplicates (keep higher confidence).")
+    p.add_argument(
+        "--class",
+        dest="canonical_class",
+        default="drone",
+        help="Canonical class name to assign to all kept hits.",
+    )
+    p.add_argument(
+        "--iou",
+        type=float,
+        default=0.5,
+        help="IoU threshold above which two hits in the same frame "
+        "are considered duplicates (keep higher confidence).",
+    )
     p.add_argument("--min-conf", type=float, default=0.25)
-    p.add_argument("--min-area-px", type=float, default=64.0,
-                   help="Discard boxes with area smaller than this (px²) — "
-                        "filters tokenizer noise that picks up on tiny patches.")
+    p.add_argument(
+        "--min-area-px",
+        type=float,
+        default=64.0,
+        help="Discard boxes with area smaller than this (px²) — "
+        "filters tokenizer noise that picks up on tiny patches.",
+    )
     args = p.parse_args()
 
     if not args.input.is_file():
@@ -116,13 +128,16 @@ def main() -> int:
 
     print(f"input:  {args.input}")
     print(f"output: {out_path}")
-    print(f"frames: {n_frames}  with-hits: {n_frames_with_hits} "
-          f"({100*n_frames_with_hits/n_frames if n_frames else 0:.1f}%)")
-    print(f"hits in: {total_in}  hits kept: {total_kept}  "
-          f"compression: {100*(1 - total_kept/total_in) if total_in else 0:.1f}%")
+    print(
+        f"frames: {n_frames}  with-hits: {n_frames_with_hits} "
+        f"({100 * n_frames_with_hits / n_frames if n_frames else 0:.1f}%)"
+    )
+    print(
+        f"hits in: {total_in}  hits kept: {total_kept}  "
+        f"compression: {100 * (1 - total_kept / total_in) if total_in else 0:.1f}%"
+    )
     print(f"hits-per-frame distribution: {dict(sorted(kept_per_frame.items()))}")
-    print(f"top-15 raw labels (input): "
-          f"{dict(raw_labels.most_common(15))}")
+    print(f"top-15 raw labels (input): {dict(raw_labels.most_common(15))}")
     return 0
 
 

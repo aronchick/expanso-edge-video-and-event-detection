@@ -6,10 +6,10 @@
 #
 # What it touches:
 #   - apt: dnsmasq, network-manager (already on JetPack normally)
-#   - /etc/dnsmasq.d/armyx-tech.conf  (DHCP+DNS for 192.168.50.0/24)
-#   - /etc/NetworkManager/system-connections/armyx-tech-lan.nmconnection
+#   - /etc/dnsmasq.d/edge-isr.conf  (DHCP+DNS for 192.168.50.0/24)
+#   - /etc/NetworkManager/system-connections/edge-isr-lan.nmconnection
 #         (static 192.168.50.1/24 on eth0, no gateway, no DNS — wlan0 is WAN)
-#   - /etc/sudoers.d/armyx-tech-nmcli  (NOPASSWD nmcli for the SSH user)
+#   - /etc/sudoers.d/edge-isr-nmcli  (NOPASSWD nmcli for the SSH user)
 #   - systemd: enables dnsmasq, restarts NetworkManager
 #
 # After this, F1/F2 from the Mac dashboard can do:
@@ -36,8 +36,8 @@ if ! command -v dnsmasq >/dev/null 2>&1; then
 fi
 
 # ---------- dnsmasq config ----------
-cat > /etc/dnsmasq.d/armyx-tech.conf <<EOF
-# armyx-tech edge ISR demo — LAN-only DNS+DHCP for ${LAN_IFACE}.
+cat > /etc/dnsmasq.d/edge-isr.conf <<EOF
+# Edge ISR demo — LAN-only DNS+DHCP for ${LAN_IFACE}.
 # Important: NetworkManager also runs a tiny dnsmasq for shared connections
 # on some JetPacks; we bind to ${LAN_IFACE} only and never to wlan0.
 interface=${LAN_IFACE}
@@ -59,16 +59,16 @@ dhcp-range=${DHCP_RANGE}
 # DNS: forward upstream queries via the Jetson's WAN-side resolver.
 # The LAN doesn't need internet routing through us; each host has its
 # own Wi-Fi. But local hostname resolution (jetson.local etc.) is nice.
-domain=armyx.local
-local=/armyx.local/
+domain=edge-isr.local
+local=/edge-isr.local/
 expand-hosts
 EOF
 
 # ---------- NetworkManager static profile ----------
-NM_FILE="/etc/NetworkManager/system-connections/armyx-tech-lan.nmconnection"
+NM_FILE="/etc/NetworkManager/system-connections/edge-isr-lan.nmconnection"
 cat > "$NM_FILE" <<EOF
 [connection]
-id=armyx-tech-lan
+id=edge-isr-lan
 type=ethernet
 interface-name=${LAN_IFACE}
 autoconnect=true
@@ -87,20 +87,20 @@ EOF
 chmod 600 "$NM_FILE"
 
 # ---------- sudoers for nmcli (NOPASSWD) ----------
-cat > /etc/sudoers.d/armyx-tech-nmcli <<EOF
+cat > /etc/sudoers.d/edge-isr-nmcli <<EOF
 # Allow the SSH user to toggle Wi-Fi without a password — this is what
 # the Mac orchestrator's F1/F2 uses to drive Beat 5A/C of the demo.
 ${SSH_USER} ALL=(root) NOPASSWD: /usr/bin/nmcli radio wifi *
 ${SSH_USER} ALL=(root) NOPASSWD: /usr/bin/nmcli device status
 EOF
-chmod 0440 /etc/sudoers.d/armyx-tech-nmcli
-visudo -cf /etc/sudoers.d/armyx-tech-nmcli >/dev/null
+chmod 0440 /etc/sudoers.d/edge-isr-nmcli
+visudo -cf /etc/sudoers.d/edge-isr-nmcli >/dev/null
 
 # ---------- enable services ----------
 systemctl enable dnsmasq
 systemctl restart dnsmasq
 nmcli connection reload
-nmcli connection up armyx-tech-lan || true
+nmcli connection up edge-isr-lan || true
 
 echo ""
 echo "=== Jetson LAN setup complete ==="

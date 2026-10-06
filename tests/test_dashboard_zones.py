@@ -1,6 +1,6 @@
 """Lock in the people-counting dashboard markers (zone tally + crowd FLAG).
 
-Mirrors the marker-style guards in test_armyx_smoke.py: these IDs/text are
+Mirrors the marker-style guards in test_edge_demo_smoke.py: these IDs/text are
 wired across index.html ↔ ws_client.js ↔ styles.css, and if any one
 disappears the tally renders blank silently. Pin them.
 """

@@ -38,7 +38,7 @@ Naming is non-obvious:
 - `metrics.py` — rolling 60s events/min, totals, cloud-up flag
 - `jobs_status.py` — shells out to `expanso-cli job list` (timeout 1s) for live cluster status. **Always wrap subprocess.run in `asyncio.to_thread`** when calling from an async handler — otherwise it blocks the FastAPI event loop and freezes WS + snapshot endpoints.
 - `s3_watcher.py` — boto3 polling thread for S3 archive freshness
-- `jetson_wan.py` — F1/F2 WAN-toggle SSH controller (cosmetic-only fallback when `ARMYX_JETSON_HOST` is unset)
+- `jetson_wan.py` — F1/F2 WAN-toggle SSH controller (cosmetic-only fallback when `EDGE_ISR_JETSON_HOST` is unset)
 - `snapshots.py` — serves real JPEGs from `snapshots/`, synthesizes 1280×720 frames in fake mode
 - `api.py` — FastAPI: `/events`, `/triggers`, `/metrics`, `/jobs`, `/snapshot/{sector}`, `/demo/wan-{up,down}`, `/demo/fused-test`, `/ws`. Auto-detects WAN state via a periodic 1.1.1.1:443 probe and broadcasts cloud-up/down on transitions.
 

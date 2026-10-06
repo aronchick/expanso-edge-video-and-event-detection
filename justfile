@@ -361,7 +361,7 @@ up: install-go2rtc
       echo "orchestrator already running (PID $(cat {{orch_pid}})); run 'just down' first"
       exit 1
     fi
-    # Load .env so EXPANSO_EDGE_BOOTSTRAP_TOKEN + ARMYX_* land in our
+    # Load .env so EXPANSO_EDGE_BOOTSTRAP_TOKEN + EDGE_ISR_* land in our
     # subshell. Python entrypoints load_dotenv separately (orchestrator,
     # sensor); expanso-edge needs the var exported BEFORE the binary
     # starts because there's no dotenv hook in Go.
@@ -428,10 +428,10 @@ up: install-go2rtc
     echo "  ✓ go2rtc        PID $(cat {{go2rtc_pid}})       log: {{go2rtc_log}}"
     echo
     echo "  dashboard:  http://localhost:{{port}}    (cameras streaming, NO detection yet)"
-    echo "  cloud node: expanso-cli node list           (Mac registered as M5-Max in armyx-tech)"
+    echo "  cloud node: expanso-cli node list           (this Mac registered as a node in your cluster)"
     echo
     echo "  ── Next: turn on detection from Expanso Cloud ──"
-    echo "    1. Open https://cloud.expanso.io and select the armyx-tech cluster"
+    echo "    1. Open https://cloud.expanso.io and select your cluster"
     echo "    2. Navigate to Jobs → sensor-north → click Start"
     echo "    3. Same for sensor-south"
     echo "    Watch the dashboard light up with bracketed detections."
@@ -450,7 +450,7 @@ up: install-go2rtc
 edge:
     #!/usr/bin/env bash
     set -euo pipefail
-    # Load .env so any EXPANSO_* / ARMYX_* vars are exported before the binary.
+    # Load .env so any EXPANSO_* / EDGE_ISR_* vars are exported before the binary.
     if [[ -f .env ]]; then set -a; source .env; set +a; fi
     # The node reaches cloud.expanso.io (NATS) directly; this just catches a
     # leftover tunnel DNS override that would send it to a dead loopback port.
@@ -590,7 +590,7 @@ deploy-jobs:
     done
     echo
     echo "  ✓ jobs are in the cluster, stopped. Start them via:"
-    echo "      cloud UI:  https://cloud.expanso.io   (pick armyx-tech cluster → Jobs)"
+    echo "      cloud UI:  https://cloud.expanso.io   (pick your cluster → Jobs)"
     echo "      OR:        just detect-on   (sensors only)"
     echo "                 just fuse-on     (adds the cross-sector fusion pipeline)"
 

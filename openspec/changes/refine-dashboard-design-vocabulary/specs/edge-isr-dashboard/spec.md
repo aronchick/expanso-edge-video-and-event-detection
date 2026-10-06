@@ -155,7 +155,7 @@ appear inside the operational dashboard frame.
 
 #### Scenario: Empty/error state is compressed ops-language
 
-- **GIVEN** the `ARMYX_S3_BUCKET` environment variable is unset
+- **GIVEN** the `EDGE_ISR_S3_BUCKET` environment variable is unset
 - **WHEN** the cloud-egress tile renders
 - **THEN** its state copy reads `ARCHIVE: STANDBY · CONFIGURE BUCKET`
 - **AND** does NOT read `add bucket via .env or expanso job`

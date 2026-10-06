@@ -47,16 +47,30 @@ def _laplacian_variance(gray: np.ndarray) -> float:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("video", help="Path to drone video (mp4, mov, etc)")
-    p.add_argument("--fps", type=float, default=10.0,
-                   help="Frames per second to extract from the video (def 10)")
-    p.add_argument("--keep-top", type=int, default=400,
-                   help="Keep at most this many sharpest frames (def 400)")
-    p.add_argument("--min-sharpness", type=float, default=60.0,
-                   help="Drop any frame with Laplacian variance below this (def 60)")
-    p.add_argument("--prefix", default=None,
-                   help="Filename prefix for kept frames (def: video filename stem)")
-    p.add_argument("--expected-boxes", type=int, default=1,
-                   help="Number of drones expected per frame (used by labeler, def 1)")
+    p.add_argument(
+        "--fps",
+        type=float,
+        default=10.0,
+        help="Frames per second to extract from the video (def 10)",
+    )
+    p.add_argument(
+        "--keep-top", type=int, default=400, help="Keep at most this many sharpest frames (def 400)"
+    )
+    p.add_argument(
+        "--min-sharpness",
+        type=float,
+        default=60.0,
+        help="Drop any frame with Laplacian variance below this (def 60)",
+    )
+    p.add_argument(
+        "--prefix", default=None, help="Filename prefix for kept frames (def: video filename stem)"
+    )
+    p.add_argument(
+        "--expected-boxes",
+        type=int,
+        default=1,
+        help="Number of drones expected per frame (used by labeler, def 1)",
+    )
     args = p.parse_args()
 
     video_path = Path(args.video).expanduser().resolve()
@@ -138,7 +152,7 @@ def main() -> int:
 
         meta = {
             "expected_boxes": args.expected_boxes,
-            "camera_id": prefix,           # so esc-dataset's filenaming is happy
+            "camera_id": prefix,  # so esc-dataset's filenaming is happy
             "target": "drone",
             "source_video": str(video_path),
             "source_frame_index": src_index,

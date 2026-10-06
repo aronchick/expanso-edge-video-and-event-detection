@@ -50,7 +50,7 @@ class JetsonWanController:
         # Empty string means "fake mode" — useful for laptop dev where there
         # is no Jetson to ssh into.
         self.jetson_host = (
-            jetson_host if jetson_host is not None else os.environ.get("ARMYX_JETSON_HOST", "")
+            jetson_host if jetson_host is not None else os.environ.get("EDGE_ISR_JETSON_HOST", "")
         )
         self.ssh_timeout_sec = ssh_timeout_sec
         self.radio_iface = radio_iface
@@ -60,7 +60,7 @@ class JetsonWanController:
             return WanResult(
                 ok=True,
                 cosmetic_only=True,
-                detail="ARMYX_JETSON_HOST not set; flag-only toggle (laptop dev mode)",
+                detail="EDGE_ISR_JETSON_HOST not set; flag-only toggle (laptop dev mode)",
             )
 
         action = "on" if up else "off"

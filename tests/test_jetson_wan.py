@@ -25,12 +25,12 @@ from expanso_security_camera.orchestrator.jetson_wan import (
 
 @pytest.mark.asyncio
 async def test_fake_mode_when_host_unset(monkeypatch):
-    monkeypatch.delenv("ARMYX_JETSON_HOST", raising=False)
+    monkeypatch.delenv("EDGE_ISR_JETSON_HOST", raising=False)
     c = JetsonWanController(jetson_host="")
     result = await c.set_wan(up=False)
     assert result.ok is True
     assert result.cosmetic_only is True
-    assert "ARMYX_JETSON_HOST not set" in result.detail
+    assert "EDGE_ISR_JETSON_HOST not set" in result.detail
 
 
 @pytest.mark.asyncio

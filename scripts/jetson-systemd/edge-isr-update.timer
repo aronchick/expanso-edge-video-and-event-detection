@@ -1,5 +1,5 @@
 [Unit]
-Description=Run armyx-tech expanso-edge updater nightly
+Description=Run expanso-edge updater nightly
 Documentation=https://github.com/aronchick/demo-drone-detection
 
 [Timer]
@@ -10,7 +10,7 @@ RandomizedDelaySec=900
 # Persistent=true means a missed run (laptop closed at 3am) catches up on
 # next boot. Important for portable Jetson rigs that aren't always on.
 Persistent=true
-Unit=armyx-edge-update.service
+Unit=edge-isr-update.service
 
 [Install]
 WantedBy=timers.target

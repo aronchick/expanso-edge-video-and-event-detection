@@ -132,7 +132,7 @@ class DashboardState(BaseModel):
     """Shared state written to state.json for the dashboard to read."""
 
     session_id: str = Field(
-        default_factory=lambda: (f"sess_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}")
+        default_factory=lambda: f"sess_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
     )
     camera_outside_departures: int = 0
     camera_inside_arrivals: int = 0

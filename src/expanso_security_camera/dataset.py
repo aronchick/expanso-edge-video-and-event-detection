@@ -226,10 +226,7 @@ def _call_local_yolo_for_boxes(
         key=lambda item: float(item[0]),
         reverse=True,
     )
-    return [
-        {"bbox": [int(value) for value in box]}
-        for _, box in ranked[:expected_boxes]
-    ]
+    return [{"bbox": [int(value) for value in box]} for _, box in ranked[:expected_boxes]]
 
 
 def _label_one(img_path: Path, target: str = "box") -> tuple[str, int, str | None]:

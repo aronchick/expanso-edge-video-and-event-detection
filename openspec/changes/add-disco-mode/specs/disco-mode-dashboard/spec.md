@@ -58,7 +58,7 @@ identically regardless of dashboard mode.
 
 - **GIVEN** the dashboard is in DiSCO mode
 - **WHEN** an event flows through the orchestrator and into S3 via
-  the `armyx-tech-event-archive` pipeline
+  the `event-archive` pipeline
 - **THEN** the S3 object payload is byte-identical to what would
   have been produced in imagery mode
 - **AND** the lineage block (`archive.archived_at`, `pipeline`,

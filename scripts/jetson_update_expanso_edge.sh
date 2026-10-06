@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Update expanso-edge to the latest version on this Jetson, with backup +
 # rollback. Runs as root. Designed to be invoked by a systemd oneshot
-# service (armyx-edge-update.service) on a nightly timer, or manually.
+# service (edge-isr-update.service) on a nightly timer, or manually.
 #
 # Strategy:
 #   1. Capture pre-update state (binary, version, NATS cluster URL).
@@ -16,7 +16,7 @@
 #   6. On any failure: stop service, restore backup, restart, exit non-zero.
 #
 # All output goes to /var/log/expanso-edge-update.log AND stdout (so
-# `journalctl -u armyx-edge-update.service` also shows everything).
+# `journalctl -u edge-isr-update.service` also shows everything).
 #
 # Idempotent: if the installer reports "already up to date", we still
 # verify and exit 0; backups are pruned >30 days old.

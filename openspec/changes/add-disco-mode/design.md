@@ -134,7 +134,7 @@ which means ~80 rows of scroll, fits a 450px canvas).
 
 ## 5. Smoke test extension
 
-`tests/test_armyx_smoke.py` gains:
+`tests/test_edge_demo_smoke.py` gains:
 
 - `test_disco_labels_file_exists_with_required_keys`
 - `test_dashboard_html_has_waterfall_canvas`
