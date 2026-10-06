@@ -1,69 +1,820 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Synced Recordings · Expanso</title>
-<style>
-  :root { --bg:#0e1322; --surface:#15181d; --border:#2a3344; --text:#f4f6f8;
-          --dim:#9aa3ad; --brand:#6d4aff; }
-  * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--text);
-         font:16px/1.4 "IBM Plex Sans", sans-serif; }
-  header { padding:14px 22px; border-bottom:1px solid var(--border);
-           font-weight:700; letter-spacing:.02em; }
-  header .brand { color:var(--brand); letter-spacing:.18em; }
-  .controls { display:flex; gap:10px; align-items:center; padding:14px 22px; }
-  button { background:var(--brand); color:#fff; border:0; border-radius: 8px;
-           padding:10px 16px; font-weight:700; cursor:pointer; font-size:15px; }
-  button.secondary { background:var(--surface); border:1px solid var(--border); }
-  button:active { transform: translateY(1px); }
-  .time { color:var(--dim); font-family:"IBM Plex Mono", ui-monospace, monospace; margin-left:auto; }
-  .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; padding:0 22px 22px; }
-  .cam { background:var(--surface); border:1px solid var(--border);
-         border-radius: 16px; overflow:hidden; }
-  .cam h2 { margin:0; padding:10px 16px; font-size:13px; color:var(--dim);
-            letter-spacing:.14em; text-transform:uppercase;
-            font-family:"IBM Plex Mono", ui-monospace, monospace; }
-  video { width:100%; display:block; background:#000; aspect-ratio:4/3; }
-  @media (max-width: 900px) { .grid { grid-template-columns:1fr; } }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Synced recordings - Box Transfer Monitor</title>
+  <link rel="stylesheet" href="fonts/fonts.css">
+  <!-- This page is copied on its own beside the recordings (see the record
+       recipe in the justfile), so the shared box.css and theme.js are inlined
+       below. Edit them in public/box.css and public/theme.js, then rebuild. -->
+  <style>
+/* Shared styles for the box-counting pages: dashboard, architecture, live
+ * viewer. Light is the default; the dark theme is an explicit toggle that
+ * sets data-theme="dark" on <html> (see theme.js). The OS colour-scheme
+ * preference is ignored on purpose.
+ *
+ * Ground is kraft paper and corrugated ink: the subject is cardboard boxes
+ * crossing a bay door. Accents carry meaning only: blue is the outside
+ * camera (departed), green is the inside camera (arrived), red is a missing
+ * box, amber is a pending or degraded source.
+ */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+:root {
+  color-scheme: light;
+
+  --bg: #f2eee4;
+  --surface: #faf7f0;
+  --surface-2: #ebe5d6;
+  --line: #cfc6b2;
+  --line-strong: #766d5a;
+
+  --text: #1c2220;
+  --text-dim: #4d544e;
+
+  --accent: #1b5aa3;
+  --out: #1b5aa3;
+  --in: #17704a;
+  --ok: #17704a;
+  --warn: #8a5600;
+  --err: #b02a1f;
+
+  --ok-bg: #e1efe3;
+  --err-bg: #f7e0db;
+  --warn-bg: #f4e8cc;
+
+  --code-key: #7a3b00;
+  --code-str: #17704a;
+  --code-com: #5a6158;
+  --code-num: #1b5aa3;
+
+  --fs-s: 0.8125rem;
+  --fs-m: 1rem;
+  --fs-l: 1.25rem;
+  --fs-xl: 1.875rem;
+  --fs-num: 3.5rem;
+
+  --sans: "IBM Plex Sans", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #12161b;
+  --surface: #1a2027;
+  --surface-2: #232b34;
+  --line: #36414d;
+  --line-strong: #8795a5;
+
+  --text: #eef2f5;
+  --text-dim: #aab6c2;
+
+  --accent: #82b8f0;
+  --out: #82b8f0;
+  --in: #6fd69c;
+  --ok: #6fd69c;
+  --warn: #f0bb62;
+  --err: #ff9d94;
+
+  --ok-bg: #16301f;
+  --err-bg: #3a1f1d;
+  --warn-bg: #352c15;
+
+  --code-key: #f0bb62;
+  --code-str: #6fd69c;
+  --code-com: #9aa7b4;
+  --code-num: #82b8f0;
+}
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: #f2eee4;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: var(--fs-m);
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+:root[data-theme="dark"] body { background: #12161b; }
+
+h1, h2, h3, p, dl, dd, ul, ol, figure, pre { margin: 0; }
+ul, ol { padding: 0; list-style: none; }
+
+a { color: var(--accent); text-underline-offset: 3px; }
+
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -64px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  padding: 8px 12px;
+  z-index: 10;
+}
+
+.skip-link:focus { top: 8px; }
+
+.shell {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 16px 48px;
+}
+
+/* ---------- header and navigation ---------- */
+
+.site-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 24px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 24px;
+}
+
+.brand {
+  font-size: var(--fs-l);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-right: auto;
+  overflow-wrap: anywhere;
+}
+
+.nav { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+
+.nav a {
+  display: inline-block;
+  padding: 8px 0;
+  color: var(--text-dim);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  font-size: var(--fs-m);
+}
+
+.nav a:hover { color: var(--text); border-bottom-color: var(--line-strong); }
+
+.nav a[aria-current="page"] {
+  color: var(--text);
+  font-weight: 600;
+  border-bottom-color: var(--accent);
+}
+
+/* ---------- controls ---------- */
+
+.btn {
+  font-family: var(--sans);
+  font-size: var(--fs-m);
+  font-weight: 600;
+  line-height: 1.2;
+  min-height: 44px;
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btn:hover { background: var(--surface-2); }
+
+.btn[aria-pressed="true"] {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+
+.btn-primary {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+
+.btn-primary:hover { background: var(--text-dim); border-color: var(--text-dim); }
+
+.btn:disabled, .btn-primary:disabled, .btn-primary:disabled:hover {
+  background: var(--surface-2);
+  color: var(--text-dim);
+  border-color: var(--line);
+  cursor: not-allowed;
+}
+
+.theme-toggle .state { font-family: var(--mono); font-size: var(--fs-s); font-weight: 500; }
+
+.control-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
+
+.feedback {
+  font-size: var(--fs-m);
+  color: var(--text-dim);
+  min-height: 1.5em;
+  overflow-wrap: anywhere;
+}
+
+.feedback[data-kind="ok"] { color: var(--ok); }
+.feedback[data-kind="err"] { color: var(--err); }
+
+input[type="number"] {
+  font-family: var(--mono);
+  font-size: var(--fs-m);
+  min-height: 44px;
+  width: 6rem;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--text);
+}
+
+label { color: var(--text-dim); }
+
+/* ---------- panels and text ---------- */
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 20px;
+}
+
+.stack { display: grid; gap: 24px; }
+.stack.tight { gap: 12px; }
+
+.page-title { font-size: var(--fs-xl); font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; }
+.lede { color: var(--text-dim); max-width: 62ch; margin-top: 8px; }
+.section-title { font-size: var(--fs-l); font-weight: 600; margin-bottom: 12px; }
+.dim { color: var(--text-dim); }
+.mono { font-family: var(--mono); }
+
+code, .code-inline {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  background: var(--surface-2);
+  border-radius: 4px;
+  padding: 1px 6px;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- source status and unreachable notices ---------- */
+
+.status-strip { display: flex; flex-wrap: wrap; gap: 8px 24px; font-size: var(--fs-s); color: var(--text-dim); }
+.status-strip .item { display: flex; gap: 6px; align-items: baseline; }
+.status-strip .name { font-weight: 600; color: var(--text); }
+.status-strip [data-kind="ok"] { color: var(--ok); }
+.status-strip [data-kind="err"] { color: var(--err); }
+.status-strip [data-kind="warn"] { color: var(--warn); }
+
+.notice {
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  padding: 12px 16px;
+  background: var(--warn-bg);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.notice[data-kind="err"] { background: var(--err-bg); }
+.notice[data-kind="ok"] { background: var(--ok-bg); }
+.notice strong { display: block; margin-bottom: 2px; }
+
+.pill {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: var(--fs-s);
+  font-weight: 600;
+  border: 1px solid currentColor;
+  border-radius: 9999px;
+  padding: 2px 12px;
+  white-space: nowrap;
+}
+
+.pill[data-kind="ok"] { color: var(--ok); }
+.pill[data-kind="err"] { color: var(--err); }
+.pill[data-kind="warn"] { color: var(--warn); }
+
+/* ---------- reconciliation and inventory ---------- */
+
+.recon { display: grid; grid-template-columns: 1fr; gap: 16px; }
+
+@media (min-width: 800px) {
+  .recon { grid-template-columns: 1fr 1fr 1.4fr; }
+}
+
+.count-card { display: grid; gap: 4px; align-content: start; }
+.count-card .label { color: var(--text-dim); font-size: var(--fs-m); }
+
+.big-number {
+  font-family: var(--mono);
+  font-size: var(--fs-num);
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+}
+
+.big-number[data-side="out"] { color: var(--out); }
+.big-number[data-side="in"] { color: var(--in); }
+
+.verdict { display: grid; gap: 6px; align-content: start; }
+.verdict-title { font-size: var(--fs-l); font-weight: 700; line-height: 1.2; }
+.verdict[data-state="match"] { background: var(--ok-bg); }
+.verdict[data-state="short"] { background: var(--err-bg); border-color: var(--err); }
+.verdict[data-state="match"] .verdict-title { color: var(--ok); }
+.verdict[data-state="short"] .verdict-title { color: var(--err); }
+.verdict-detail { font-family: var(--mono); font-size: var(--fs-s); color: var(--text-dim); overflow-wrap: anywhere; }
+
+.inventory { display: grid; gap: 8px; }
+.inventory .section-title { margin-bottom: 0; }
+.inventory-title { font-size: var(--fs-l); font-weight: 700; }
+.inventory[data-state="ok"] .inventory-title { color: var(--ok); }
+.inventory[data-state="short"] { background: var(--err-bg); border-color: var(--err); }
+.inventory[data-state="short"] .inventory-title { color: var(--err); }
+.inventory-counts { font-family: var(--mono); display: flex; flex-wrap: wrap; gap: 4px 20px; }
+.inventory-counts .num { font-size: var(--fs-l); font-weight: 700; margin-left: 4px; }
+.inventory-counts .num[data-side="out"] { color: var(--out); }
+.inventory-counts .num[data-side="in"] { color: var(--in); }
+.inventory-baseline { font-family: var(--mono); font-size: var(--fs-s); color: var(--text-dim); overflow-wrap: anywhere; }
+
+.skeleton {
+  display: inline-block;
+  width: 2ch;
+  height: 1em;
+  background: var(--surface-2);
+  color: transparent;
+  border-radius: 4px;
+  user-select: none;
+}
+
+.session-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+  font-family: var(--mono);
+  font-size: var(--fs-s);
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- camera feeds ---------- */
+
+.cams { display: grid; grid-template-columns: 1fr; gap: 16px; }
+
+@media (min-width: 800px) {
+  .cams { grid-template-columns: 1fr 1fr; }
+}
+
+.cam {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.cam-head { padding: 12px 16px; font-weight: 600; overflow-wrap: anywhere; }
+.cam-head .dim { font-weight: 400; }
+
+.cam-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--surface-2);
+}
+
+.cam-frame img, .cam-frame iframe, .cam-frame video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  object-fit: contain;
+  background: var(--surface-2);
+}
+
+.cam-frame.ratio-43 { aspect-ratio: 4 / 3; }
+
+.cam-frame img[hidden], .cam-frame iframe[hidden] { display: none; }
+
+.cam-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 16px;
+  text-align: center;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.cam-placeholder[hidden] { display: none; }
+.cam-placeholder .dim { font-size: var(--fs-s); }
+
+.cam-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+}
+
+.cam-foot .big { font-family: var(--mono); font-size: var(--fs-xl); font-weight: 600; }
+.cam-foot .big[data-side="out"] { color: var(--out); }
+.cam-foot .big[data-side="in"] { color: var(--in); }
+
+/* ---------- event log ---------- */
+
+.event-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: var(--fs-s);
+}
+
+.event-row:last-child { border-bottom: 0; }
+.event-row .time { color: var(--text-dim); min-width: 9ch; }
+.event-row .src { color: var(--text-dim); }
+.event-row .depart { color: var(--out); }
+.event-row .arrive { color: var(--in); }
+.event-row .count { color: var(--text-dim); margin-left: auto; }
+.event-empty { color: var(--text-dim); padding: 12px 0; }
+
+/* ---------- raw data ---------- */
+
+details.raw summary { cursor: pointer; font-weight: 600; min-height: 32px; }
+details.raw .raw-grid { display: grid; gap: 16px; margin-top: 12px; }
+@media (min-width: 800px) { details.raw .raw-grid { grid-template-columns: 1fr 1fr; } }
+
+pre.json, pre.code {
+  font-family: var(--mono);
+  font-size: var(--fs-s);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--surface-2);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 12px 16px;
+  tab-size: 2;
+}
+
+pre.code .k { color: var(--code-key); }
+pre.code .s { color: var(--code-str); }
+pre.code .c { color: var(--code-com); }
+pre.code .n { color: var(--code-num); }
+
+.json-label { font-size: var(--fs-s); color: var(--text-dim); margin-bottom: 4px; }
+
+/* ---------- architecture ---------- */
+
+.flow { display: grid; gap: 0; }
+.flow-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 16px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: var(--fs-s);
+}
+
+.flow-link::before { content: ""; width: 1px; height: 28px; background: var(--line-strong); flex: none; margin-right: 4px; }
+
+.stage { display: grid; gap: 8px; }
+.stage-tag { font-family: var(--mono); font-size: var(--fs-s); color: var(--text-dim); }
+.stage h3 { font-size: var(--fs-l); font-weight: 600; }
+.stage .facts { display: grid; gap: 4px 24px; }
+
+@media (min-width: 700px) {
+  .stage .facts { grid-template-columns: 1fr 1fr; }
+}
+
+.stage .facts li { background: var(--surface-2); border-radius: 8px; padding: 6px 12px; overflow-wrap: anywhere; }
+.stage-edge { border-color: var(--accent); border-width: 2px; }
+
+.steps { display: grid; gap: 8px; grid-template-columns: 1fr; counter-reset: step; }
+@media (min-width: 700px) { .steps { grid-template-columns: repeat(5, 1fr); } }
+.steps li { background: var(--surface-2); border-radius: 8px; padding: 8px 12px; }
+.steps .step-name { display: block; font-weight: 600; }
+.steps .step-note { display: block; font-size: var(--fs-s); color: var(--text-dim); overflow-wrap: anywhere; }
+
+.def-list { display: grid; gap: 0; }
+.def-list > div { padding: 12px 0; border-bottom: 1px solid var(--line); display: grid; gap: 2px; }
+.def-list > div:last-child { border-bottom: 0; }
+.def-list dt { font-weight: 600; }
+.def-list dd { color: var(--text-dim); }
+
+@media (min-width: 800px) {
+  .def-list.two { grid-template-columns: 1fr 1fr; column-gap: 32px; }
+}
+
+table.bom { width: 100%; border-collapse: collapse; }
+table.bom th, table.bom td { text-align: left; padding: 10px 8px 10px 0; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+table.bom th { font-weight: 600; }
+table.bom td.price, table.bom th.price { text-align: right; font-family: var(--mono); white-space: nowrap; padding-right: 0; }
+table.bom tfoot td, table.bom tfoot th { font-weight: 700; border-bottom: 0; }
+.bom-note { color: var(--text-dim); margin-top: 8px; }
+
+.deploy-cmd { margin-bottom: 16px; overflow-wrap: anywhere; }
+
+.yaml-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 8px; }
+.yaml-head .file { font-family: var(--mono); font-size: var(--fs-s); color: var(--text-dim); }
+
+/* ---------- footer ---------- */
+
+.site-footer {
+  margin-top: 32px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  color: var(--text-dim);
+  font-size: var(--fs-s);
+  overflow-wrap: anywhere;
+}
+
+[hidden] { display: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+  </style>
+  <script>
+// Theme toggle shared by every box-counting page. Light is the default; the
+// OS colour-scheme preference is ignored. The choice is kept in localStorage
+// when it is available and the page works without it.
+(function () {
+  const KEY = 'box-monitor-theme';
+  const root = document.documentElement;
+
+  function readStored() {
+    try {
+      return window.localStorage.getItem(KEY);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function store(value) {
+    try {
+      window.localStorage.setItem(KEY, value);
+    } catch (error) {
+      // Storage is blocked; the toggle still works for this page view.
+    }
+  }
+
+  function currentTheme() {
+    return root.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+  }
+
+  function paintButtons() {
+    const dark = currentTheme() === 'dark';
+    const buttons = document.querySelectorAll('.theme-toggle');
+
+    buttons.forEach(function (button) {
+      const state = button.querySelector('.state');
+
+      button.setAttribute('aria-pressed', dark ? 'true' : 'false');
+
+      if (state) state.textContent = dark ? 'on' : 'off';
+    });
+  }
+
+  function apply(theme) {
+    root.setAttribute('data-theme', theme);
+    paintButtons();
+  }
+
+  apply(readStored() === 'dark' ? 'dark' : 'light');
+
+  document.addEventListener('DOMContentLoaded', function () {
+    paintButtons();
+
+    document.querySelectorAll('.theme-toggle').forEach(function (button) {
+      button.addEventListener('click', function () {
+        const next = currentTheme() === 'dark' ? 'light' : 'dark';
+
+        apply(next);
+        store(next);
+      });
+    });
+  });
+})();
+  </script>
 </head>
 <body>
-  <header><span class="brand">EXPANSO</span> · synced recordings</header>
-  <div class="controls">
-    <button id="play">▶ Play both</button>
-    <button id="pause" class="secondary">⏸ Pause</button>
-    <button id="restart" class="secondary">⏮ Restart</button>
-    <span class="time" id="time">0.0s</span>
+  <a class="skip-link" href="#main">Skip to the recordings</a>
+  <div class="shell">
+    <header class="site-header">
+      <span class="brand">Box Transfer Monitor</span>
+      <nav class="nav" id="site-nav" aria-label="Pages">
+        <a href="index.html">Dashboard</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="live-viewer.html">Live cameras</a>
+        <a href="record-viewer.html" aria-current="page">Recordings</a>
+      </nav>
+      <button type="button" class="btn theme-toggle" aria-pressed="false">Dark mode <span class="state" aria-hidden="true">off</span></button>
+    </header>
+
+    <main id="main" class="stack">
+      <div>
+        <h1 class="page-title">Synced recordings</h1>
+        <p class="lede">Both cameras recorded separately and played back together, frame for frame.</p>
+      </div>
+
+      <div class="control-row">
+        <button type="button" class="btn btn-primary" id="play" disabled>Play both</button>
+        <button type="button" class="btn" id="pause" disabled>Pause</button>
+        <button type="button" class="btn" id="restart" disabled>Restart</button>
+        <span class="mono dim" id="time" aria-label="Playback position">0.0s of unknown</span>
+      </div>
+      <p class="feedback" id="rv-feedback" role="status" aria-live="polite"></p>
+
+      <section aria-label="Recordings">
+        <div class="cams">
+          <figure class="cam">
+            <figcaption class="cam-head">Sector North <span class="dim">cam-outside</span></figcaption>
+            <div class="cam-frame ratio-43">
+              <video id="a" src="cam-outside.mp4" playsinline preload="auto" aria-label="Recording from cam-outside"></video>
+              <div class="cam-placeholder" id="a-empty" hidden></div>
+            </div>
+          </figure>
+          <figure class="cam">
+            <figcaption class="cam-head">Sector South <span class="dim">cam-inside</span></figcaption>
+            <div class="cam-frame ratio-43">
+              <video id="b" src="cam-inside.mp4" playsinline preload="auto" aria-label="Recording from cam-inside"></video>
+              <div class="cam-placeholder" id="b-empty" hidden></div>
+            </div>
+          </figure>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      Recordings are cam-outside.mp4 and cam-inside.mp4, saved by just record.
+    </footer>
   </div>
-  <div class="grid">
-    <div class="cam">
-      <h2>Sector North · cam-outside</h2>
-      <video id="a" src="cam-outside.mp4" playsinline preload="auto"></video>
-    </div>
-    <div class="cam">
-      <h2>Sector South · cam-inside</h2>
-      <video id="b" src="cam-inside.mp4" playsinline preload="auto"></video>
-    </div>
-  </div>
+
   <script>
-    // Two independently-recorded files, played back in lockstep. Video A is
-    // the master clock; B is nudged to match whenever it drifts > 0.25s.
-    const a = document.getElementById('a');
-    const b = document.getElementById('b');
-    const t = document.getElementById('time');
-    const playBoth = () => { b.currentTime = a.currentTime; a.play(); b.play(); };
-    document.getElementById('play').onclick = playBoth;
-    document.getElementById('pause').onclick = () => { a.pause(); b.pause(); };
-    document.getElementById('restart').onclick = () => { a.currentTime = 0; b.currentTime = 0; playBoth(); };
-    a.addEventListener('timeupdate', () => {
-      if (Math.abs(b.currentTime - a.currentTime) > 0.25) b.currentTime = a.currentTime;
-      t.textContent = a.currentTime.toFixed(1) + 's';
+// Synced recordings: two independently recorded files played in lockstep.
+// Video A is the master clock; B is nudged back whenever it drifts by more
+// than 0.25 s. Missing or unplayable files are reported next to the controls.
+(function () {
+  const DRIFT = 0.25;
+  const a = document.getElementById('a');
+  const b = document.getElementById('b');
+  const timeEl = document.getElementById('time');
+  const feedback = document.getElementById('rv-feedback');
+
+  const buttons = ['play', 'pause', 'restart'].map(function (id) {
+    return document.getElementById(id);
+  });
+
+  const files = [
+    { video: a, name: 'cam-outside.mp4', frame: 'a', ok: null },
+    { video: b, name: 'cam-inside.mp4', frame: 'b', ok: null },
+  ];
+
+  function say(kind, text) {
+    feedback.dataset.kind = kind;
+    feedback.textContent = text;
+  }
+
+  function setEnabled(enabled) {
+    buttons.forEach(function (button) {
+      button.disabled = !enabled;
     });
-    a.addEventListener('seeked', () => { b.currentTime = a.currentTime; });
-    a.addEventListener('play', () => { if (b.paused) b.play(); });
-    a.addEventListener('pause', () => { if (!b.paused) b.pause(); });
+  }
+
+  function showMissing(file) {
+    const empty = document.getElementById(file.frame + '-empty');
+    const head = document.createElement('span');
+    const why = document.createElement('span');
+
+    file.ok = false;
+    empty.textContent = '';
+    head.textContent = file.name + ' could not be loaded';
+    why.className = 'dim';
+    why.textContent = 'The file is missing next to this page or is not playable video. just record writes both files and serves this page beside them.';
+    empty.append(head, why);
+    empty.hidden = false;
+    file.video.hidden = true;
+    setEnabled(false);
+    say('err', 'Playback is off: ' + file.name + ' could not be loaded.');
+  }
+
+  function formatTime() {
+    const total = Number.isFinite(a.duration) ? a.duration.toFixed(1) + 's' : 'unknown';
+
+    timeEl.textContent = a.currentTime.toFixed(1) + 's of ' + total;
+  }
+
+  async function playBoth() {
+    b.currentTime = a.currentTime;
+
+    try {
+      await Promise.all([a.play(), b.play()]);
+      say('ok', 'Playing both recordings.');
+    } catch (error) {
+      say('err', 'The browser refused to start playback (' + error.name + '). Press Play both again.');
+    }
+  }
+
+  function pauseBoth() {
+    a.pause();
+    b.pause();
+    say('ok', 'Paused at ' + a.currentTime.toFixed(1) + 's.');
+  }
+
+  function restart() {
+    a.currentTime = 0;
+    b.currentTime = 0;
+    playBoth();
+  }
+
+  files.forEach(function (file) {
+    file.video.addEventListener('error', function () {
+      showMissing(file);
+    });
+
+    file.video.addEventListener('loadedmetadata', function () {
+      file.ok = true;
+      formatTime();
+
+      if (files.every(function (f) {
+        return f.ok;
+      })) {
+        setEnabled(true);
+        say('ok', 'Both recordings loaded. Press Play both.');
+      }
+    });
+  });
+
+  a.addEventListener('timeupdate', function () {
+    if (Math.abs(b.currentTime - a.currentTime) > DRIFT) b.currentTime = a.currentTime;
+
+    formatTime();
+  });
+
+  a.addEventListener('seeked', function () {
+    b.currentTime = a.currentTime;
+  });
+
+  a.addEventListener('play', function () {
+    if (b.paused) b.play();
+  });
+
+  a.addEventListener('pause', function () {
+    if (!b.paused) b.pause();
+  });
+
+  a.addEventListener('ended', function () {
+    say('ok', 'Finished. Press Restart to watch again.');
+  });
+
+  document.getElementById('play').addEventListener('click', playBoth);
+  document.getElementById('pause').addEventListener('click', pauseBoth);
+  document.getElementById('restart').addEventListener('click', restart);
+
+  // When this page is copied beside the recordings and served as index.html,
+  // the dashboard, architecture and live pages are not there; hide the nav.
+  if (!window.location.pathname.endsWith('record-viewer.html')) {
+    document.getElementById('site-nav').hidden = true;
+  }
+
+  setEnabled(false);
+  say('', 'Loading recordings...');
+
+  window.setTimeout(function () {
+    if (files.some(function (f) {
+      return f.ok === null;
+    })) {
+      say('', 'Still waiting for the recordings to load...');
+    }
+  }, 4000);
+})();
   </script>
 </body>
 </html>

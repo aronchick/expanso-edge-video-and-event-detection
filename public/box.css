@@ -185,7 +185,6 @@ a { color: var(--accent); text-underline-offset: 3px; }
 }
 
 .btn:hover { background: var(--surface-2); }
-.btn:disabled { cursor: not-allowed; color: var(--text-dim); }
 
 .btn[aria-pressed="true"] {
   background: var(--text);
@@ -200,6 +199,13 @@ a { color: var(--accent); text-underline-offset: 3px; }
 }
 
 .btn-primary:hover { background: var(--text-dim); border-color: var(--text-dim); }
+
+.btn:disabled, .btn-primary:disabled, .btn-primary:disabled:hover {
+  background: var(--surface-2);
+  color: var(--text-dim);
+  border-color: var(--line);
+  cursor: not-allowed;
+}
 
 .theme-toggle .state { font-family: var(--mono); font-size: var(--fs-s); font-weight: 500; }
 
