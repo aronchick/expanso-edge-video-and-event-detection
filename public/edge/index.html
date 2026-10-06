@@ -1,54 +1,85 @@
 <!DOCTYPE html>
-<html>
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Edge ISR · Expanso</title>
-<link rel="stylesheet" href="../fonts/fonts.css">
+<script src="theme.js"></script>
+<link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="styles.css">
 </head>
-<body>
+<body class="tab-ops">
 
-<!-- Cloud DOWN banner — pinned to top, hidden by default -->
-<div id="cloud-banner" class="cloud-banner">
+<!-- Cloud link down banner. Sits in the page flow (sticky at the top) so it
+     never covers the header controls. Hidden until the link drops. -->
+<div id="cloud-banner" class="cloud-banner" role="status">
   <div class="label">
-    <span class="dot-pulse"></span>
+    <span class="dot-pulse" aria-hidden="true"></span>
     <span>CLOUD LINK · DOWN</span>
   </div>
   <div class="queue"><span id="queue-count">0</span> events queued · YOLO still firing</div>
 </div>
 
-<!-- (The crowd alert now renders inside the combined counts card — see
-     #combined-alert — not as a floating overlay.) -->
-
-<!-- "Pipeline updated" big-signal overlay. Fires when a new class lands
-     in the live trigger set (e.g. operator hits F4 → drone is added).
-     Visually distinct from the red ALERT — this is a *positive* event
-     ("we are now detecting drone") so it leans on the brand blue. -->
-<div id="pipeline-update-overlay" class="pipeline-update-overlay" aria-hidden="true">
-  <div class="pipeline-update-icon">⬢</div>
-  <div class="pipeline-update-eyebrow">PIPELINE UPDATED</div>
-  <div class="pipeline-update-headline">
-    NOW DETECTING <span class="pipeline-update-class">DRONE</span>
-  </div>
-  <div class="pipeline-update-sub">all sensors picked up the new class · live</div>
+<!-- Dashboard connection banner. Shown while the orchestrator is unreachable;
+     the page keeps its scroll position and theme and reconnects on its own. -->
+<div id="conn-banner" class="conn-banner" role="status" hidden>
+  Disconnected from the orchestrator. Retrying, live numbers resume on reconnect.
 </div>
 
-<!-- Topology mini canvas -->
-<canvas id="topology" class="topology" width="280" height="160"></canvas>
+<!-- "Pipeline updated" overlay. Fires when a new class lands in the live
+     trigger set (the operator hits F4 and drone is added). It marks a change
+     to the system itself, so it uses the accent color, not the alert red. -->
+<div id="pipeline-update-overlay" class="pipeline-update-overlay" aria-hidden="true">
+  <svg class="pipeline-update-icon" viewBox="0 0 48 48" aria-hidden="true">
+    <circle cx="24" cy="24" r="5" fill="currentColor"/>
+    <path d="M10 24a14 14 0 0 1 14-14M38 24a14 14 0 0 1-14 14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+    <path d="M3 24a21 21 0 0 1 21-21M45 24a21 21 0 0 1-21 21" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+  </svg>
+  <h2 class="pipeline-update-title">Pipeline updated</h2>
+  <div class="pipeline-update-headline">
+    Now detecting <span class="pipeline-update-class">DRONE</span>
+  </div>
+  <div class="pipeline-update-sub">All sensors picked up the new class. Live.</div>
+</div>
+
+<!-- Topology mini canvas (hidden unless body.show-topology) -->
+<canvas id="topology" class="topology" width="280" height="160" aria-hidden="true"></canvas>
 
 <div class="app">
 
   <header class="header">
-    <div class="brand">
-      <span class="dot"></span>
-      <span class="brand-mark" aria-hidden="true">⬢</span>
-      <span>Edge ISR · <span class="brand-expanso">EXPANSO</span></span>
+    <div class="header-top">
+      <h1 class="brand">
+        <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="2.5" fill="currentColor"/>
+          <path d="M6 12a6 6 0 0 1 6-6M18 12a6 6 0 0 1-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <path d="M2.5 12A9.5 9.5 0 0 1 12 2.5M21.5 12A9.5 9.5 0 0 1 12 21.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <span>Edge ISR</span>
+        <span class="brand-expanso">Expanso</span>
+      </h1>
+      <button type="button" id="theme-toggle" class="btn" aria-pressed="false">
+        <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M20 14.5A8 8 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" fill="currentColor"/>
+        </svg>
+        <span>Dark mode</span>
+      </button>
     </div>
-    <nav class="tab-switcher" role="tablist" aria-label="View">
-      <a class="tab is-active" data-tab="ops"     role="tab" aria-selected="true"  href="#ops">OPS</a>
-      <a class="tab"           data-tab="arch"    role="tab" aria-selected="false" href="#arch">ARCH</a>
-      <a class="tab"           data-tab="archive" role="tab" aria-selected="false" href="#archive">ARCHIVE</a>
-    </nav>
+
+    <div class="header-nav">
+      <div class="tab-switcher" role="tablist" aria-label="View">
+        <a class="tab is-active" id="tab-ops"     data-tab="ops"     role="tab" aria-selected="true"  aria-controls="panel-ops"     href="#ops">Ops</a>
+        <a class="tab"           id="tab-arch"    data-tab="arch"    role="tab" aria-selected="false" aria-controls="panel-arch"    href="#arch" tabindex="-1">Architecture</a>
+        <a class="tab"           id="tab-archive" data-tab="archive" role="tab" aria-selected="false" aria-controls="panel-archive" href="#archive" tabindex="-1">Archive</a>
+      </div>
+      <button type="button" id="rotate-toggle" class="btn" aria-label="Auto-rotate views">
+        <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path id="rotate-icon" d="M7 5h4v14H7zM13 5h4v14h-4z" fill="currentColor"/>
+        </svg>
+        <span id="rotate-label">Pause rotation</span>
+      </button>
+    </div>
+
     <div class="header-right">
       <div class="metric-pill">
         <span class="label">events/min</span>
@@ -59,68 +90,80 @@
         <span class="value" id="metric-fused">0</span>
       </div>
       <div class="metric-pill" id="metric-gemini-pill">
-                <span class="label">Analyst replay</span>
+        <span class="label">Analyst replay</span>
         <span class="value" id="metric-gemini">0</span>
       </div>
       <div id="cloud-pill" class="cloud-pill">CLOUD LINK · UP</div>
     </div>
   </header>
 
-  <!-- Triggers bar — dedicated row so the Beat 4 F4 chip-pulse animation
-       has room to land dramatically. Header was overflowing at stage scale
-       with chips inline. Tier dots stay in the bottom platform-strip. -->
-  <section class="triggers-bar" aria-label="Active trigger classes">
-    <span class="triggers-bar-label">TRIGGERS</span>
-    <div id="trigger-chips" class="trigger-chips"></div>
-  </section>
+  <!-- Triggers and the always-visible alert tile share one row. -->
+  <div class="status-row">
+    <section class="triggers-bar" aria-labelledby="triggers-title">
+      <h2 class="triggers-bar-label" id="triggers-title">Triggers</h2>
+      <div id="trigger-chips" class="trigger-chips"></div>
+    </section>
 
-  <!-- Camera tiles use WebRTC (via go2rtc on :1984) for true real-time video,
-       with a canvas overlay for YOLO bbox track gates. Video latency ≈100-200ms,
-       bbox latency = YOLO inference (~150ms). Fallback <img> shows the last
-       JPEG snapshot if WebRTC fails to negotiate. -->
-  <section class="sector sector-north">
+    <!-- Alert tile. Standby until a rule fires, then active for 6 s with the
+         rule label, then back to standby with the time of the last alert. -->
+    <section class="alert-tile" id="alert-tile" aria-label="Alert status">
+      <span class="alert-light" id="alert-light" aria-hidden="true"></span>
+      <h2 class="alert-label">Alert</h2>
+      <span class="alert-state" id="alert-state" aria-live="polite">STANDBY</span>
+      <span class="alert-detail" id="alert-detail" aria-live="polite">no alerts</span>
+      <span class="alert-meta" id="alert-meta">last: none</span>
+    </section>
+  </div>
+
+  <main class="stage" id="main">
+
+  <!-- ═══ OPS panel ═══ -->
+  <section class="panel panel-ops" id="panel-ops" role="tabpanel" aria-labelledby="tab-ops">
+
+  <!-- Camera tiles use WebRTC (via go2rtc on :1984) for real-time video, with a
+       canvas overlay for the YOLO track gates. The MJPEG image underneath is
+       the floor: it is shown whenever WebRTC is not proven healthy. -->
+  <section class="sector sector-north" aria-labelledby="sector-north-title">
     <div class="sector-head">
-      <div class="sector-title">Sector North</div>
+      <h2 class="sector-title" id="sector-north-title">Sector north</h2>
       <div id="status-sensor-north" class="sector-status">connecting</div>
     </div>
     <div class="sector-feed" data-stream="cam-outside" data-sector="sensor-north">
-      <video id="video-sensor-north" class="sector-video" autoplay muted playsinline></video>
-      <canvas id="overlay-sensor-north" class="bbox-overlay"></canvas>
-      <img id="feed-sensor-north" class="sector-fallback" src="/stream/sensor-north" alt="">
+      <img id="feed-sensor-north" class="sector-fallback" src="/stream/sensor-north" alt="Live camera view, sector north">
+      <video id="video-sensor-north" class="sector-video" autoplay muted playsinline aria-hidden="true"></video>
+      <canvas id="overlay-sensor-north" class="bbox-overlay" aria-hidden="true"></canvas>
       <div class="sector-overlay">
-        <span id="overlay-north-label">awaiting motion</span>
-        <span id="overlay-north-ts">–</span>
+        <span class="sector-chip" id="overlay-north-label">awaiting motion</span>
+        <span class="sector-chip" id="overlay-north-ts">none yet</span>
       </div>
     </div>
   </section>
 
-  <section class="sector sector-south">
+  <section class="sector sector-south" aria-labelledby="sector-south-title">
     <div class="sector-head">
-      <div class="sector-title">Sector South</div>
+      <h2 class="sector-title" id="sector-south-title">Sector south</h2>
       <div id="status-sensor-south" class="sector-status">connecting</div>
     </div>
     <div class="sector-feed" data-stream="cam-inside" data-sector="sensor-south">
-      <video id="video-sensor-south" class="sector-video" autoplay muted playsinline></video>
-      <canvas id="overlay-sensor-south" class="bbox-overlay"></canvas>
-      <img id="feed-sensor-south" class="sector-fallback" src="/stream/sensor-south" alt="">
+      <img id="feed-sensor-south" class="sector-fallback" src="/stream/sensor-south" alt="Live camera view, sector south">
+      <video id="video-sensor-south" class="sector-video" autoplay muted playsinline aria-hidden="true"></video>
+      <canvas id="overlay-sensor-south" class="bbox-overlay" aria-hidden="true"></canvas>
       <div class="sector-overlay">
-        <span id="overlay-south-label">awaiting motion</span>
-        <span id="overlay-south-ts">–</span>
+        <span class="sector-chip" id="overlay-south-label">awaiting motion</span>
+        <span class="sector-chip" id="overlay-south-ts">none yet</span>
       </div>
     </div>
   </section>
 
-  <!-- Right column: combined merge card on top, two per-zone counts below,
-       as ONE flex column that fills the full camera height (no dead space). -->
+  <!-- Right column: the combined merge card, then the two per-zone counts. -->
   <div class="tally">
 
-  <!-- ── COMBINED tally (the merge) ──────────────────────────────────
-       The headline: two zones' people counts MERGED into one combined
-       total. Goes FLAG (coral) when the COMBINED total exceeds the
-       threshold — not when any single zone does. north + south → combined. -->
-  <section class="combined-card" id="combined-card" aria-label="Combined people count across both zones">
+  <!-- The merge. Two zones' people counts become one combined total. The card
+       flags when the COMBINED total crosses the threshold, not when a single
+       zone does. -->
+  <section class="combined-card" id="combined-card" aria-labelledby="combined-title">
     <div class="combined-head">
-      <span class="combined-eyebrow">COMBINED · BOTH ZONES</span>
+      <h2 class="combined-title" id="combined-title">Both zones combined</h2>
       <span class="combined-state clear" id="combined-state">CLEAR</span>
     </div>
     <div class="combined-body">
@@ -128,24 +171,21 @@
         <span class="combined-total" id="combined-total">0</span>
         <span class="combined-of" id="combined-threshold">/ 5</span>
       </div>
-      <div class="combined-meter">
+      <div class="combined-meter" aria-hidden="true">
         <div class="combined-meter-fill" id="combined-bar"></div>
         <div class="combined-meter-mark" id="combined-mark"></div>
       </div>
       <div class="combined-breakdown" id="combined-breakdown">north 0 + south 0</div>
-      <!-- In-card crowd alert line — replaces the old floating interstitial.
-           Always occupies its row (reserved height) so the card never
-           reflows; text is empty until the combined total crosses. -->
-      <div class="combined-alert" id="combined-alert"></div>
+      <!-- In-card crowd alert line. It always occupies its row so the card
+           never reflows; the text stays empty until the total crosses. -->
+      <div class="combined-alert" id="combined-alert" aria-live="polite"></div>
     </div>
   </section>
 
-  <!-- Per-zone live people count. Big number reads from across a hall;
-       the recent-event ticker underneath shows the live stream feeding it. -->
-  <section class="zone-card zone-north" id="zone-card-sensor-north" aria-label="Zone north people count">
+  <section class="zone-card zone-north" id="zone-card-sensor-north" aria-labelledby="zone-north-title">
     <div class="zone-card-head">
-      <span class="zone-card-title">ZONE NORTH</span>
-      <span class="zone-card-status" id="zone-status-sensor-north">—</span>
+      <h2 class="zone-card-title" id="zone-north-title">Zone north</h2>
+      <span class="zone-card-status" id="zone-status-sensor-north">waiting</span>
     </div>
     <div class="zone-card-count-wrap">
       <span class="zone-card-count" id="zone-count-sensor-north">0</span>
@@ -154,10 +194,10 @@
     <div id="events-sensor-north" class="events-list zone-ticker"></div>
   </section>
 
-  <section class="zone-card zone-south" id="zone-card-sensor-south" aria-label="Zone south people count">
+  <section class="zone-card zone-south" id="zone-card-sensor-south" aria-labelledby="zone-south-title">
     <div class="zone-card-head">
-      <span class="zone-card-title">ZONE SOUTH</span>
-      <span class="zone-card-status" id="zone-status-sensor-south">—</span>
+      <h2 class="zone-card-title" id="zone-south-title">Zone south</h2>
+      <span class="zone-card-status" id="zone-status-sensor-south">waiting</span>
     </div>
     <div class="zone-card-count-wrap">
       <span class="zone-card-count" id="zone-count-sensor-south">0</span>
@@ -168,29 +208,13 @@
 
   </div><!-- /.tally -->
 
-  <!-- Bottom strip: Expanso wordmark + tier dots + inline pipeline statuses (single line).
-       Tier strip merged here per user direction. -->
-  <section class="platform-strip">
-    <a class="platform-wordmark" href="https://expanso.io" target="_blank" rel="noopener" aria-label="Expanso">
-      <span class="wordmark-text">EXPANSO</span>
-    </a>
-    <div class="tier-strip-inline" aria-label="Architecture tiers">
-      <span class="tier"><span class="tier-dot" id="tier-edge"></span><span class="tier-label">EDGE</span></span>
-      <span class="tier-sep">·</span>
-      <span class="tier"><span class="tier-dot" id="tier-fusion"></span><span class="tier-label">ALERTS</span></span>
-      <span class="tier-sep">·</span>
-      <span class="tier"><span class="tier-dot" id="tier-cloud"></span><span class="tier-label">CLOUD</span></span>
-    </div>
-    <div class="platform-strip-divider"></div>
-    <div id="platform-jobs" class="platform-jobs-inline"></div>
-  </section>
+  </section><!-- /#panel-ops -->
 
-  <!-- ARCHIVE view — third tab. Holds the cloud-egress tile + S3 modal,
-       which used to live in the OPS view. Hidden unless body.tab-archive. -->
-  <section class="archive-view" aria-label="Cloud archive">
-    <section id="egress-tile" class="egress">
+  <!-- ═══ ARCHIVE panel ═══ -->
+  <section class="panel archive-view" id="panel-archive" role="tabpanel" aria-labelledby="tab-archive" hidden>
+    <section id="egress-tile" class="egress" aria-labelledby="egress-title">
       <div class="egress-head">
-        <div class="egress-label">Cloud egress · S3 archive</div>
+        <h2 class="egress-label" id="egress-title">Cloud egress, S3 archive</h2>
         <div id="egress-state" class="egress-state offline">awaiting first upload</div>
       </div>
       <div class="egress-row">
@@ -199,47 +223,36 @@
           <span class="unit">objects</span>
         </div>
         <div class="egress-meta">
-          <div class="egress-bucket" id="egress-bucket">bucket: —</div>
-          <div class="egress-last" id="egress-last">last upload: —</div>
+          <div class="egress-bucket" id="egress-bucket">bucket: n/a</div>
+          <div class="egress-last" id="egress-last">last upload: none</div>
         </div>
       </div>
       <ul id="egress-recent" class="egress-recent"></ul>
     </section>
   </section>
 
-  <!-- S3 object viewer modal -->
-  <div id="s3-modal" class="s3-modal" role="dialog" aria-modal="true">
-    <div class="s3-modal-card">
-      <div class="s3-modal-head">
-        <div class="s3-modal-title" id="s3-modal-title">—</div>
-        <button class="s3-modal-close" id="s3-modal-close" aria-label="Close">×</button>
-      </div>
-      <pre class="s3-modal-body" id="s3-modal-body">loading…</pre>
-    </div>
-  </div>
+  <!-- ═══ ARCH panel ═══
+       Five columns on wide screens: sensors, camera curves, Cloud above Edge,
+       Edge curves, destinations. The curve columns are SVG whose path data is
+       rewritten from live geometry (updateCameraCurves, updateEdgeOutCurves in
+       ui.js). Below 56rem the curves are hidden and the boxes stack in the
+       same order, with the flow labels kept as plain chips. -->
+  <section class="panel arch-view" id="panel-arch" role="tabpanel" aria-labelledby="tab-arch" hidden>
 
-  <!-- ARCH view — alternative to OPS dashboard. Hidden by default; tab toggles
-       body.tab-arch to show. Spans rows 2-7 (everything below the header).
-       Layout: 3-column grid. Col 1 = 2 cameras (stacked), col 2 = Cloud-above-
-       Jetson (the cloud arrow lands on Jetson's top edge), col 3 = 3 fan-out
-       boxes (Local / Gemini / S3) stacked. -->
-  <section class="arch-view" aria-label="Architecture and data flow">
+    <h2 class="visually-hidden">Architecture and data flow</h2>
 
-    <!-- Column 1: cameras wrapped in a SENSORS group container so the eye
-         reads them as one logical entity (the field), not two floating boxes. -->
     <div class="arch-col arch-col--cameras">
-      <section class="arch-group arch-group--sensors">
+      <section class="arch-group arch-group--sensors" aria-label="Sensor field">
         <header class="arch-group__head">
-          <span class="arch-group__icon" aria-hidden="true">▣</span>
-          <span class="arch-group__title">SENSOR FIELD</span>
+          <span class="arch-group__title">Sensor field</span>
         </header>
         <div class="arch-group__body">
           <div class="arch-tile" id="arch-tile-cam-north">
-            <div class="arch-tile__label">Camera · north</div>
+            <div class="arch-tile__label">Camera, north</div>
             <div class="arch-tile__sub">EO/IR · RTSP</div>
           </div>
           <div class="arch-tile" id="arch-tile-cam-south">
-            <div class="arch-tile__label">Camera · south</div>
+            <div class="arch-tile__label">Camera, south</div>
             <div class="arch-tile__sub">EO/IR · RTSP</div>
           </div>
           <div class="arch-group__caption">existing infrastructure</div>
@@ -247,21 +260,13 @@
       </section>
     </div>
 
-    <!-- Camera → Jetson curves. Two SVG cubic Beziers, both terminating at
-         the EXACT vertical middle of the EXPANSO EDGE box. The path `d`
-         attribute is rewritten on layout (load/resize/tab-change) by
-         updateCameraCurves() in ws_client.js using getBoundingClientRect()
-         — that's the only way to anchor the convergence point to the Edge
-         box no matter where the layout positions it. The SVG uses pixel
-         coordinates (no viewBox), so JS can write screen-space values
-         directly into the path. -->
     <div class="arch-col arch-col--cam-arrow">
       <svg class="arch-cam-curves" aria-hidden="true">
         <defs>
           <marker id="cam-arrowhead" viewBox="0 0 10 10"
                   refX="9" refY="5" markerWidth="6" markerHeight="6"
                   orient="auto-start-reverse">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="#10b981"/>
+            <path class="arch-arrowhead" d="M 0 0 L 10 5 L 0 10 z"/>
           </marker>
         </defs>
         <path id="cam-curve-north" class="arch-cam-curve__path"
@@ -285,19 +290,12 @@
       </div>
     </div>
 
-    <!-- Anchor refs for the camera-curve positioning code. Putting IDs on the
-         camera tiles is the cleanest way for JS to find their midpoints. -->
-    <!-- (The camera tiles inside .arch-group__body get IDs in HTML below.) -->
-
-    <!-- Column 2: Cloud + vertical arrow + Jetson stacked. The vertical arrow
-         visually terminates AT the top edge of the Jetson box (no gap). -->
     <div class="arch-col arch-col--center">
       <div class="arch-box arch-box--cloud">
-        <header class="arch-box__tag arch-box__tag--cloud"><span class="arch-box__tag-icon" aria-hidden="true">▲</span>
-          
-          <span class="arch-box__tag-text">EXPANSO CLOUD</span>
+        <header class="arch-box__tag arch-box__tag--cloud">
+          <span class="arch-box__tag-text">Expanso Cloud</span>
         </header>
-        <div class="arch-box__sub arch-box__sub--lead">Management &amp; orchestration plane</div>
+        <div class="arch-box__sub arch-box__sub--lead">Management and orchestration plane</div>
         <div class="arch-box__caption">No customer data passes through</div>
         <ul class="arch-box__list">
           <li>Deploy pipelines remotely</li>
@@ -306,12 +304,7 @@
         </ul>
       </div>
       <div class="arch-control-arrow">
-        <div class="arch-arrow-stem arch-arrow-stem--vertical arch-arrow-stem--control">
-          <!-- Static dashed line — no animated particle. Control plane is
-               configuration, not a flowing data path. Periodic deploys are
-               not the same kind of "stream" as the data lines, so animating
-               this misled the eye. -->
-        </div>
+        <div class="arch-arrow-stem arch-arrow-stem--vertical arch-arrow-stem--control"></div>
         <div class="arch-control-label">
           <span class="arch-arrow-counter" id="arch-counter-jobs" hidden></span>
           <span class="arch-arrow-label">control plane</span>
@@ -319,8 +312,7 @@
       </div>
       <div class="arch-box arch-box--jetson">
         <header class="arch-box__tag arch-box__tag--edge">
-          <span class="arch-box__tag-icon" aria-hidden="true">▼</span>
-          <span class="arch-box__tag-text">EXPANSO EDGE</span>
+          <span class="arch-box__tag-text">Expanso Edge</span>
           <span class="arch-box__tag-host">on Jetson Orin</span>
         </header>
         <div class="arch-box__sub arch-box__sub--lead">Processing pipeline · GPU inference · DDIL-tolerant</div>
@@ -329,35 +321,26 @@
           <li><span class="step-name">Trigger filter + cascade</span><span class="step-meta">live config from cloud</span></li>
           <li><span class="step-name">DBOM sign + SQLite</span><span class="step-meta">offline replay queue</span></li>
         </ul>
-        <!-- Live stats removed — the numbers were stale and just visual
-             noise on the architecture diagram. Hidden stubs kept so the
-             ws_client.js setText calls don't error. -->
-        <span hidden id="arch-jet-epm">—</span>
+        <!-- Hidden stubs: ws_client.js writes live stats here. -->
+        <span hidden id="arch-jet-epm">0</span>
         <span hidden id="arch-jet-queued">0</span>
-        <span hidden id="arch-jet-fps">—</span>
-        <span hidden id="arch-jet-age">—</span>
+        <span hidden id="arch-jet-fps">0</span>
+        <span hidden id="arch-jet-age">0</span>
       </div>
     </div>
 
-    <!-- Edge → destinations curves. Mirrors the cam-arrow SVG, but instead of
-         converging it DIVERGES: 3 cubic Beziers from the EXPANSO EDGE box's
-         right-middle, fanning out to each destination box's left-middle.
-         JS in ws_client.js (updateEdgeOutCurves) anchors the paths
-         dynamically so the convergence point is always Edge's right-middle. -->
     <div class="arch-col arch-col--edge-out">
       <svg class="arch-edge-out-curves" aria-hidden="true">
         <defs>
           <marker id="dest-arrowhead" viewBox="0 0 10 10"
                   refX="9" refY="5" markerWidth="6" markerHeight="6"
                   orient="auto-start-reverse">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="#10b981"/>
+            <path class="arch-arrowhead" d="M 0 0 L 10 5 L 0 10 z"/>
           </marker>
         </defs>
         <path id="edge-curve-local"  class="arch-edge-curve__path" d="M 0 0 L 0 0" fill="none" marker-end="url(#dest-arrowhead)"/>
         <path id="edge-curve-gemini" class="arch-edge-curve__path" d="M 0 0 L 0 0" fill="none" marker-end="url(#dest-arrowhead)"/>
         <path id="edge-curve-s3"     class="arch-edge-curve__path" d="M 0 0 L 0 0" fill="none" marker-end="url(#dest-arrowhead)"/>
-        <!-- Each particle has its own velocity so the three branches feel
-             like distinct destinations, not a synchronized triplet. -->
         <circle r="5" class="arch-edge-curve__dot">
           <animateMotion dur="1.4s" repeatCount="indefinite" rotate="auto">
             <mpath href="#edge-curve-local"/>
@@ -374,9 +357,6 @@
           </animateMotion>
         </circle>
       </svg>
-      <!-- Meta chips floating along each curve. Vertical position is set in JS
-           once curve geometry is known, so each label sits at the midpoint of
-           its branch. -->
       <div class="arch-arrow-meta arch-arrow-meta--out" id="arch-meta-local">
         <span class="arch-arrow-counter" id="arch-counter-local" hidden></span>
         <span class="arch-arrow-label">alert</span>
@@ -391,15 +371,12 @@
       </div>
     </div>
 
-    <!-- Three standalone destination boxes, each with its own tag-header card
-         styling so they read as first-class entities like Cloud and Edge. -->
     <div class="arch-col arch-col--destinations">
       <div class="arch-box arch-box--dest" id="arch-box-dest-local">
         <header class="arch-box__tag arch-box__tag--local">
-          <span class="arch-box__tag-icon" aria-hidden="true">●</span>
-          <span class="arch-box__tag-text">LOCAL DECISION</span>
+          <span class="arch-box__tag-text">Local decision</span>
         </header>
-        <div class="arch-box__sub arch-box__sub--lead">Stays on edge — alerts fire here</div>
+        <div class="arch-box__sub arch-box__sub--lead">Stays on the edge, alerts fire here</div>
         <ul class="arch-box__list arch-box__list--local">
           <li>correlator · 5s window</li>
           <li>alerts · 8s cooldown</li>
@@ -407,19 +384,17 @@
       </div>
       <div class="arch-box arch-box--dest" id="arch-box-dest-gemini">
         <header class="arch-box__tag arch-box__tag--gemini">
-          <span class="arch-box__tag-icon" aria-hidden="true">◆</span>
-                            <span class="arch-box__tag-text">MODEL GATEWAY · ANALYST</span>
+          <span class="arch-box__tag-text">MODEL GATEWAY · ANALYST</span>
         </header>
         <div class="arch-box__sub arch-box__sub--lead">Per-event natural-language descriptions</div>
         <ul class="arch-box__list arch-box__list--gemini">
-                            <li>recorded answer by default</li>
-                            <li>single-flight live recording</li>
+          <li>recorded answer by default</li>
+          <li>single-flight live recording</li>
         </ul>
       </div>
       <div class="arch-box arch-box--dest" id="arch-box-dest-s3">
         <header class="arch-box__tag arch-box__tag--s3">
-          <span class="arch-box__tag-icon" aria-hidden="true">▦</span>
-          <span class="arch-box__tag-text">S3 ARCHIVE</span>
+          <span class="arch-box__tag-text">S3 archive</span>
         </header>
         <div class="arch-box__sub arch-box__sub--lead">Long-term cold storage, store-and-forward</div>
         <ul class="arch-box__list arch-box__list--s3">
@@ -429,39 +404,74 @@
       </div>
     </div>
 
-    <!-- Legend strip — explains the two line languages used in the diagram.
-         Mirrors the reference architecture diagram's "Data flow / Management
-         plane" footer so the viewer immediately knows that customer data
-         never traverses the dashed line to Expanso Cloud. -->
     <div class="arch-legend">
       <div class="arch-legend__item">
         <span class="arch-legend__line arch-legend__line--data"></span>
-        <span class="arch-legend__text">Data flow · stays on edge unless you say otherwise</span>
+        <span class="arch-legend__text">Data flow · stays on the edge unless you say otherwise</span>
       </div>
       <div class="arch-legend__item">
         <span class="arch-legend__line arch-legend__line--control"></span>
-        <span class="arch-legend__text">Control plane · config + jobs only, no customer data</span>
+        <span class="arch-legend__text">Control plane · config and jobs only, no customer data</span>
       </div>
     </div>
 
-    <!-- Footer of arch view: tagline matching the dashboard message -->
     <div class="arch-footer">
       0 new hardware · runs on the camera, the laptop, and the cloud you already have
     </div>
+  </section><!-- /#panel-arch -->
+
+  </main>
+
+  <!-- S3 object viewer modal. Pretty-printed JSON in a wrapping <pre>. -->
+  <div id="s3-modal" class="s3-modal" role="dialog" aria-modal="true" aria-labelledby="s3-modal-title">
+    <div class="s3-modal-card">
+      <div class="s3-modal-head">
+        <h2 class="s3-modal-title" id="s3-modal-title">Archive object</h2>
+        <button class="s3-modal-close" id="s3-modal-close" type="button" aria-label="Close">×</button>
+      </div>
+      <pre class="s3-modal-body" id="s3-modal-body">loading…</pre>
+    </div>
+  </div>
+
+  <!-- Bottom strip: Expanso link, tier dots, pipeline statuses. -->
+  <section class="platform-strip" aria-label="Platform status">
+    <a class="platform-wordmark" href="https://expanso.io" target="_blank" rel="noopener" aria-label="Expanso">Expanso</a>
+    <div class="tier-strip-inline" role="group" aria-label="Architecture tiers">
+      <span class="tier"><span class="tier-dot" id="tier-edge"></span><span class="tier-label">Edge</span></span>
+      <span class="tier"><span class="tier-dot" id="tier-fusion"></span><span class="tier-label">Alerts</span></span>
+      <span class="tier"><span class="tier-dot" id="tier-cloud"></span><span class="tier-label">Cloud</span></span>
+    </div>
+    <div class="platform-strip-divider" aria-hidden="true"></div>
+    <div id="platform-jobs" class="platform-jobs-inline"></div>
   </section>
 
   <footer class="footer">
     <div class="left">Powered by Expanso · workload moves to the data</div>
     <div class="right">
-      <div class="stat"><span class="label">jobs</span><span id="footer-jobs">–/–</span></div>
+      <div class="stat"><span class="label">jobs</span><span id="footer-jobs">0/0</span></div>
       <div class="stat"><span class="label">events</span><span id="footer-events">0</span></div>
       <div class="stat"><span class="label">DBOM signed</span><span id="footer-signed">0</span></div>
       <div class="stat"><span class="label">alerts</span><span id="footer-fused">0</span></div>
+    </div>
+    <div class="keys">
+      <button type="button" id="keys-toggle" class="btn btn-small" aria-expanded="false" aria-controls="keys-pop">Keys</button>
+      <div id="keys-pop" class="keys-pop" role="region" aria-label="Keyboard shortcuts" hidden>
+        <dl class="keys-list">
+          <div><dt><kbd>F1</kbd></dt><dd>Simulate WAN down</dd></div>
+          <div><dt><kbd>F2</kbd></dt><dd>Restore WAN</dd></div>
+          <div><dt><kbd>F3</kbd></dt><dd>Rehearse the crowd flag</dd></div>
+          <div><dt><kbd>F4</kbd></dt><dd>Add drone to the triggers</dd></div>
+          <div><dt><kbd>Left</kbd> <kbd>Right</kbd></dt><dd>Switch view when a tab is focused</dd></div>
+          <div><dt><kbd>Esc</kbd></dt><dd>Close this list or the archive object</dd></div>
+        </dl>
+      </div>
     </div>
   </footer>
 
 </div>
 
+<script src="feeds.js"></script>
+<script src="ui.js"></script>
 <script src="ws_client.js"></script>
 </body>
 </html>

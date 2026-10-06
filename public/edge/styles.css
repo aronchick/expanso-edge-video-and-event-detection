@@ -1,2579 +1,1277 @@
-/* Edge ISR — stage-scale design system.
-   Per DEMO_UI_SPEC.md §1-2. Targeted at 1920×1080+ conference monitors
-   viewed from 15-20 ft. All hero sizes use vw/vh so larger screens
-   scale up gracefully. */
+/* Edge ISR dashboard.
+
+   Two themes, one token block each. Light is the default and the dark theme is
+   an explicit choice (the toggle sets data-theme="dark" on <html>); the
+   operating-system preference is ignored on purpose. Every text color below is
+   a token whose pairing was checked to WCAG AA (4.5:1, 3:1 for large text) on
+   the surfaces it sits on, in both themes.
+
+   Layout: a single scrolling column below 1100px wide or 720px tall; from
+   there up it is a fixed one-screen stage for a wall monitor.
+
+   Radii come off a three-step scale (4px, 8px, pill). Type comes off the
+   --t-* scale. */
 
 :root {
-  /* ── Expanso-branded LIGHT theme (booth / 42" monitor) ───────────────
-     Warm-neutral structure carries the layout; the Expanso brand violet
-     (#b087f1 family, deepened to #6d4aff for legibility on light) and
-     coral (#ff6b4a) appear ONLY as solid accents — never a purple-on-white
-     gradient wash. Green is retained for people / live semantics so the
-     big counts tie visually to the green person bounding boxes. */
-  --bg: #ebeef4;        /* cool-warm light page bg — not pure white */
-  --surface: #ffffff;   /* cards */
-  --surface-2: #f3f5fb; /* secondary surface */
-  --border: #dce1ec;    /* soft border */
-  --text: #0e1322;      /* near-black slate primary text */
-  --text-dim: #38414f;  /* secondary text — high contrast on white (~9:1) */
-  --text-mono: #4f5a6e; /* tertiary mono text — still ~6.5:1 on white */
+  color-scheme: light;
 
-  --ok: #15a34a;        /* legible green on white (person / live) */
-  --alert: #d9821a;     /* amber */
-  --critical: #ff5a3c;  /* Expanso coral — the CROWD FLAG */
-  --replay: #6d4aff;    /* violet — replayed events */
-  --expanso: #6d4aff;   /* Expanso brand violet, deepened for white */
+  /* Ground and surfaces: cool survey paper, never pure white. */
+  --bg: #e8ece8;
+  --surface: #f7f9f7;
+  --surface-2: #edf1ee;
+  --surface-3: #e1e7e3;
+  --border: #bcc6bf;
+  --border-strong: #7d8b83;
 
-  /* Type scale — stage default (1920×1080+ conference monitor at 15-20 ft).
-     Overridden below for laptop preview (≤ 1700px wide). */
-  --t-caption: 1.0rem;   /* 18px */
-  --t-body:    1.22rem;  /* 22px */
-  --t-body-lg: 1.55rem;  /* 28px */
-  --t-h:       2.2rem;   /* 40px */
-  --t-display: 3.3rem;   /* 60px */
-  --t-hero:    5.5rem;   /* 100px */
+  /* Text. */
+  --text: #121b1c;
+  --text-dim: #2e3b3d;
+  --text-mute: #4b5b5e;
 
-  /* Motion */
+  /* Accent: the Expanso element (edge, tabs, links). Deep teal. */
+  --accent: #0a5a63;
+  --accent-soft: #d3e6e6;
+  --on-accent: #f7f9f7;
+
+  /* Destination: cloud, analyst gateway, archive. Slate blue. */
+  --dest: #2c4f80;
+  --dest-soft: #dbe4f1;
+
+  /* State. Text variants are darker than fill variants. */
+  --ok-text: #17663a;
+  --ok-fill: #2f9e5a;
+  --ok-soft: #d5e9db;
+  --warn-text: #8a4b00;
+  --warn-fill: #c87a10;
+  --warn-soft: #f1e2c6;
+  --crit-text: #b3261e;
+  --crit-fill: #c62f25;
+  --crit-soft: #f6e0dd;
+  --crit-solid: #b3261e;
+  --on-crit: #ffffff;
+
+  /* Camera tile overlays: opaque, same in both themes. */
+  --cam-bg: #0b1214;
+  --cam-chip-bg: #0b1214;
+  --cam-chip-text: #e7efef;
+
+  --font-sans: "IBM Plex Sans", sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+
+  --t-caption: 0.8125rem;
+  --t-body: 0.9375rem;
+  --t-lg: 1.125rem;
+  --t-h: 1.375rem;
+  --t-display: 2rem;
+  --t-count: clamp(2.5rem, 4vw, 4.5rem);
+  --t-total: clamp(3.25rem, 7vw, 7rem);
+
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-pill: 9999px;
+
+  --gap: 0.75rem;
+  --pad: 1rem;
+
   --m-fast: 200ms;
   --m-base: 300ms;
-  --m-slow: 400ms;
+}
 
-  /* Layout */
-  --gap: 1rem;
-  --pad: 1.25rem;
-  --radius: 10px;
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #0c1416;
+  --surface: #131f22;
+  --surface-2: #192a2e;
+  --surface-3: #21353a;
+  --border: #2d454b;
+  --border-strong: #6f8b92;
+
+  --text: #e7efef;
+  --text-dim: #bccbcd;
+  --text-mute: #94a8ab;
+
+  --accent: #6fc7cf;
+  --accent-soft: #173b40;
+  --on-accent: #08181a;
+
+  --dest: #8fb2e0;
+  --dest-soft: #1b2b45;
+
+  --ok-text: #6fdc98;
+  --ok-fill: #3fbf6f;
+  --ok-soft: #173826;
+  --warn-text: #f2b84d;
+  --warn-fill: #e0a030;
+  --warn-soft: #3b2f12;
+  --crit-text: #ff9a90;
+  --crit-fill: #e5483c;
+  --crit-soft: #43201e;
+  --crit-solid: #b3261e;
+  --on-crit: #ffffff;
 }
 
 * { box-sizing: border-box; }
 
-html { font-size: 18px; }                            /* base type unit */
-@media (min-width: 1920px) { html { font-size: 20px; } }
-@media (min-width: 2560px) { html { font-size: 24px; } }
+[hidden] { display: none !important; }
 
-/* Desk/preview override — scales the type down well below stage scale.
-   Threshold raised to 2400px so any retina laptop (≤1920 logical, often ~2000+
-   physical effective) renders at compact desk-viewing scale instead of
-   stage-monitor scale. Stage rendering only kicks in on real 2400px+ wall monitors. */
-@media (max-width: 2400px) {
-  :root {
-    --t-caption: 0.75rem;  /* 13.5px */
-    --t-body:    0.9rem;   /* 16px */
-    --t-body-lg: 1.05rem;  /* 19px */
-    --t-h:       1.25rem;  /* 22px */
-    --t-display: 1.8rem;   /* 32px */
-    --t-hero:    3rem;     /* 54px */
-    --gap: 0.5rem;
-    --pad: 0.7rem;
-    --radius: 6px;
-  }
-}
+html { font-size: 16px; }
+
+@media (min-width: 1920px) { html { font-size: 20px; } }
+
+@media (min-width: 2560px) { html { font-size: 24px; } }
 
 body {
   margin: 0;
-  /* Layered atmospheric background — avoids the flat-dark-card AI-dashboard
-     look. Subtle radial wash + horizontal sensor-bar gradient hint at a
-     real operational surface, not a Bootstrap template. */
-  /* Atmospheric depth via faint brand-tinted corner glows — violet top,
-     coral bottom — kept very low alpha so it never reads as a purple wash. */
-  background:
-    radial-gradient(ellipse 70% 45% at 50% -12%, rgba(109,74,255,0.06), transparent 70%),
-    radial-gradient(ellipse 70% 40% at 50% 112%, rgba(255,107,74,0.05), transparent 70%),
-    var(--bg);
+  background: var(--bg);
   color: var(--text);
-  font: var(--t-body)/1.45 "IBM Plex Sans", sans-serif;
+  font: 400 var(--t-body)/1.45 var(--font-sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  overflow: hidden;
   min-height: 100vh;
 }
 
-/* Distinctive typeface — IBM Plex Sans for body, IBM Plex Mono for data.
-   Loaded async via preconnect + display=swap so initial paint isn't blocked. */
+h1, h2 { margin: 0; font-weight: 600; }
 
-/* ── Layout grid ──────────────────────────────────────────────────── */
+a { color: var(--accent); }
 
-.app {
-  display: grid;
-  /* Seven rows: header / tier-strip / triggers / cameras / events / platform+egress / footer
-     Cameras get a touch more than events because they're the hero. Row 6 is
-     fixed-height so platform + egress always match. The tier-strip is a
-     narrow auto-sized row that visualizes the EDGE → ORCHESTRATOR → CLOUD
-     hierarchy claimed in the demo script. */
-  /* New OPS layout per user direction:
-       - Cameras LEFT, stacked vertically as 1:1 squares
-       - Events RIGHT, stacked vertically (north above south)
-       - Platform-strip + footer as bottom rails
-     Camera column is sized so two stacked squares fit the available height
-     after the header/tier/triggers/fusion rows. Events column takes the rest
-     so events have room to breathe. */
-  grid-template-rows:
-    auto                    /* 1: header */
-    auto                    /* 2: triggers bar (dedicated row for chip prominence) */
-    minmax(0, 1fr)          /* 3: north sector (col1) + tally top (col2) */
-    minmax(0, 1fr)          /* 4: south sector (col1) + tally bottom (col2) */
-    auto                    /* 5: platform-strip (with tier dots inline) */
-    auto;                   /* 6: footer */
-  /* Two-column grid. Camera column sized so two stacked 16:9 tiles fit
-     the available vertical space; events column takes whatever's left. */
-  grid-template-columns: minmax(0, 36rem) minmax(0, 1fr);
-  height: 100vh;
-  width: 100vw;
-  gap: var(--gap);
-  padding: var(--gap);
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
 }
 
-.header           { grid-row: 1; grid-column: 1 / span 2; }
-.triggers-bar     { grid-row: 2; grid-column: 1 / span 2; }
-.sector-north     { grid-row: 3; grid-column: 1; margin-left: 0.6rem; margin-right: 0.4rem; }
-.sector-south     { grid-row: 4; grid-column: 1; margin-left: 0.6rem; margin-right: 0.4rem; }
-/* Right column: one flex stack spanning both camera rows — combined card on
-   top (natural height) then the two zone counts splitting the rest, so the
-   column fills the full height with no dead gap. */
-.tally            { grid-row: 3 / span 2; grid-column: 2; display: flex; flex-direction: column; gap: var(--gap); min-height: 0; }
-.tally .combined-card { flex: 0 0 auto; }
-.tally .zone-card     { flex: 1 1 0; min-height: 0; }
-.platform-strip   { grid-row: 5; grid-column: 1 / span 2; }
-.arch-view        { grid-row: 3 / 5; grid-column: 1 / span 2; display: none; }
-.archive-view     { grid-row: 3 / 5; grid-column: 1 / span 2; display: none; }
-.footer           { grid-row: 6; grid-column: 1 / span 2; }
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
 
-/* Tab visibility — header + footer + platform-strip always visible.
-   Triggers bar is hidden on ARCH/ARCHIVE tabs because those views show
-   structural / archival info, not live-ops trigger config. Hiding it also
-   reclaims row 2 so the arch-view can use it without overlapping. */
-body.tab-arch .triggers-bar,
-body.tab-arch .tally,
-body.tab-arch .sector,
-body.tab-arch .events-panel { display: none; }
-body.tab-arch .arch-view { display: grid; }
+kbd {
+  font: 600 var(--t-caption)/1 var(--font-mono);
+  padding: 0.15em 0.4em;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text);
+}
 
-body.tab-archive .triggers-bar,
-body.tab-archive .tally,
-body.tab-archive .sector,
-body.tab-archive .events-panel { display: none; }
-body.tab-archive .archive-view { display: flex; }
+/* ── Layout: stacked, scrolling column ──────────────────────────────── */
 
-/* ── Header ───────────────────────────────────────────────────────── */
+.app {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  padding: var(--gap);
+  max-width: 100%;
+}
+
+.stage { min-width: 0; }
+
+.panel { min-width: 0; }
+
+.panel-ops {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.tally {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--gap);
+}
+
+.tally .combined-card { grid-column: 1 / -1; }
+
+@media (min-width: 720px) {
+  .tally { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ── Stage layout: one fixed screen ─────────────────────────────────── */
+
+@media (min-width: 1100px) and (min-height: 720px) {
+  html, body { height: 100%; }
+
+  body { overflow: hidden; min-height: 0; }
+
+  .app {
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .stage { flex: 1 1 0; min-height: 0; }
+
+  .panel { height: 100%; min-height: 0; }
+
+  /* Camera column width follows the available height so the two stacked
+     tiles come out at 16:9 with no letterbox bars. */
+  .panel-ops {
+    display: grid;
+    --cam-col: min(55vw, calc(((100dvh - 15.5rem - 0.75rem) / 2 - 2.5rem) * 16 / 9));
+    grid-template-columns: var(--cam-col) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .sector-north { grid-row: 1; grid-column: 1; }
+
+  .sector-south { grid-row: 2; grid-column: 1; }
+
+  .tally {
+    grid-row: 1 / span 2;
+    grid-column: 2;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .tally .combined-card { flex: 0 0 auto; }
+
+  .tally .zone-card { flex: 1 1 0; min-height: 0; }
+
+  .sector { min-height: 0; }
+
+  .sector-feed { flex: 1 1 auto; min-height: 0; aspect-ratio: auto; }
+
+  .zone-ticker { flex: 1 1 0; min-height: 0; overflow: hidden; }
+}
+
+/* ── Banners ────────────────────────────────────────────────────────── */
+
+.cloud-banner {
+  display: none;
+  position: sticky;
+  top: 0;
+  z-index: 900;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  padding: 0.6rem 1rem;
+  background: var(--crit-solid);
+  color: var(--on-crit);
+  font-size: var(--t-lg);
+  font-weight: 700;
+}
+
+.cloud-banner.show { display: flex; }
+
+.cloud-banner .label { display: flex; align-items: center; gap: 0.6em; }
+
+.cloud-banner .dot-pulse {
+  width: 0.6em;
+  height: 0.6em;
+  border-radius: 50%;
+  background: var(--on-crit);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.cloud-banner .queue {
+  font-size: var(--t-body);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.conn-banner {
+  padding: 0.6rem 1rem;
+  background: var(--warn-soft);
+  color: var(--warn-text);
+  border: 1px solid var(--warn-fill);
+  border-radius: var(--r-md);
+  font-weight: 500;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+
+body.cloud-down .app {
+  outline: 4px solid var(--crit-fill);
+  outline-offset: -4px;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  min-height: 2.5rem;
+  padding: 0.35rem 0.8rem;
+  font: 500 var(--t-body)/1.2 var(--font-sans);
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn:hover { background: var(--surface-3); }
+
+.btn[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+}
+
+.btn-icon { width: 1.1em; height: 1.1em; flex: 0 0 auto; }
+
+.btn-small { min-height: 2rem; padding: 0.15rem 0.7rem; font-size: var(--t-caption); }
+
+/* ── Header ─────────────────────────────────────────────────────────── */
 
 .header {
   display: flex;
-  justify-content: space-between;
+  flex-wrap: wrap;
   align-items: center;
-  padding: 0.4rem 1rem;
+  gap: 0.6rem 0.9rem;
+  padding: 0.6rem var(--pad);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--r-md);
 }
 
+.header-top {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  min-width: 0;
+}
+
+#theme-toggle { margin-left: auto; }
+
 .brand {
-  font-size: var(--t-body-lg);
-  font-weight: 600;
-  letter-spacing: -0.02em;
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  font-size: var(--t-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
   white-space: nowrap;
-  flex-shrink: 0;
-}
-.brand .dot {
-  width: 0.5em; height: 0.5em;
-  border-radius: 50%;
-  background: var(--ok);
-  box-shadow: 0 0 0.5em var(--ok);
-}
-/* ── Expanso brand accents ──────────────────────────────────────────────
-   Solid brand colors only (no purple-on-white gradient wash, per the design
-   system). The header rail is a hard two-segment split — violet then coral —
-   so it reads as an intentional brand bar, not an AI-slop gradient. */
-.brand .brand-mark {
-  color: var(--expanso);
-  font-size: 1.15em;
-  line-height: 1;
-}
-.brand-expanso {
-  color: var(--expanso);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
-.header {
-  position: relative;
-  overflow: hidden;
-}
-.header::before {
-  content: "";
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 3px;
-  background: linear-gradient(90deg,
-    var(--expanso) 0, var(--expanso) 72%,
-    var(--critical) 72%, var(--critical) 100%);
 }
 
-.header-right {
+.brand-mark { width: 1.5rem; height: 1.5rem; color: var(--accent); flex: 0 0 auto; }
+
+.brand-expanso { color: var(--accent); font-weight: 700; }
+
+.header-nav {
   display: flex;
-  gap: var(--gap);
+  flex: 1 1 100%;
+  flex-wrap: wrap;
   align-items: center;
+  gap: 0.6rem;
 }
 
-/* Tab switcher (OPS / ARCH). LED-bracket aesthetic — square corners, mono,
-   no pill rounding. Active tab gets the Expanso accent + filled bottom rail. */
 .tab-switcher {
   display: flex;
-  gap: 0;
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  flex: 1 1 auto;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
   overflow: hidden;
   background: var(--surface-2);
-  margin: 0 auto;
 }
+
 .tab {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: var(--t-caption);
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-mono);
-  background: transparent;
-  border: 0;
-  padding: 0.4em 0.95em;
-  cursor: pointer;
-  transition: color var(--m-fast), background var(--m-fast), box-shadow var(--m-fast);
-  border-right: 1px solid var(--border);
-  white-space: nowrap;
-  text-decoration: none;
-}
-.tab:last-child { border-right: 0; }
-.tab:hover { color: var(--text-dim); background: rgba(109,74,255,0.05); }
-.tab.is-active {
-  color: var(--expanso);
-  background: rgba(109,74,255,0.09);
-  box-shadow: inset 0 -2px 0 var(--expanso);
-}
-
-.metric-pill {
-  font-size: var(--t-body);
-  padding: 0.3em 0.75em;
-  border-radius: 9999px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.4em;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-.metric-pill .label { color: var(--text-dim); white-space: nowrap; }
-.metric-pill .value {
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum";
-  min-width: 1.5em;
-  text-align: right;
-}
-
-.cloud-pill {
-  font-size: var(--t-body);
-  padding: 0.3em 0.75em;
-  border-radius: 9999px;
-  background: rgba(61, 220, 132, 0.12);
-  color: var(--ok);
-  border: 1px solid var(--ok);
-  font-weight: 600;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-.cloud-pill.down {
-  background: rgba(255, 77, 79, 0.18);
-  color: var(--critical);
-  border-color: var(--critical);
-}
-
-/* Gemini reachback pill — flashes when a Gemini call lands so the cloud's
-   participation is visible per-event, not just inferred from the description. */
-.metric-pill#metric-gemini-pill {
-  transition: background var(--m-fast), border-color var(--m-fast);
-}
-.metric-pill#metric-gemini-pill.bumped {
-  background: var(--ok);
-  border-color: var(--ok);
-  color: #000;
-}
-.metric-pill#metric-gemini-pill.bumped .label,
-.metric-pill#metric-gemini-pill.bumped .value { color: #000; }
-
-/* ── Tier strip (EDGE · FUSION · CLOUD) ───────────────────────────── */
-
-/* Three-tier hierarchy indicator.
-     EDGE   = sensors on the Jetson
-     FUSION = local FastAPI process (event store + correlator + dashboard)
-     CLOUD  = Expanso Cloud (cluster orchestrator) + AWS S3 (archive sink)
-   Beat 1 of the demo script claims EDGE and FUSION keep working when
-   CLOUD drops. This strip makes that claim visceral: when
-   body.cloud-down is set (F1 fired), only the CLOUD dot dims to
-   monochrome — the other two stay green.
-   Beat 0 lights-up: only FUSION + CLOUD are green; EDGE dims because
-   no sensors are running yet. body.tier-edge-down handles that. */
-.tier-strip {
+  flex: 1 1 auto;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.6rem;
-  padding: 0.25rem 0.85rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: var(--t-caption);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  min-height: 2.5rem;
+  padding: 0.35rem 0.9rem;
+  font: 600 var(--t-body)/1.2 var(--font-sans);
   color: var(--text-dim);
+  text-decoration: none;
+  border-right: 1px solid var(--border);
+  white-space: nowrap;
 }
-.tier {
+
+.tab:last-child { border-right: 0; }
+
+.tab:hover { background: var(--surface-3); color: var(--text); }
+
+.tab.is-active { background: var(--accent); color: var(--on-accent); }
+
+.tab:focus-visible { outline-offset: -4px; }
+
+.header-right {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.metric-pill,
+.cloud-pill {
   display: inline-flex;
-  align-items: center;
-  gap: 0.5em;
-}
-.tier-label { font-weight: 600; }
-.tier-dot {
-  width: 0.7em; height: 0.7em;
-  border-radius: 50%;
-  background: var(--ok);
-  box-shadow: 0 0 0.5em var(--ok);
-  transition: background var(--m-base), box-shadow var(--m-base);
-}
-.tier-sep { color: var(--text-mono); font-weight: 400; }
-
-/* When the cloud is down, the CLOUD dot loses its green and its glow.
-   EDGE and FUSION stay lit — that's the architectural claim. */
-body.cloud-down #tier-cloud {
-  background: var(--text-mono);
-  box-shadow: none;
-}
-
-/* Beat 0 lights-up: no sensors connected → EDGE dot dim. Driven by
-   ws_client.js's renderJobs when no sensor-* job is in 'running' state. */
-body.tier-edge-down #tier-edge {
-  background: var(--text-mono);
-  box-shadow: none;
-}
-
-/* ── Fusion tile (replaces full-screen fused-overlay) ─────────────── */
-
-.alert-tile {
-  display: grid;
-  grid-template-columns: auto auto auto 1fr auto;
-  align-items: center;
-  gap: 0.7rem;
-  padding: 0.4rem 0.85rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: var(--t-caption);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  height: 2.4rem;
-  overflow: hidden;
-  /* Subtle border-color transition so ACTIVE state lights up the whole tile */
-  transition: border-color var(--m-fast), background var(--m-fast);
-}
-/* LED-style square indicator (the spec's `led-status` primitive) */
-.alert-light {
-  width: 0.85em;
-  height: 0.85em;
-  background: var(--text-mono);
-  border-radius: 2px;
-  flex-shrink: 0;
-  transition: background var(--m-fast), box-shadow var(--m-fast);
-}
-.alert-label {
-  font-weight: 700;
-  color: var(--text-dim);
-  letter-spacing: 0.18em;
-}
-.alert-state {
-  font-weight: 700;
-  color: var(--text-mono);
-  letter-spacing: 0.12em;
-}
-.alert-detail {
-  color: var(--text-dim);
-  font-style: italic;
-  letter-spacing: 0.02em;
-  text-transform: none;
-  font-family: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
+  align-items: baseline;
+  gap: 0.4em;
+  padding: 0.25em 0.75em;
+  border-radius: var(--r-pill);
+  font-size: var(--t-body);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
-.alert-meta {
-  color: var(--text-mono);
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum";
-  white-space: nowrap;
-  flex-shrink: 0;
 }
 
-/* ACTIVE state — when an alert event just fired. Red, with attention.
-   Pulses for 6s then fades back to STANDBY. The amber `--alert` token
-   is still used elsewhere (track-gate brackets, trigger pulse-in
-   animation), so we use `--critical` here to mean "this is an *alert*
-   event, RIGHT NOW, look at me." */
-.alert-tile.active {
-  border-color: var(--critical);
-  border-width: 2px;
-  background:
-    linear-gradient(90deg, rgba(255, 77, 79, 0.22), rgba(255, 77, 79, 0.06) 60%),
-    var(--surface);
-  animation: alert-pulse 0.9s ease-in-out 6;
+.metric-pill {
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
 }
-.alert-tile.active .alert-light {
-  background: var(--critical);
-  box-shadow: 0 0 0.6em var(--critical);
-}
-.alert-tile.active .alert-label {
-  color: var(--critical);
-  letter-spacing: 0.18em;
-}
-.alert-tile.active .alert-state {
-  color: var(--critical);
-  font-weight: 700;
-}
-.alert-tile.active .alert-detail {
-  color: var(--text);
-  font-style: normal;
+
+.metric-pill .label { color: var(--text-dim); }
+
+.metric-pill .value {
+  min-width: 1.5em;
+  text-align: right;
   font-weight: 600;
-}
-@keyframes alert-pulse {
-  0%, 100% { box-shadow: 0 0 0 0    rgba(255, 77, 79, 0); }
-  50%      { box-shadow: 0 0 0 0.55em rgba(255, 77, 79, 0.32); }
+  font-variant-numeric: tabular-nums;
 }
 
-/* ── Trigger bar ──────────────────────────────────────────────────── */
+.metric-pill#metric-gemini-pill.bumped {
+  background: var(--accent);
+  border-color: var(--accent);
+}
 
-.triggers-bar {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.3rem 0.85rem;
+.metric-pill#metric-gemini-pill.bumped .label,
+.metric-pill#metric-gemini-pill.bumped .value { color: var(--on-accent); }
+
+.cloud-pill {
+  font-weight: 600;
+  background: var(--ok-soft);
+  color: var(--ok-text);
+  border: 1px solid var(--ok-fill);
+}
+
+.cloud-pill.down {
+  background: var(--crit-soft);
+  color: var(--crit-text);
+  border-color: var(--crit-fill);
+}
+
+@media (min-width: 1100px) and (min-height: 720px) {
+  .header { flex-wrap: wrap; }
+
+  .header-top { display: contents; }
+
+  .brand { order: 1; }
+
+  .header-nav { order: 2; flex: 0 1 auto; margin: 0 auto 0 0.5rem; }
+
+  .tab-switcher { flex: 0 0 auto; }
+
+  .header-right { order: 3; flex: 0 1 auto; margin-left: auto; }
+
+  #theme-toggle { order: 4; }
+}
+
+/* ── Status row: triggers + alert tile ──────────────────────────────── */
+
+.status-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--gap);
+}
+
+@media (min-width: 900px) {
+  .status-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); }
+}
+
+.triggers-bar,
+.alert-tile {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  min-height: 2.6rem;
-}
-.triggers-bar h2 {
-  margin: 0;
-  font-size: var(--t-body);
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-weight: 500;
-  white-space: nowrap;
-}
-.trigger-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  flex: 1;
-  min-width: 0;
-}
-.chip {
-  font-size: var(--t-body);
-  padding: 0.2em 0.7em;
-  border-radius: 9999px;
-  background: rgba(127, 184, 220, 0.12);
-  color: var(--expanso);
-  border: 1px solid rgba(127, 184, 220, 0.4);
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-weight: 500;
-  transition: transform var(--m-base), background var(--m-base);
-  white-space: nowrap;
-}
-/* Per-class chip palette — same hues as .yolo-label--* in the event
-   panel, so the audience reads "the trigger up here = the colored
-   detection down there." */
-.chip.chip--person {
-  color: var(--ok);
-  background: rgba(61, 220, 132, 0.12);
-  border-color: rgba(61, 220, 132, 0.45);
-}
-.chip.chip--backpack {
-  color: var(--alert);
-  background: rgba(255, 167, 38, 0.12);
-  border-color: rgba(255, 167, 38, 0.45);
-}
-.chip.chip--drone {
-  color: var(--critical);
-  background: rgba(255, 77, 79, 0.12);
-  border-color: rgba(255, 77, 79, 0.45);
-}
-.chip.added {
-  animation: chip-pulse 1.5s ease-out;
-}
-/* Ghost chip — present when drone is NOT yet armed. Click-to-arm
-   affordance: dimmed fill, dashed border, soft pulse so the audience's
-   eye finds it without it competing with the live trigger chips. */
-.chip.chip--ghost {
-  background: transparent;
-  color: rgba(255, 77, 79, 0.55);
-  border-style: dashed;
-  border-color: rgba(255, 77, 79, 0.35);
-  cursor: pointer;
-  animation: chip-ghost-breath 2.4s ease-in-out infinite;
-}
-.chip.chip--ghost:hover {
-  color: var(--critical);
-  border-color: rgba(255, 77, 79, 0.7);
-  background: rgba(255, 77, 79, 0.08);
-  animation: none;
-}
-.chip.chip--ghost.arming {
-  cursor: default;
-  animation: none;
-  opacity: 0.45;
-}
-@keyframes chip-ghost-breath {
-  0%, 100% { opacity: 0.55; }
-  50%      { opacity: 0.95; }
-}
-@keyframes chip-pulse {
-  0%   { transform: scale(0.7); background: var(--alert); color: #000; box-shadow: 0 0 0 0 var(--alert); }
-  30%  { transform: scale(1.15); box-shadow: 0 0 0 1.5em rgba(255, 167, 38, 0); }
-  100% { transform: scale(1.0);  background: rgba(61, 220, 132, 0.18); color: var(--ok); }
-}
-
-/* ── Sector camera tiles ──────────────────────────────────────────── */
-
-.sector {
+  padding: 0.4rem var(--pad);
+  min-height: 3rem;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  /* Fill the grid row height; column width is sized so 16:9 fits within it.
-     We don't set aspect-ratio here — see the 16:9 width constraint on
-     .sector-feed below, which keeps the *video area* at 16:9 regardless of
-     header height. Letting .sector stretch to row height removes the
-     `max-height` clip that was producing 718×320 (2.24:1) tiles. */
-  width: 100%;
-  height: 100%;
+  border-radius: var(--r-md);
 }
-.sector-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.35rem 0.85rem;
-  border-bottom: 1px solid var(--border);
+
+.triggers-bar-label {
+  font-size: var(--t-body);
+  font-weight: 600;
+  color: var(--text-dim);
+  flex: 0 0 auto;
 }
-.sector-title-group {
+
+.trigger-chips {
   display: flex;
-  flex-direction: column;
-  gap: 0.05rem;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 0.4rem;
   min-width: 0;
 }
-.sector-title {
-  font-size: var(--t-body-lg);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-}
-.sector-subtitle {
-  font-size: var(--t-caption);
-  color: var(--text-dim);
-  letter-spacing: 0.04em;
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  opacity: 0.85;
-}
-.sector-status {
-  font-size: var(--t-body);
+
+.chip {
   padding: 0.15em 0.7em;
-  border-radius: 9999px;
+  border-radius: var(--r-pill);
+  font: 500 var(--t-body)/1.3 var(--font-mono);
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  white-space: nowrap;
+}
+
+.chip.chip--person { background: var(--ok-soft); color: var(--ok-text); border-color: var(--ok-fill); }
+
+.chip.chip--backpack { background: var(--warn-soft); color: var(--warn-text); border-color: var(--warn-fill); }
+
+.chip.chip--drone { background: var(--crit-soft); color: var(--crit-text); border-color: var(--crit-fill); }
+
+.chip.added { animation: chip-pulse 1.5s ease-out; }
+
+.chip.chip--ghost {
+  background: var(--surface);
+  border-style: dashed;
+  cursor: pointer;
+}
+
+.chip.chip--ghost:hover { background: var(--crit-soft); }
+
+.chip.chip--ghost.arming { cursor: default; background: var(--surface-3); color: var(--text-dim); }
+
+@keyframes chip-pulse {
+  0% { transform: scale(0.7); }
+  30% { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+
+/* Alert tile */
+
+.alert-tile {
+  flex-wrap: wrap;
+  row-gap: 0.15rem;
+  font-size: var(--t-body);
+  color: var(--text-dim);
+}
+
+.alert-light {
+  width: 0.85em;
+  height: 0.85em;
+  background: var(--border-strong);
+  border-radius: 2px;
+  flex: 0 0 auto;
+}
+
+.alert-label {
+  font-size: var(--t-body);
+  font-weight: 700;
+  color: var(--text-dim);
+}
+
+.alert-state {
+  font: 700 var(--t-body)/1.3 var(--font-mono);
+  color: var(--text-dim);
+}
+
+.alert-detail {
+  flex: 1 1 12rem;
+  min-width: 0;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+.alert-meta {
+  font: 400 var(--t-caption)/1.3 var(--font-mono);
+  color: var(--text-mute);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.alert-tile.active {
+  background: var(--crit-soft);
+  border: 2px solid var(--crit-fill);
+  animation: alert-pulse 0.9s ease-in-out 6;
+}
+
+.alert-tile.active .alert-light { background: var(--crit-fill); }
+
+.alert-tile.active .alert-label,
+.alert-tile.active .alert-state { color: var(--crit-text); }
+
+.alert-tile.active .alert-detail { color: var(--text); font-weight: 600; }
+
+.alert-tile.active .alert-meta { color: var(--text-dim); }
+
+@keyframes alert-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 0 0.4em var(--crit-soft); }
+}
+
+/* ── Camera tiles ───────────────────────────────────────────────────── */
+
+.sector {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.sector-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 2.5rem;
+  padding: 0.3rem var(--pad);
+  border-bottom: 1px solid var(--border);
+}
+
+.sector-title { font-size: var(--t-lg); color: var(--text-dim); }
+
+.sector-status {
+  padding: 0.1em 0.7em;
+  border-radius: var(--r-pill);
+  font-size: var(--t-body);
+  font-weight: 500;
   background: var(--surface-2);
   color: var(--text-dim);
-  border: 1px solid var(--border);
-  font-weight: 500;
+  border: 1px solid var(--border-strong);
 }
-.sector-status.live    { color: var(--ok); border-color: var(--ok); background: rgba(61, 220, 132, 0.10); }
-.sector-status.offline { color: var(--critical); border-color: var(--critical); background: rgba(255, 77, 79, 0.10); }
-/* Beat 0 lights-up: sensor's Expanso job is stopped. Calmer color than
-   "offline" — stopped is intentional, offline is a malfunction. */
-.sector-status.stopped { color: var(--text-mono); border-color: var(--text-mono); background: rgba(91, 100, 112, 0.10); }
-.sector-status.connecting { color: var(--text-dim); border-color: var(--border); background: var(--surface-2); }
+
+.sector-status.live,
+.zone-card-status.live { color: var(--ok-text); }
+
+.sector-status.live { background: var(--ok-soft); border-color: var(--ok-fill); }
+
+.sector-status.offline,
+.zone-card-status.offline { color: var(--crit-text); }
+
+.sector-status.offline { background: var(--crit-soft); border-color: var(--crit-fill); }
+
+.sector-status.stopped,
+.zone-card-status.stopped { color: var(--text-mute); }
+
+.sector-status.connecting,
+.zone-card-status.connecting { color: var(--text-dim); }
 
 .sector-feed {
-  /* Native 16:9 (matches sub-stream 640×360). NOT `flex: 1` — flex sizing
-     would force the child to fill the parent's remaining height and
-     override aspect-ratio, producing the squashed 718×320 (2.24:1) tile
-     we had before. Instead let aspect-ratio drive height; max-height
-     keeps it from spilling out of a short row, and margin: auto centers
-     vertically when the row is taller than the tile needs. */
   position: relative;
-  overflow: hidden;
-  background: #000;
+  width: 100%;
   aspect-ratio: 16 / 9;
-  width: 100%;
-  max-height: 100%;
-  margin: auto;
+  overflow: hidden;
+  background: var(--cam-bg);
 }
-/* WebRTC layered camera tile: video on top, canvas overlay above for
-   bbox overlays, fallback img underneath for when WebRTC fails. */
-.sector-feed .sector-video {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  /* contain (not cover) so the video isn't cropped — the canvas-feed area
-     is itself 16:9 so contain == cover when video is also 16:9, but if a
-     stream returns a different ratio we letterbox instead of crop. */
-  object-fit: contain;
-  display: block;
-  /* No background here — when the video has no srcObject (laptop demo
-     with no go2rtc, or pre-negotiation), it must be transparent so the
-     fallback <img> at z-index 0 shows through. `.sector-feed` already
-     provides the black backdrop. */
-  z-index: 1;
-}
+
+.sector-feed .sector-fallback,
+.sector-feed .sector-video,
 .sector-feed .bbox-overlay {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  pointer-events: none;
-  z-index: 2;
-}
-.sector-feed .sector-fallback {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
   display: block;
-  background: #000;
-  z-index: 0;
 }
+
+.sector-feed .sector-fallback { object-fit: contain; z-index: 0; background: var(--cam-bg); }
+
+.sector-feed .sector-video { object-fit: contain; z-index: 1; }
+
+.sector-feed .bbox-overlay { pointer-events: none; z-index: 2; }
+
 .sector-overlay {
   position: absolute;
-  bottom: 0;
   left: 0;
   right: 0;
-  padding: 0.5rem var(--pad);
-  background: linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,0.7) 60%);
+  bottom: 0;
+  z-index: 3;
   display: flex;
-  justify-content: space-between;
   align-items: flex-end;
-  font-size: var(--t-body);
-  color: var(--text-dim);
-}
-
-/* ── Event panels ─────────────────────────────────────────────────── */
-
-.events-panel {
-  background:
-    linear-gradient(180deg, rgba(255,167,38,0.025), transparent 25%),
-    var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.45rem 0.85rem 0.55rem;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-.events-panel h2 {
-  margin: 0 0 0.4rem;
-  font-size: var(--t-caption);
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  font-weight: 600;
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-}
-.events-list {
-  display: flex;
-  flex-direction: column;
+  justify-content: space-between;
   gap: 0.5rem;
-  overflow: hidden;
-  flex: 1;
-  min-height: 0;
-}
-
-.event {
-  background:
-    linear-gradient(90deg, rgba(255,167,38,0.06), transparent 30%),
-    var(--surface-2);
-  border-left: 3px solid var(--alert);
-  border-radius: 4px;
-  padding: 0.25rem 0.6rem 0.3rem;
-  animation: slide-in var(--m-base) ease-out;
-  /* Single-line compressed event row — fixed thin height. */
-  flex: 0 0 auto;
-  height: 1.8rem;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  gap: 0.7rem;
-  white-space: nowrap;
-}
-@keyframes slide-in {
-  /* Opacity-only fade — no horizontal slide that visually nudges the column */
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-.event.queued { border-left-color: var(--replay); }
-
-.event-row1 {
-  display: contents;  /* Promote children to direct flex items of .event */
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum";
-}
-.event-row1 .ts {
-  white-space: nowrap;
-  flex-shrink: 0;
-  font-size: var(--t-caption);
-  color: var(--text-mono);
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  letter-spacing: 0.04em;
-  order: -1;  /* timestamp first */
-}
-.event-row1 .yolo {
-  /* Bumped up from --t-body so detections read clearly at stage
-     distance. Each .yolo-label inside picks up its per-class hue. */
-  font-size: 1.15rem;
-  color: var(--text);
-  font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-  flex-shrink: 0;
-  letter-spacing: -0.005em;
-}
-/* Per-class label colors. Each detection in the row gets its own span
-   so the audience can see, at a glance, what class fired. */
-.event-row1 .yolo-label {
-  font-weight: 700;
-}
-.event-row1 .yolo-label--person   { color: var(--ok); }       /* cyan-green */
-.event-row1 .yolo-label--backpack { color: var(--alert); }    /* amber */
-.event-row1 .yolo-label--drone    { color: var(--critical); } /* red */
-/* Mid-dot separator dimmer than the labels so the eye groups each
-   <label, conf> pair instead of reading them as a flat bullet list. */
-.event-row1 .yolo-sep {
-  color: var(--text-mono);
-  opacity: 0.6;
-  font-weight: 400;
-}
-.event-desc {
-  font-size: var(--t-body);
-  color: var(--text-dim);
-  font-style: italic;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 1;
-  min-width: 0;
-}
-.event-desc.local {
-  color: var(--text-mono);
-  font-style: normal;
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: var(--t-caption);
-  letter-spacing: 0.04em;
-}
-/* Hide the per-event sig line — too noisy for the compressed row */
-.event-sig { display: none; }
-
-/* "empty" event — sensor heartbeat with no detections this tick. Light-gray
-   text, italic, lower-weight, so the audience reads it as "still here, no
-   contact" rather than parsing it as another detection row. */
-.event-row1 .yolo.empty {
-  color: var(--text-mono);
-  font-weight: 400;
-  font-style: italic;
-  letter-spacing: 0.02em;
-  text-transform: lowercase;
-  opacity: 0.55;
-}
-/* The whole row dims slightly when empty so detection rows pop more. */
-.event.empty {
-  opacity: 0.55;
-}
-
-/* "Gemini Augmented" pill — appears inline next to the YOLO labels on
-   events where the sensor's cascade actually called Gemini Flash (vs the
-   canned/local fallback when the cooldown is active or the WAN is down).
-   Visual contract matches the header's metric-gemini-pill so the audience
-   ties them together: "this row is one of the Gemini calls counted up
-   there in the pill." */
-.event-row1 .gemini-pill {
-  display: inline-block;
-  font-size: var(--t-caption);
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  font-weight: 600;
-  color: #7fb8dc;                  /* same blue as the gemini metric pill */
-  background: rgba(127, 184, 220, 0.12);
-  border: 1px solid rgba(127, 184, 220, 0.45);
-  border-radius: 9999px;
-  padding: 0.05em 0.55em;
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-
-/* ── Expanso platform tile ────────────────────────────────────────── */
-
-.platform {
-  background:
-    linear-gradient(180deg, rgba(127,184,220,0.04), transparent 30%),
-    var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.5rem 0.85rem;
-  /* Stack label above jobs so all 4 job pills fit on a single row beneath. */
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0.4rem;
-  height: 100%;
-  overflow: hidden;
-  min-height: 0;
-}
-.platform-header-row {
-  display: flex;
-  align-items: baseline;
-  gap: 0.6rem;
-  min-width: 0;
-}
-.platform-label {
-  font-size: var(--t-caption);
-  color: var(--expanso);
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  flex-shrink: 0;
-}
-.platform-tagline {
-  /* Inline with the label, separated by middot, so the 2×2 jobs grid below
-     gets the full row height it needs. Truncates with ellipsis if too long. */
-  font-size: var(--t-caption);
-  color: var(--text-dim);
-  font-style: italic;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  letter-spacing: 0.01em;
-  min-width: 0;
-}
-.platform-tagline::before {
-  content: "·  ";
-  color: var(--text-mono);
-  font-style: normal;
-  margin-right: 0.1em;
-}
-.platform-jobs {
-  /* 2×2 grid of jobs — matches the design spec's layout (DEMO_UI_SPEC.md §2)
-     and avoids horizontal clipping when 4 pills > column width at laptop scale. */
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.3rem 0.4rem;
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  align-content: start;
-}
-.job-pill {
-  display: flex;
-  align-items: center;
-  gap: 0.45em;
-  font-size: var(--t-body);
-  padding: 0.25em 0.75em;
-  border-radius: 8px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-.job-dot {
-  width: 0.55em; height: 0.55em;
-  border-radius: 50%;
-  background: var(--text-mono);
-  flex-shrink: 0;
-}
-.job-pill.running .job-dot { background: var(--ok); box-shadow: 0 0 0.4em var(--ok); }
-.job-pill.pending .job-dot { background: var(--alert); }
-.job-pill.failed  .job-dot { background: var(--critical); }
-.job-pill.failed { border-color: var(--critical); }
-
-/* ── Footer ───────────────────────────────────────────────────────── */
-
-.footer {
-  font-size: var(--t-body);
-  color: var(--text-dim);
-  padding: 0.4rem var(--pad);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum";
-}
-.footer .left { color: var(--expanso); font-weight: 500; }
-.footer .right { display: flex; gap: 1.2rem; }
-.footer .right .stat { display: inline-flex; align-items: baseline; gap: 0.4em; min-width: 6.5rem; justify-content: flex-end; }
-.footer .right .stat .label { color: var(--text-mono); margin-right: 0; }
-
-/* ── Cloud DOWN full-width banner ─────────────────────────────────── */
-
-.cloud-banner {
-  position: fixed;
-  top: 0; left: 0; right: 0;
-  background: var(--critical);
-  color: #fff;
-  padding: 1rem 2rem;
-  font-size: var(--t-display);
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  display: none;
-  align-items: center;
-  justify-content: space-between;
-  z-index: 900;
-  animation: slide-down var(--m-slow) ease-out;
-}
-@keyframes slide-down {
-  from { transform: translateY(-100%); }
-  to   { transform: translateY(0); }
-}
-.cloud-banner.show { display: flex; }
-.cloud-banner .label {
-  display: flex;
-  align-items: center;
-  gap: 0.6em;
-}
-.cloud-banner .dot-pulse {
-  width: 0.6em; height: 0.6em;
-  border-radius: 50%;
-  background: #fff;
-  animation: pulse 1.2s ease-in-out infinite;
-}
-@keyframes pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%      { opacity: 0.5; transform: scale(0.85); }
-}
-.cloud-banner .queue {
-  font-size: var(--t-body-lg);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  opacity: 0.95;
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum";
-}
-
-body.cloud-down .app {
-  outline: 4px solid var(--critical);
-  outline-offset: -4px;
-  animation: border-pulse 1.6s ease-in-out infinite;
-}
-@keyframes border-pulse {
-  0%, 100% { outline-color: rgba(255, 77, 79, 0.6); }
-  50%      { outline-color: rgba(255, 77, 79, 1.0); }
-}
-
-/* ── Fused alert full-screen takeover ─────────────────────────────── */
-
-/* Fused alert overlay — DISABLED. Replaced by .alert-tile (always-visible
-   strip in row 4). Kept hidden so legacy markup doesn't render. */
-.alert-overlay {
-  display: none !important;
-}
-.alert-overlay.show {
-  display: none !important;
-}
-/* Legacy keyframe kept so any orphaned animation references don't error */
-@keyframes alert-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-/* Old .alert-overlay variant — superseded but keep below for any legacy refs */
-.alert-overlay-legacy {
-  position: fixed;
-  inset: 0;
-  background: rgba(11, 13, 16, 0.45);
-  display: none;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
+  padding: 0.4rem;
   pointer-events: none;
 }
-@keyframes alert-in {
-  from { opacity: 0; transform: scale(0.96); }
-  to   { opacity: 1; transform: scale(1); }
-}
-/* Inner card sized to be readable but not dominate. */
-.alert-overlay::before {
-  /* No-op — placeholder so future variants can stack effects */
-  content: none;
-}
-.alert-headline,
-.alert-contacts,
-.alert-meta {
-  background: var(--surface);
-  border: 2px solid var(--alert);
-  pointer-events: auto;
-}
-.alert-headline {
-  font-size: var(--t-h);
-  font-weight: 700;
-  color: var(--alert);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  display: flex;
-  align-items: center;
-  gap: 0.5em;
-  padding: 0.6rem 1.2rem;
-  border-bottom: none;
-  border-radius: var(--radius) var(--radius) 0 0;
-  margin: 0;
-  width: 36rem;
-  max-width: calc(100vw - 2rem);
-  justify-content: center;
-}
-.alert-headline .icon { font-size: 0.85em; }
-.alert-contacts {
-  display: flex;
-  gap: 0.6rem;
-  padding: 0.8rem 1rem;
-  border-top: none;
-  border-bottom: none;
-  margin: 0;
-  width: 36rem;
-  max-width: calc(100vw - 2rem);
-}
-.alert-contact {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0.5rem 0.7rem;
-  flex: 1;
-  min-width: 0;
-}
-.alert-contact .sector {
-  font-size: var(--t-caption);
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  margin-bottom: 0.2rem;
-}
-.alert-contact .hits {
-  font-size: var(--t-body-lg);
-  color: var(--alert);
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-.alert-contact .desc {
-  font-size: var(--t-caption);
-  color: var(--text);
-  margin-top: 0.25rem;
-  font-style: italic;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+
+.sector-chip {
+  max-width: 70%;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--r-sm);
+  background: var(--cam-chip-bg);
+  color: var(--cam-chip-text);
+  font: 500 var(--t-caption)/1.4 var(--font-mono);
+  white-space: nowrap;
   overflow: hidden;
-}
-.alert-meta {
-  font-size: var(--t-caption);
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  padding: 0.4rem 1.2rem;
-  border-top: none;
-  border-radius: 0 0 var(--radius) var(--radius);
-  margin: 0;
-  width: 36rem;
-  max-width: calc(100vw - 2rem);
-  text-align: center;
+  text-overflow: ellipsis;
 }
 
-/* ── Cloud egress / S3 archive tile ───────────────────────────────── */
+#overlay-north-ts,
+#overlay-south-ts { flex: 0 0 auto; }
 
-.egress {
-  /* Linear gradient surface adds a subtle vertical lift — feels like a
-     tactical card, not a Tailwind stub. */
-  background:
-    linear-gradient(180deg, rgba(127,184,220,0.04), transparent 30%),
-    var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.5rem 0.85rem;
+/* ── Combined card (the merge) ──────────────────────────────────────── */
+
+.combined-card,
+.zone-card {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  min-height: 0;
-  /* Match platform tile height when no S3 data — same row, same height */
-  height: 100%;
+  min-width: 0;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--r-md);
+}
+
+.combined-card {
+  gap: 0.25rem;
+  padding: 0.6rem var(--pad) 0.8rem;
+  transition: border-color var(--m-base) ease, background var(--m-base) ease;
+}
+
+.zone-card {
+  gap: 0.2rem;
+  padding: 0.6rem var(--pad) 0.7rem;
+  border-width: 1px;
   overflow: hidden;
 }
-.egress-head {
+
+.combined-head,
+.zone-card-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
 }
-.egress-label {
-  font-size: var(--t-caption);
-  color: var(--expanso);
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-}
-.egress-state {
-  font-size: var(--t-caption);
-  padding: 0.15em 0.6em;
-  border-radius: 4px;
-  background: var(--surface-2);
-  color: var(--text-dim);
-  border: 1px solid var(--border);
-  font-weight: 500;
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  white-space: nowrap;
-}
-.egress-state.live    { color: var(--ok);       border-color: var(--ok);       background: rgba(61,220,132,0.10); }
-.egress-state.stalled { color: var(--alert);    border-color: var(--alert);    background: rgba(255,167,38,0.12); }
-.egress-state.error   { color: var(--critical); border-color: var(--critical); background: rgba(255,77,79,0.12); }
-.egress-state.offline { color: var(--text-mono); }
 
-.egress-row {
-  display: flex;
-  align-items: baseline;
-  gap: 0.7rem;
-  flex-wrap: nowrap;
+.combined-title,
+.zone-card-title {
+  font-size: var(--t-lg);
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.combined-state {
+  padding: 0.15rem 0.7rem;
+  border-radius: var(--r-pill);
+  font: 700 var(--t-body)/1.3 var(--font-mono);
+  white-space: nowrap;
+}
+
+.combined-state.clear {
+  color: var(--ok-text);
+  background: var(--ok-soft);
+  border: 1px solid var(--ok-fill);
+}
+
+.combined-state.flag {
+  color: var(--on-crit);
+  background: var(--crit-solid);
+  border: 1px solid var(--crit-solid);
+}
+
+.combined-body { display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; }
+
+.combined-total-wrap { display: flex; align-items: baseline; gap: 0.6rem; line-height: 1; }
+
+.combined-total {
+  font: 700 var(--t-total)/1 var(--font-mono);
+  letter-spacing: -0.03em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.combined-of {
+  font: 600 var(--t-h)/1 var(--font-mono);
+  color: var(--text-dim);
+}
+
+.combined-meter {
+  position: relative;
+  height: 0.7rem;
+  background: var(--surface-3);
+  border-radius: var(--r-pill);
   overflow: hidden;
 }
-.egress-count .value {
-  font-size: var(--t-h);
-  font-weight: 700;
-  color: var(--text);
-  letter-spacing: -0.02em;
+
+.combined-meter-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--ok-fill);
+  border-radius: var(--r-pill);
+  transition: width var(--m-base) ease, background var(--m-base) ease;
+}
+
+.combined-meter-mark { display: none; }
+
+.combined-breakdown {
+  font: 400 var(--t-lg)/1.3 var(--font-mono);
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+.combined-alert {
+  min-height: 1.5em;
+  font: 700 var(--t-body)/1.4 var(--font-mono);
+  color: var(--crit-text);
+  overflow-wrap: anywhere;
+}
+
+.combined-card.over {
+  border-color: var(--crit-fill);
+  background: var(--crit-soft);
+  animation: flag-pulse 1.1s ease-in-out infinite;
+}
+
+.combined-card.over .combined-total { color: var(--crit-text); }
+
+.combined-card.over .combined-meter-fill { background: var(--crit-fill); }
+
+.combined-card.over .combined-breakdown { color: var(--text); }
+
+.combined-card.over .combined-of { color: var(--text); }
+
+.combined-card.flash { animation: flag-flash 1.4s ease-out; }
+
+@keyframes flag-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 0 6px var(--crit-soft); }
+}
+
+@keyframes flag-flash {
+  0% { box-shadow: 0 0 0 0 var(--crit-fill); }
+  14% { box-shadow: 0 0 0 9px var(--crit-soft); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+/* ── Zone cards and event ticker ────────────────────────────────────── */
+
+.zone-card-status {
+  font: 500 var(--t-body)/1.3 var(--font-mono);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.zone-card-count-wrap { display: flex; align-items: baseline; gap: 0.5rem; line-height: 1; margin: 0.1rem 0 0.3rem; }
+
+.zone-card-count {
+  font: 700 var(--t-count)/1 var(--font-mono);
+  color: var(--ok-text);
+  letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum";
-  transition: color var(--m-fast);
 }
-.egress-count.bumped .value {
-  color: var(--ok);
-  animation: count-bump var(--m-slow) ease-out;
+
+.zone-card-count.bumped { animation: zone-bump 300ms ease; }
+
+@keyframes zone-bump {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.05); }
+  100% { transform: scale(1); }
 }
-@keyframes count-bump {
-  0%   { transform: scale(1.0); }
-  40%  { transform: scale(1.18); }
-  100% { transform: scale(1.0); }
+
+.zone-card-unit { font-size: var(--t-lg); font-weight: 600; color: var(--text-dim); }
+
+.events-list { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
+
+.zone-ticker { margin-top: auto; }
+
+.event {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem 0.7rem;
+  min-width: 0;
+  padding: 0.25rem 0.6rem;
+  background: var(--surface-2);
+  border-radius: var(--r-sm);
+  font-variant-numeric: tabular-nums;
 }
-.egress-count .unit {
-  margin-left: 0.4em;
+
+.event.queued { outline: 1px dashed var(--border-strong); outline-offset: -1px; }
+
+.event-row1 { display: contents; }
+
+.event-row1 .ts {
+  order: -1;
+  flex: 0 0 auto;
+  font: 400 var(--t-caption)/1.4 var(--font-mono);
+  color: var(--text-mute);
+  white-space: nowrap;
+}
+
+.event-row1 .yolo {
+  min-width: 0;
+  font-size: var(--t-body);
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.event-row1 .yolo-label--person { color: var(--ok-text); }
+
+.event-row1 .yolo-label--backpack { color: var(--warn-text); }
+
+.event-row1 .yolo-label--drone { color: var(--crit-text); }
+
+.event-row1 .yolo-sep { color: var(--text-mute); font-weight: 400; }
+
+.event-row1 .yolo.empty { color: var(--text-mute); font-weight: 400; }
+
+.event.empty .yolo { font-style: normal; }
+
+.analyst-pill {
+  flex: 0 0 auto;
+  padding: 0.02em 0.55em;
+  border-radius: var(--r-pill);
+  font: 600 var(--t-caption)/1.4 var(--font-mono);
+  background: var(--dest-soft);
+  color: var(--dest);
+  border: 1px solid var(--dest);
+  white-space: nowrap;
+}
+
+.event-desc {
+  flex: 1 1 14rem;
+  min-width: 0;
   font-size: var(--t-body);
   color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  overflow-wrap: anywhere;
 }
+
+.event-desc.local { color: var(--text-mute); font: 400 var(--t-caption)/1.4 var(--font-mono); }
+
+.event-sig { display: none; }
+
+@media (min-width: 1100px) and (min-height: 720px) {
+  .event { flex-wrap: nowrap; align-items: center; height: 1.8rem; overflow: hidden; }
+
+  .event-row1 .yolo {
+    flex: 0 1 auto;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .event-desc {
+    flex: 1 1 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* ── Platform strip and footer ──────────────────────────────────────── */
+
+.platform-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.2rem;
+  padding: 0.5rem var(--pad);
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+
+.platform-wordmark {
+  flex: 0 0 auto;
+  padding: 0.1em 0.6em;
+  font: 700 var(--t-body)/1.4 var(--font-mono);
+  letter-spacing: 0.12em;
+  color: var(--accent);
+  text-decoration: none;
+  border: 1px solid var(--accent);
+  border-radius: var(--r-sm);
+}
+
+.platform-wordmark:hover { background: var(--accent-soft); }
+
+.tier-strip-inline {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1rem;
+  font: 600 var(--t-caption)/1.4 var(--font-mono);
+  color: var(--text-dim);
+}
+
+.tier { display: inline-flex; align-items: center; gap: 0.4em; }
+
+.tier-dot {
+  width: 0.7em;
+  height: 0.7em;
+  border-radius: 2px;
+  background: var(--ok-fill);
+  transition: background var(--m-base);
+}
+
+body.cloud-down #tier-cloud,
+body.tier-edge-down #tier-edge { background: var(--border-strong); }
+
+.platform-strip-divider { width: 1px; height: 1.2em; background: var(--border-strong); flex: 0 0 auto; }
+
+.platform-jobs-inline {
+  display: flex;
+  flex: 1 1 14rem;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 1rem;
+  min-width: 0;
+  font: 400 var(--t-caption)/1.4 var(--font-mono);
+}
+
+.job-inline { display: inline-flex; align-items: center; gap: 0.4em; min-width: 0; }
+
+.job-inline-name { color: var(--text); overflow-wrap: anywhere; }
+
+.job-inline-status { color: var(--text-mute); font-weight: 600; }
+
+.job-inline-led { width: 0.55em; height: 0.55em; border-radius: 2px; background: var(--border-strong); flex: 0 0 auto; }
+
+.job-inline.running .job-inline-status { color: var(--ok-text); }
+
+.job-inline.running .job-inline-led { background: var(--ok-fill); }
+
+.job-inline.pending .job-inline-status { color: var(--warn-text); }
+
+.job-inline.pending .job-inline-led { background: var(--warn-fill); }
+
+.job-inline.failed .job-inline-status,
+.job-inline.down .job-inline-status { color: var(--crit-text); }
+
+.job-inline.failed .job-inline-led,
+.job-inline.down .job-inline-led { background: var(--crit-fill); }
+
+@media (min-width: 1100px) and (min-height: 720px) {
+  .platform-strip { flex-wrap: nowrap; overflow: hidden; }
+
+  .platform-jobs-inline { flex-wrap: nowrap; overflow: hidden; }
+
+  .job-inline { flex: 0 0 auto; }
+}
+
+.footer {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1.2rem;
+  padding: 0.2rem 0.4rem 0.4rem;
+  font-size: var(--t-body);
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.footer .left { color: var(--accent); font-weight: 500; flex: 1 1 14rem; }
+
+.footer .right { display: flex; flex-wrap: wrap; gap: 0.3rem 1.2rem; }
+
+.footer .stat { display: inline-flex; align-items: baseline; gap: 0.4em; }
+
+.footer .stat .label { color: var(--text-mute); }
+
+.keys { position: relative; }
+
+.keys-pop {
+  margin-top: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+}
+
+.keys-list { margin: 0; display: grid; gap: 0.4rem; }
+
+.keys-list > div { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); gap: 0.5rem; align-items: baseline; }
+
+.keys-list dt, .keys-list dd { margin: 0; }
+
+@media (min-width: 1100px) and (min-height: 720px) {
+  .keys-pop {
+    position: absolute;
+    right: 0;
+    bottom: 100%;
+    z-index: 800;
+    width: 24rem;
+    margin: 0 0 0.4rem;
+  }
+}
+
+/* ── Archive view and S3 modal ──────────────────────────────────────── */
+
+.archive-view {
+  padding: var(--pad);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow-y: auto;
+}
+
+.egress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: 100%;
+  max-width: 64rem;
+  margin: 0 auto;
+  min-width: 0;
+}
+
+.egress-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.egress-label { font-size: var(--t-h); color: var(--dest); }
+
+.egress-state {
+  padding: 0.15em 0.6em;
+  border-radius: var(--r-sm);
+  font: 500 var(--t-caption)/1.4 var(--font-mono);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  border: 1px solid var(--border-strong);
+}
+
+.egress-state.live { color: var(--ok-text); border-color: var(--ok-fill); background: var(--ok-soft); }
+
+.egress-state.stalled { color: var(--warn-text); border-color: var(--warn-fill); background: var(--warn-soft); }
+
+.egress-state.error { color: var(--crit-text); border-color: var(--crit-fill); background: var(--crit-soft); }
+
+.egress-state.offline { color: var(--text-dim); }
+
+.egress-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem 1.5rem; }
+
+.egress-count .value {
+  font: 700 var(--t-display)/1 var(--font-mono);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.egress-count.bumped .value { color: var(--ok-text); animation: zone-bump var(--m-base) ease-out; }
+
+.egress-count .unit { margin-left: 0.4em; color: var(--text-dim); }
+
 .egress-meta {
   display: flex;
   flex-direction: column;
-  font-size: var(--t-caption);
+  min-width: 0;
+  font: 400 var(--t-caption)/1.5 var(--font-mono);
   color: var(--text-dim);
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
-.egress-recent {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  /* Show the full archive page; let the section scroll internally if it
-     overflows the viewport rather than clipping after ~4 entries. */
-  overflow-y: auto;
-  flex: 1 1 auto;
-}
+.egress-recent { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.2rem; }
+
 .egress-recent li {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 0.6rem;
-  font-size: var(--t-caption);
-  color: var(--text-dim);
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  cursor: pointer;
+  align-items: baseline;
+  gap: 0.2rem 0.6rem;
+  min-width: 0;
   padding: 0.15em 0.4em;
-  border-radius: 4px;
-  transition: background var(--m-fast), color var(--m-fast);
+  border-radius: var(--r-sm);
+  font: 400 var(--t-caption)/1.5 var(--font-mono);
+  color: var(--text-dim);
 }
-.egress-recent li:hover {
-  background: var(--surface-2);
-  color: var(--text);
-}
-.egress-recent li .key {
-  flex: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  direction: rtl;        /* keep the most-specific tail visible when truncated */
-  text-align: left;
-}
-.egress-recent li .ts { color: var(--text-mono); white-space: nowrap; }
 
-/* ── S3 object viewer modal ───────────────────────────────────────── */
+.egress-recent li:hover { background: var(--surface-2); }
+
+.egress-recent .key-btn {
+  flex: 1 1 14rem;
+  min-width: 0;
+  padding: 0.2rem 0.2rem;
+  font: inherit;
+  text-align: left;
+  color: var(--dest);
+  text-decoration: underline;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.egress-recent .ts { color: var(--text-mute); white-space: nowrap; }
 
 .s3-modal {
   position: fixed;
   inset: 0;
-  background: rgba(11, 13, 16, 0.86);
-  display: none;
-  align-items: center;
-  justify-content: center;
   z-index: 1100;
-  padding: 4rem;
-}
-.s3-modal.show {
-  display: flex;
-  animation: alert-in var(--m-base) ease-out;
-}
-.s3-modal-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  width: 70vw;
-  max-width: 80rem;
-  max-height: 80vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.s3-modal-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.75rem var(--pad);
-  border-bottom: 1px solid var(--border);
-}
-.s3-modal-title {
-  font-size: var(--t-body-lg);
-  color: var(--expanso);
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  word-break: break-all;
-}
-.s3-modal-close {
-  background: none;
-  border: 0;
-  color: var(--text-dim);
-  font-size: 2rem;
-  cursor: pointer;
-  line-height: 1;
-  padding: 0 0.5rem;
-}
-.s3-modal-close:hover { color: var(--text); }
-.s3-modal-body {
-  flex: 1;
-  margin: 0;
-  padding: var(--pad);
-  overflow: auto;
-  font-size: var(--t-body);
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  color: var(--text);
-  white-space: pre-wrap;
-  word-break: break-all;
-  background: var(--surface-2);
-}
-
-/* ── Topology mini ────────────────────────────────────────────────── */
-
-.topology {
-  /* Hidden by default — added clutter without informational value beyond
-     what the event stream already shows. Toggle via body.show-topology
-     to bring it back. Was overlapping the egress tile. */
   display: none;
-  position: fixed;
-  bottom: 5rem;
-  right: 1.5rem;
-  width: 14rem;
-  height: 8rem;
-  background: rgba(11, 13, 16, 0.92);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  z-index: 50;
-  pointer-events: none;
-}
-body.show-topology .topology { display: block; }
-
-/* ── ARCH view (alternate tab) ────────────────────────────────────── */
-/* Layout: control plane (Expanso Cloud) on top, data plane below.
-   The data plane shows Camera → Jetson → 3-way fan-out (local / Gemini / S3).
-   Animated dots travel along arrow stems to make data flow visible. */
-
-.arch-view {
-  /* 4-column auto-sized grid, horizontally centered in the viewport.
-     Previous layout used `1fr` for the center column which, on a 2000px+
-     viewport, produced an 1500px void with the Cloud+Jetson floating in
-     the middle of nothing. `justify-content: center` packs columns by
-     content width; arrows span the visible gap because their stems are
-     sized in rem (see .arch-arrow-stem). Vertical: `align-content: center`
-     so the whole assembly sits in the middle of the available height. */
-  grid-template-columns: auto auto auto auto auto;   /* sensors / cam-arrow / center / edge-out / destinations */
-  grid-template-rows: auto auto auto;   /* row 1: diagram, row 2: legend, row 3: footer tagline */
-  column-gap: 0;
-  row-gap: 0.6rem;
-  justify-content: center;
-  align-content: center;
-  padding: 1.5rem 1rem;
-  background:
-    radial-gradient(ellipse 70% 50% at 50% 0%, rgba(127,184,220,0.05), transparent 60%),
-    var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-.arch-col {
-  display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
+  padding: 1rem;
+  background: var(--bg);
 }
-.arch-col--cameras   { grid-column: 1; grid-row: 1; gap: 1.2rem; align-self: center; }
-.arch-col--cam-arrow {
-  grid-column: 2; grid-row: 1;
-  align-self: stretch;        /* match the row height so the SVG can span cameras top→bottom */
-  position: relative;
-  width: 11rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.arch-col--center    { grid-column: 3; grid-row: 1; gap: 0; align-self: center; }
-.arch-col--edge-out  {
-  grid-column: 4; grid-row: 1;
-  align-self: stretch;        /* SVG needs full row height for fan-out from Edge middle */
-  position: relative;
-  width: 11rem;
-  display: block;             /* SVG + absolutely-positioned meta chips */
-}
-.arch-col--destinations {
-  grid-column: 5; grid-row: 1;
-  align-self: stretch;        /* match Edge stack height so curves can converge cleanly */
+
+.s3-modal.show { display: flex; }
+
+.s3-modal-card {
   display: flex;
   flex-direction: column;
-  gap: 0.7rem;
-  justify-content: center;
-}
-/* Legacy fanout column (kept for backward compat if any markup leaks) */
-.arch-col--fanout    { grid-column: 5; grid-row: 1; gap: 1rem; align-self: center; }
-.arch-view > .arch-legend { grid-column: 1 / -1; grid-row: 2; align-self: end; }
-.arch-view > .arch-footer { grid-column: 1 / -1; grid-row: 3; }
-
-/* ── Boxes (display-rectangle primitive) ──────────────────────────── */
-.arch-box {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0.55rem 0.85rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  min-width: 11rem;
-  position: relative;
-}
-.arch-box__head {
-  display: flex;
-  flex-direction: column;
-  gap: 0.05rem;
-}
-.arch-box__label {
-  font-size: var(--t-body-lg);
-  font-weight: 600;
-  color: var(--text);
-  letter-spacing: -0.01em;
-  font-family: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
-}
-.arch-box__sub {
-  font-size: var(--t-caption);
-  color: var(--text-dim);
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  letter-spacing: 0.04em;
-}
-
-/* Box variants — subtle accent on top edge to differentiate roles */
-.arch-box--cloud   { border-top: 2px solid var(--expanso); min-width: 18rem; max-width: 21rem; }
-.arch-box--camera  { border-top: 2px solid var(--text-mono); }
-.arch-box--cam-mini {
-  border-top: 2px solid var(--text-mono);
-  min-width: 10rem;
-  max-width: 11rem;
-  padding: 0.45rem 0.7rem;
-}
-.arch-box--jetson  { border-top: 2px solid var(--ok); min-width: 19rem; max-width: 23rem; }
-/* Jetson sits directly under the cloud arrow with no visual gap so the arrow
-   appears to terminate AT the box's top edge. */
-.arch-col--center .arch-box--jetson { margin-top: -1px; }
-.arch-box--local   { border-top: 2px solid var(--ok); }
-.arch-box--gemini  { border-top: 2px solid var(--alert); }
-.arch-box--s3      { border-top: 2px solid var(--expanso); }
-
-/* Fan-out boxes — wider rectangles so multi-word pills like "store-and-forward"
-   fit on a single line without clipping. Uniform width for vertical rhythm. */
-.arch-box--square {
-  min-width: 13rem;
-  width: 13rem;
-  min-height: 7rem;
-  padding: 0.7rem 0.85rem;
-  justify-content: flex-start;
-}
-.arch-box--square .arch-pills { flex-wrap: wrap; }
-
-/* Live stat block inside Jetson box — 2x2 instrument cluster.
-   Each cell shows VALUE (large, top) over LABEL (small caps, bottom),
-   so the eye lands on the number first. Tabular numerals lock the
-   width so values don't dance as they update. */
-.arch-livestat {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.4rem;
-  margin-top: 0.6rem;
-  padding-top: 0.55rem;
-  border-top: 1px dashed var(--border);
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-}
-.arch-livestat-row {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.05rem;
-  background: rgba(11, 13, 16, 0.45);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0.3rem 0.5rem;
-}
-.arch-livestat-label {
-  color: var(--text-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  font-size: 0.65rem;
-  font-weight: 600;
-  order: 2;
-}
-.arch-livestat-val {
-  color: var(--text);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum";
-  font-size: var(--t-body-lg);
-  letter-spacing: -0.01em;
-  line-height: 1;
-  order: 1;
-}
-
-/* ── Pills (bracket-label primitive — keeps with the operational vocab) ── */
-.arch-pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
-}
-.arch-pill {
-  font-size: var(--t-caption);
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  color: var(--text-dim);
-  background: rgba(255,255,255,0.02);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0.15em 0.55em;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-}
-.arch-pill::before { content: "[ "; color: var(--text-mono); }
-.arch-pill::after  { content: " ]"; color: var(--text-mono); }
-.arch-pill--accent {
-  color: var(--expanso);
-  border-color: rgba(127,184,220,0.45);
-  background: rgba(127,184,220,0.08);
-}
-
-/* ── Arrows (stem + animated flow dot + counter meta) ──────────────── */
-/* Horizontal layout: meta-chip sits ABOVE a longer, more substantial arrow stem
-   so the eye reads "label → flow" as one unit. Stem is dimmed teal so it visually
-   belongs to the Expanso accent palette, not just generic border-grey. */
-.arch-arrow {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.35rem;
-  flex-shrink: 0;
-}
-.arch-arrow-stem {
-  position: relative;
-  height: 3px;
-  width: 11rem;
-  background: linear-gradient(90deg,
-    var(--border) 0%,
-    rgba(127, 184, 220, 0.55) 50%,
-    var(--text-mono) 100%);
-  border-radius: 2px;
-}
-.arch-arrow-stem::after {
-  /* Arrowhead at the right end */
-  content: "";
-  position: absolute;
-  right: -2px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 0;
-  height: 0;
-  border-left: 8px solid var(--text-mono);
-  border-top: 5px solid transparent;
-  border-bottom: 5px solid transparent;
-}
-.arch-arrow-stem--vertical {
-  width: 3px;
-  height: 3.4rem;
-  background: linear-gradient(180deg,
-    var(--border) 0%,
-    rgba(127, 184, 220, 0.45) 50%,
-    var(--text-mono) 100%);
-}
-.arch-arrow-stem--vertical::after {
-  /* Arrowhead at the bottom */
-  right: 50%;
-  bottom: -2px;
-  top: auto;
-  transform: translateX(50%);
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  border-top: 8px solid var(--text-mono);
-  border-bottom: 0;
-}
-
-/* Animated data-flow dot traveling along the arrow stem */
-.arch-arrow-flow {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  width: 6px;
-  height: 6px;
-  background: var(--ok);
-  border-radius: 50%;
-  box-shadow: 0 0 0.5em var(--ok);
-  transform: translateY(-50%);
-  animation: arch-flow 1.8s linear infinite;
-}
-@keyframes arch-flow {
-  0%   { left: 0%; opacity: 0; }
-  10%  { opacity: 1; }
-  90%  { opacity: 1; }
-  100% { left: calc(100% - 6px); opacity: 0; }
-}
-.arch-arrow-flow--vertical {
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  animation: arch-flow-vertical 2.2s linear infinite;
-}
-@keyframes arch-flow-vertical {
-  0%   { top: 0%; opacity: 0; }
-  10%  { opacity: 1; }
-  90%  { opacity: 1; }
-  100% { top: calc(100% - 6px); opacity: 0; }
-}
-
-/* Branch arrows (fan-out). Same width as the camera→jetson stem so the diagram
-   has consistent rhythm. Alert-colored flow dot distinguishes branch traffic. */
-.arch-arrow--branch .arch-arrow-stem { width: 9rem; }
-.arch-arrow--branch .arch-arrow-flow { animation-duration: 1.4s; background: var(--alert); box-shadow: 0 0 0.4em var(--alert); }
-
-.arch-arrow-meta {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.1rem;
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: var(--t-caption);
-  letter-spacing: 0.04em;
-  background: rgba(11, 13, 16, 0.6);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0.2em 0.55em;
-  min-width: 5.5rem;
-}
-.arch-arrow-counter {
-  color: var(--text);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum";
-  white-space: nowrap;
-}
-.arch-arrow-label {
-  color: var(--text-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  font-size: 0.7em;
-  white-space: nowrap;
-}
-
-/* ── Cloud → Jetson arrow (centered column, vertical stem with the meta
-       label floated to the right so the stem itself stays on the centerline
-       between the Cloud box and the Jetson box, ensuring the arrow visually
-       terminates AT the Jetson's top edge). ── */
-.arch-control-arrow {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  width: 100%;
-  margin: 0;
-}
-.arch-control-arrow .arch-arrow-stem--vertical {
-  grid-column: 2;
-  justify-self: center;
-}
-.arch-control-arrow .arch-arrow-meta {
-  grid-column: 3;
-  flex-direction: row;
-  gap: 0.4rem;
-  justify-self: start;
-  padding-left: 0.6rem;
-}
-
-/* ── Fan-out rows (each: arrow stem + box, horizontal). Used in column 4. ── */
-.arch-fanout-row {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-/* ── Cameras column (two stacked sub-tiles for north + south). ── */
-.arch-cameras {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-  align-items: stretch;
-}
-
-/* ── Group containers (SENSOR FIELD, DESTINATIONS) ────────────────── */
-/* Wrap related sub-tiles in a single rounded card so the eye reads them
-   as ONE entity. Mirrors the reference architecture diagram's "Commercial
-   Building" / "Your Data Warehouse" group panels. Header tag sits at the
-   top-left corner of the card, like a panel title strip. */
-.arch-group {
-  background:
-    linear-gradient(180deg, rgba(127,184,220,0.04), transparent 30%),
-    var(--surface);
-  border: 1px solid rgba(127,184,220,0.25);
-  border-radius: 8px;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  min-width: 14rem;
-  overflow: hidden;
-}
-.arch-group__head {
-  display: flex;
-  align-items: center;
-  gap: 0.5em;
-  padding: 0.45rem 0.85rem;
-  background: rgba(127,184,220,0.10);
-  border-bottom: 1px solid rgba(127,184,220,0.2);
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: var(--t-caption);
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  color: var(--expanso);
-  text-transform: uppercase;
-}
-.arch-group__icon {
-  font-size: 1.1em;
-  line-height: 1;
-  opacity: 0.85;
-}
-.arch-group__body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
-  padding: 0.7rem 0.7rem 0.55rem;
-}
-.arch-group__body--rows {
-  /* Each row is [arrow + tile]; rows stacked vertically with comfortable gap */
-  gap: 0.7rem;
-}
-.arch-group__caption {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: 0.7rem;
-  color: var(--text-mono);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  text-align: center;
-  margin-top: 0.2rem;
-  opacity: 0.85;
-}
-.arch-group--sensors  {
-  /* Match destinations width visually so the diagram has symmetric columns */
-  min-width: 16rem;
-}
-.arch-group--destinations {
-  /* Destinations group is wider since each row carries a full tile */
-  min-width: 19rem;
-}
-
-/* ── Group sub-tiles (used inside .arch-group__body) ─────────────── */
-.arch-tile {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0.5rem 0.75rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.05rem;
-}
-.arch-tile__label {
-  font-size: var(--t-body);
-  font-weight: 600;
-  color: var(--text);
-  letter-spacing: -0.01em;
-}
-.arch-tile__sub {
-  font-size: 0.72rem;
-  color: var(--text-dim);
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  letter-spacing: 0.04em;
-}
-.arch-tile--dest {
-  /* Destination tiles are rectangular with a subtle accent bar on the left,
-     so the eye reads them as endpoints (something receives data here). */
-  border-left: 3px solid var(--ok);
-  min-width: 13rem;
-}
-
-/* ── Box tag headers (EXPANSO CLOUD ⚡, EXPANSO EDGE ▼) ─────────────── */
-.arch-box__tag {
-  display: flex;
-  align-items: center;
-  gap: 0.5em;
-  margin: -0.55rem -0.85rem 0.55rem;
-  padding: 0.4rem 0.85rem;
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: var(--t-caption);
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  border-bottom: 1px solid var(--border);
-}
-.arch-box__tag-icon { font-size: 1.05em; line-height: 1; }
-.arch-box__tag-text { letter-spacing: 0.2em; }
-.arch-box__tag-host {
-  margin-left: auto;
-  font-size: 0.7em;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  color: var(--text-mono);
-  text-transform: none;
-}
-.arch-box__tag--cloud {
-  background: linear-gradient(90deg, rgba(127,184,220,0.18), rgba(127,184,220,0.04));
-  color: var(--expanso);
-  border-bottom-color: rgba(127,184,220,0.3);
-}
-.arch-box__tag--edge {
-  background: linear-gradient(90deg, rgba(61,220,132,0.18), rgba(61,220,132,0.04));
-  color: var(--ok);
-  border-bottom-color: rgba(61,220,132,0.3);
-}
-.arch-box__sub--lead {
-  font-size: var(--t-caption);
-  color: var(--text-dim);
-  margin-bottom: 0.35rem;
-  letter-spacing: 0;
-  font-family: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
-}
-.arch-box__caption {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: 0.7rem;
-  color: var(--text-mono);
-  letter-spacing: 0.08em;
-  margin-bottom: 0.5rem;
-  font-style: italic;
-}
-
-/* ── Box content lists (replaces the [bracket] pill noise) ─────────── */
-.arch-box__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-.arch-box__list li {
-  background: rgba(127,184,220,0.06);
-  border: 1px solid rgba(127,184,220,0.18);
-  border-radius: 4px;
-  padding: 0.4rem 0.7rem;
-  font-size: var(--t-body);
-  color: var(--text);
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0.05rem;
-}
-.arch-box__list--steps li {
-  background: rgba(61,220,132,0.06);
-  border-color: rgba(61,220,132,0.20);
-}
-.arch-box__list .step-name {
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-}
-.arch-box__list .step-meta {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: 0.7rem;
-  color: var(--text-mono);
-  letter-spacing: 0.04em;
-  text-transform: lowercase;
-  white-space: nowrap;
-}
-
-/* ── Control plane (dashed teal) styling for arrows + flow dots ───── */
-/* Cloud → Jetson is config + jobs only, never customer data. The dashed
-   line + teal palette tells that story silently. Reference architecture
-   diagram pattern. */
-/* Vertical dashed control-plane line. Use border-left on a 0-width element
-   so dashes render at the correct rhythm. Color matches the Expanso accent
-   so the eye reads "this is the management plane, not the data plane". */
-.arch-arrow-stem--control {
-  background: none !important;
-  border-left: 3px dashed rgba(127, 184, 220, 0.85);
-  width: 0 !important;
-  height: 4.2rem !important;
-  border-radius: 0;
-}
-.arch-arrow-stem--control::after {
-  border-top-color: var(--expanso) !important;
-  border-left-width: 6px !important;
-  border-right-width: 6px !important;
-  border-top-width: 9px !important;
-}
-.arch-arrow-flow--control {
-  background: var(--expanso) !important;
-  box-shadow: 0 0 0.6em var(--expanso) !important;
-}
-.arch-arrow-meta--control {
-  border-color: rgba(127,184,220,0.45) !important;
-  background: rgba(127,184,220,0.08) !important;
-}
-.arch-arrow-meta--control .arch-arrow-counter { color: var(--expanso) !important; }
-
-/* ── Camera → Edge converging curves (SVG) ────────────────────────── */
-/* Two cubic Beziers from each camera's right side, meeting at the Edge box's
-   left-middle. Sized to fill the cam-arrow column. Animated <circle>s travel
-   the path so per-stream data flow is visible, not just inferred. */
-.arch-cam-curves {
-  width: 100%;
-  height: 100%;
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  overflow: visible;
-}
-.arch-cam-curve__path {
-  stroke: rgba(61, 220, 132, 0.55);
-  stroke-width: 2;
-  fill: none;
-}
-.arch-cam-curve__dot {
-  fill: var(--ok);
-  filter: drop-shadow(0 0 0.35em var(--ok));
-}
-
-/* The aggregate ev/min meta chip floats centered over the convergence point.
-   Position relative to the cam-arrow column (which is position: relative). */
-.arch-arrow-meta--cam {
-  position: relative;
-  z-index: 2;
-  /* Shift slightly left of center so the chip doesn't cover the arrowhead */
-  transform: translateX(-1.2rem);
-}
-
-/* ── Edge → Destinations diverging curves (SVG) ──────────────────── */
-/* Same pattern as cam curves but in reverse: 3 cubic Beziers all originate at
-   the EXPANSO EDGE box's right-middle and fan out to each destination box's
-   left-middle. JS in updateEdgeOutCurves() writes the path d attributes. */
-.arch-edge-out-curves {
-  width: 100%;
-  height: 100%;
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  overflow: visible;
-}
-.arch-edge-curve__path {
-  stroke: rgba(61, 220, 132, 0.55);
-  stroke-width: 2;
-  fill: none;
-}
-.arch-edge-curve__dot {
-  fill: var(--ok);
-  filter: drop-shadow(0 0 0.35em var(--ok));
-}
-
-/* Floating meta chips that label each branch — JS positions them along the
-   curve midpoint after layout. Same look as other arch-arrow-meta chips. */
-.arch-arrow-meta--out {
-  position: absolute;
-  z-index: 2;
-  transform: translate(-50%, -50%);   /* center on the (x,y) JS sets */
-  background: rgba(11, 13, 16, 0.6);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0.2em 0.55em;
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: var(--t-caption);
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  line-height: 1.1;
-  /* Default position pre-JS (off-screen) */
-  left: -9999px;
-  top: -9999px;
-}
-.arch-arrow-meta--out .arch-arrow-counter { color: var(--text); font-weight: 600; white-space: nowrap; }
-.arch-arrow-meta--out .arch-arrow-label   { color: var(--text-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.7em; white-space: nowrap; }
-
-/* ── Standalone destination boxes (no group container) ─────────────── */
-/* Each destination is a first-class card with its own tag header, mirroring
-   the visual weight of EXPANSO CLOUD and EXPANSO EDGE. */
-.arch-box--dest {
-  min-width: 16rem;
-  max-width: 18rem;
-  padding: 0.55rem 0.85rem;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  position: relative;
-}
-/* Top-edge accent stripe per destination type, matching the tag color */
-.arch-box--dest:has(.arch-box__tag--local)  { border-top: 2px solid var(--ok); }
-.arch-box--dest:has(.arch-box__tag--gemini) { border-top: 2px solid var(--alert); }
-.arch-box--dest:has(.arch-box__tag--s3)     { border-top: 2px solid var(--expanso); }
-
-/* Destination tag header gradients — same gradient pattern as Cloud/Edge */
-.arch-box__tag--local {
-  background: linear-gradient(90deg, rgba(61,220,132,0.18), rgba(61,220,132,0.04));
-  color: var(--ok);
-  border-bottom-color: rgba(61,220,132,0.3);
-}
-.arch-box__tag--gemini {
-  background: linear-gradient(90deg, rgba(255,167,38,0.18), rgba(255,167,38,0.04));
-  color: var(--alert);
-  border-bottom-color: rgba(255,167,38,0.3);
-}
-.arch-box__tag--s3 {
-  background: linear-gradient(90deg, rgba(127,184,220,0.18), rgba(127,184,220,0.04));
-  color: var(--expanso);
-  border-bottom-color: rgba(127,184,220,0.3);
-}
-
-/* Per-destination list color tints */
-.arch-box__list--local li  { background: rgba(61,220,132,0.06); border-color: rgba(61,220,132,0.20); }
-.arch-box__list--gemini li { background: rgba(255,167,38,0.06); border-color: rgba(255,167,38,0.20); }
-.arch-box__list--s3 li     { background: rgba(127,184,220,0.06); border-color: rgba(127,184,220,0.20); }
-
-/* ── Control plane static label (no animated dot) ─────────────────── */
-/* Replaces the floating arch-arrow-meta--control chip. This sits as a small
-   inline label NEXT to the dashed line, not as a separate floating block. */
-.arch-control-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: var(--t-caption);
-  letter-spacing: 0.04em;
-  background: rgba(127,184,220,0.08);
-  border: 1px solid rgba(127,184,220,0.45);
-  border-radius: 4px;
-  padding: 0.2em 0.55em;
-  color: var(--expanso);
-  white-space: nowrap;
-  grid-column: 3;
-  justify-self: start;
-  margin-left: 0.6rem;
-}
-.arch-control-label .arch-arrow-counter { color: var(--expanso); font-weight: 600; }
-.arch-control-label .arch-arrow-label   { color: var(--text-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.7em; }
-
-/* Boost data-plane flow dot visibility — the reference diagram has chunky,
-   eye-catching dots. Our 6px nubs were forgettable. Keep the gradient stem
-   subtle so the dot does the visual work. */
-.arch-arrow-flow {
-  width: 10px;
-  height: 10px;
-  box-shadow: 0 0 0.7em var(--ok), 0 0 0.2em #fff inset;
-}
-.arch-arrow--branch .arch-arrow-flow {
-  width: 9px;
-  height: 9px;
-  box-shadow: 0 0 0.7em var(--alert), 0 0 0.2em #fff inset;
-}
-
-/* ── Legend strip (data flow vs control plane) ────────────────────── */
-.arch-legend {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 2.5rem;
-  padding: 0.45rem 1rem;
-  border-top: 1px dashed var(--border);
-  margin-top: 0.4rem;
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: 0.75rem;
-  letter-spacing: 0.04em;
-  color: var(--text-dim);
-  grid-column: 1 / -1;
-}
-.arch-legend__item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.arch-legend__line {
-  width: 2.4rem;
-  height: 3px;
-  border-radius: 2px;
-  background: linear-gradient(90deg,
-    var(--border) 0%,
-    var(--ok) 50%,
-    var(--text-mono) 100%);
-}
-.arch-legend__line--control {
-  background: none;
-  border-top: 2px dashed rgba(127,184,220,0.6);
-  height: 0;
-}
-.arch-legend__text { white-space: nowrap; }
-
-/* ── Footer line of arch view ──────────────────────────────────────── */
-.arch-footer {
-  font-size: var(--t-caption);
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  color: var(--text-dim);
-  letter-spacing: 0.06em;
-  text-align: center;
-  padding-top: 0.4rem;
-  border-top: 1px solid var(--border);
-  width: 100%;
-}
-
-/* ── Bottom platform strip (replaces the platform tile) ─────────────── */
-/* Single horizontal line: [Expanso wordmark]  pipeline(status) pipeline(status) ...
-   Always visible at the bottom of the OPS view. */
-.platform-strip {
-  display: flex;
-  align-items: center;
-  gap: 1.2rem;
-  padding: 0.4rem 0.85rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  height: 2.6rem;
-  /* Allow horizontal scroll if content overflows; never clip the wordmark. */
-  overflow-x: auto;
-  overflow-y: hidden;
-  white-space: nowrap;
-  width: 100%;
-  min-width: 0;
-}
-.platform-wordmark {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: var(--t-body);
-  font-weight: 700;
-  letter-spacing: 0.22em;
-  color: var(--expanso);
-  text-decoration: none;
-  flex-shrink: 0;
-  padding: 0.1em 0.5em;
-  border: 1px solid rgba(109,74,255,0.40);
-  border-radius: 4px;
-  background: rgba(109,74,255,0.07);
-  transition: background var(--m-fast), color var(--m-fast);
-}
-.platform-wordmark:hover {
-  background: rgba(109,74,255,0.15);
-  color: var(--text);
-}
-.platform-jobs-inline {
-  display: flex;
-  gap: 1rem;
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  align-items: center;
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: var(--t-caption);
-}
-.platform-jobs-inline .job-inline {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4em;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-.platform-jobs-inline .job-inline-name {
-  color: var(--text);
-  letter-spacing: 0.04em;
-}
-.platform-jobs-inline .job-inline-status {
-  color: var(--text-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-}
-.platform-jobs-inline .job-inline.running .job-inline-status { color: var(--ok); }
-.platform-jobs-inline .job-inline.pending .job-inline-status { color: var(--alert); }
-.platform-jobs-inline .job-inline.failed  .job-inline-status,
-.platform-jobs-inline .job-inline.down    .job-inline-status { color: var(--critical); }
-.platform-jobs-inline .job-inline-led {
-  width: 0.55em; height: 0.55em;
-  border-radius: 2px;  /* square LED, matching the design vocab */
-  background: var(--text-mono);
-  flex-shrink: 0;
-}
-.platform-jobs-inline .job-inline.running .job-inline-led { background: var(--ok); box-shadow: 0 0 0.4em var(--ok); }
-.platform-jobs-inline .job-inline.pending .job-inline-led { background: var(--alert); }
-.platform-jobs-inline .job-inline.failed  .job-inline-led,
-.platform-jobs-inline .job-inline.down    .job-inline-led { background: var(--critical); }
-
-/* ── ARCHIVE view (third tab) ──────────────────────────────────────── */
-.archive-view {
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-  padding: 1.5rem;
-  gap: 1rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: auto;
-}
-.archive-view .egress {
   width: 100%;
   max-width: 64rem;
-  height: auto;
-  aspect-ratio: auto;
-}
-
-/* ── Triggers bar (dedicated row, gives F4 chip pulse the room to land) ─ */
-.triggers-bar {
-  display: flex;
-  align-items: center;
-  gap: 0.85rem;
-  padding: 0.5rem 1rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  min-height: 3rem;
-  /* Subtle horizon gradient hints at "this is the active mission config" */
-  background:
-    linear-gradient(90deg, rgba(127,184,220,0.04), transparent 40%),
-    var(--surface);
-}
-.triggers-bar-label {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: var(--t-caption);
-  color: var(--text-mono);
-  font-weight: 700;
-  letter-spacing: 0.22em;
-  flex-shrink: 0;
-}
-.triggers-bar .trigger-chips {
-  display: flex;
-  gap: 0.7rem;
-  flex-wrap: wrap;
-  flex: 1;
+  max-height: 100%;
   min-width: 0;
-}
-
-/* Legacy header-triggers wrapper — kept defined so any straggling references
-   don't break, but display:none in the layout. */
-.header-triggers { display: none; }
-.header-triggers-label {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: var(--t-caption);
-  color: var(--text-mono);
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  flex-shrink: 0;
-}
-.header-triggers .trigger-chips {
-  display: flex;
-  gap: 0.3rem;
-  flex-wrap: nowrap;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
   overflow: hidden;
-  flex: 1;
+}
+
+.s3-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem var(--pad);
+  border-bottom: 1px solid var(--border);
+}
+
+.s3-modal-title {
   min-width: 0;
+  font: 500 var(--t-body)/1.3 var(--font-mono);
+  color: var(--dest);
+  overflow-wrap: anywhere;
 }
 
-/* ── Tier strip inline in platform-strip ──────────────────────────── */
-.tier-strip-inline {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: var(--t-caption);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  flex-shrink: 0;
-}
-.platform-strip .tier {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4em;
-}
-.platform-strip .tier-dot {
-  /* Bigger, more visible — the tier strip is the architectural claim of the demo,
-     not an afterthought. Square LED matches the design vocab. */
-  width: 0.7em;
-  height: 0.7em;
-  border-radius: 2px;
-  background: var(--ok);
-  box-shadow: 0 0 0.5em var(--ok);
-  transition: background var(--m-base), box-shadow var(--m-base);
-}
-.platform-strip .tier-sep { color: var(--text-mono); }
-.platform-strip .tier-label { font-weight: 600; }
-
-.platform-strip-divider {
-  width: 1px;
-  height: 1.2em;
-  background: var(--border);
-  flex-shrink: 0;
-}
-
-/* When body.cloud-down: dim CLOUD dot in the bottom strip */
-body.cloud-down .platform-strip #tier-cloud {
-  background: var(--text-mono);
-  box-shadow: none;
-}
-body.tier-edge-down .platform-strip #tier-edge {
-  background: var(--text-mono);
-  box-shadow: none;
-}
-
-/* ════════════════════════════════════════════════════════════════════
-   ARCH TAB · LIGHT THEME OVERRIDES
-   ════════════════════════════════════════════════════════════════════
-   Per user direction: the ARCH page is reference-style architecture
-   marketing art and reads better on white. Scoped to body.tab-arch only;
-   OPS and ARCHIVE keep the dark stage theme. Strategy:
-     1. Override CSS custom properties on body.tab-arch — anything that
-        already uses `var(--surface)`, `var(--text)` etc. flips automatically.
-     2. Then patch the handful of places that hardcoded dark hex/rgba values
-        (arch-livestat row backgrounds, list item tints, SVG strokes,
-        arrow stem gradients, atmospheric body gradient).
-   ════════════════════════════════════════════════════════════════════ */
-
-body.tab-arch {
-  --bg:         #f6f8fb;     /* page background, very light cool gray */
-  --surface:    #ffffff;     /* card surface, pure white */
-  --surface-2:  #f1f5f9;     /* subtle secondary surface */
-  --border:     #d8e0ea;     /* light border */
-  --text:       #0e1322;     /* primary text */
-  --text-dim:   #38414f;     /* secondary text — high contrast */
-  --text-mono:  #4f5a6e;     /* tertiary mono text */
-
-  /* Expanso brand accents — same violet/coral family as the OPS theme so
-     the two views read as one product. */
-  --ok:         #15a34a;
-  --alert:      #d9821a;
-  --critical:   #ff5a3c;
-  --expanso:    #6d4aff;
-
-  /* Soft brand-tinted corner glows (violet top, coral bottom). */
-  background:
-    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(109,74,255,0.06), transparent 70%),
-    radial-gradient(ellipse 80% 50% at 50% 110%, rgba(255,107,74,0.04), transparent 70%),
-    var(--bg);
-}
-
-/* Header / footer / platform-strip on light bg */
-body.tab-arch .header,
-body.tab-arch .platform-strip {
-  background: var(--surface);
-  border-color: var(--border);
-  box-shadow: 0 1px 2px rgba(15,23,42,0.04);
-}
-body.tab-arch .footer { color: var(--text-dim); }
-body.tab-arch .footer .left { color: var(--expanso); }
-body.tab-arch .brand { color: var(--text); }
-body.tab-arch .brand .dot { background: var(--ok); box-shadow: 0 0 0.5em rgba(16,185,129,0.5); }
-
-/* Tab switcher on light bg */
-body.tab-arch .tab-switcher { background: var(--surface-2); border-color: var(--border); }
-body.tab-arch .tab { color: var(--text-mono); border-right-color: var(--border); }
-body.tab-arch .tab:hover { background: rgba(37,99,235,0.05); color: var(--text-dim); }
-body.tab-arch .tab.is-active {
-  color: var(--expanso);
-  background: rgba(37,99,235,0.10);
-  box-shadow: inset 0 -2px 0 var(--expanso);
-}
-
-/* Header pills on light bg */
-body.tab-arch .metric-pill { background: var(--surface-2); border-color: var(--border); color: var(--text); }
-body.tab-arch .metric-pill .label { color: var(--text-dim); }
-body.tab-arch .cloud-pill {
-  background: rgba(16,185,129,0.10);
-  color: var(--ok);
-  border-color: var(--ok);
-}
-body.tab-arch .cloud-pill.down {
-  background: rgba(220,38,38,0.10);
-  color: var(--critical);
-  border-color: var(--critical);
-}
-
-/* Arch view canvas — soft white card with subtle blue wash */
-body.tab-arch .arch-view {
-  background:
-    radial-gradient(ellipse 70% 50% at 50% 0%, rgba(37,99,235,0.05), transparent 60%),
-    var(--surface);
-  border-color: var(--border);
-  box-shadow: 0 2px 8px rgba(15,23,42,0.04);
-}
-
-/* Group containers (SENSOR FIELD, DESTINATIONS) on light bg */
-body.tab-arch .arch-group {
-  background:
-    linear-gradient(180deg, rgba(37,99,235,0.04), transparent 30%),
-    var(--surface);
-  border-color: rgba(37,99,235,0.22);
-  box-shadow: 0 1px 3px rgba(15,23,42,0.04);
-}
-body.tab-arch .arch-group__head {
-  background: rgba(37,99,235,0.08);
-  border-bottom-color: rgba(37,99,235,0.18);
-  color: var(--expanso);
-}
-body.tab-arch .arch-group__caption { color: var(--text-mono); }
-
-/* Group sub-tiles */
-body.tab-arch .arch-tile {
-  background: var(--surface);
-  border-color: var(--border);
-  box-shadow: 0 1px 2px rgba(15,23,42,0.04);
-}
-body.tab-arch .arch-tile__label { color: var(--text); }
-body.tab-arch .arch-tile__sub   { color: var(--text-dim); }
-body.tab-arch .arch-tile--dest  { border-left-color: var(--ok); }
-
-/* Cloud + Edge boxes */
-body.tab-arch .arch-box {
-  background: var(--surface);
-  border-color: var(--border);
-  box-shadow: 0 1px 3px rgba(15,23,42,0.05);
-}
-body.tab-arch .arch-box--cloud  { border-top-color: var(--expanso); }
-body.tab-arch .arch-box--jetson { border-top-color: var(--ok); }
-body.tab-arch .arch-box__label  { color: var(--text); }
-body.tab-arch .arch-box__sub    { color: var(--text-dim); }
-
-/* Box tag headers — keep gradient identity, just light-bg-tuned */
-body.tab-arch .arch-box__tag {
-  border-bottom-color: var(--border);
-}
-body.tab-arch .arch-box__tag--cloud {
-  background: linear-gradient(90deg, rgba(37,99,235,0.18), rgba(37,99,235,0.04));
-  color: var(--expanso);
-  border-bottom-color: rgba(37,99,235,0.28);
-}
-body.tab-arch .arch-box__tag--edge {
-  background: linear-gradient(90deg, rgba(16,185,129,0.18), rgba(16,185,129,0.04));
-  color: var(--ok);
-  border-bottom-color: rgba(16,185,129,0.28);
-}
-body.tab-arch .arch-box__tag-host { color: var(--text-mono); }
-body.tab-arch .arch-box__caption  { color: var(--text-mono); }
-
-/* Box content lists — recolor the rgba tints (were 127,184,220 / 61,220,132
-   alpha values designed for dark bg; on white they need higher alpha + the
-   light-theme accent palette) */
-body.tab-arch .arch-box__list li {
-  background: rgba(37,99,235,0.07);
-  border-color: rgba(37,99,235,0.20);
+.s3-modal-close {
+  flex: 0 0 auto;
+  min-width: 2.5rem;
+  min-height: 2.5rem;
+  font-size: 1.75rem;
+  line-height: 1;
   color: var(--text);
-}
-body.tab-arch .arch-box__list--steps li {
-  background: rgba(16,185,129,0.07);
-  border-color: rgba(16,185,129,0.22);
-}
-body.tab-arch .arch-box__list .step-meta { color: var(--text-mono); }
-
-/* Live stat instrument cluster — dark inset wells were `rgba(11,13,16,0.45)`,
-   way too dark for light bg. Flip to a soft neutral inset. */
-body.tab-arch .arch-livestat {
-  border-top-color: var(--border);
-}
-body.tab-arch .arch-livestat-row {
   background: var(--surface-2);
-  border-color: var(--border);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  cursor: pointer;
 }
-body.tab-arch .arch-livestat-label { color: var(--text-mono); }
-body.tab-arch .arch-livestat-val   { color: var(--text); }
 
-/* Arrow meta chips — were dark-rgba(11,13,16) inset; flip to light */
-body.tab-arch .arch-arrow-meta {
-  background: var(--surface);
-  border-color: var(--border);
-  box-shadow: 0 1px 2px rgba(15,23,42,0.06);
+.s3-modal-body {
+  flex: 1 1 auto;
+  margin: 0;
+  padding: var(--pad);
+  overflow-x: hidden;
+  overflow-y: auto;
+  font: 400 var(--t-body)/1.5 var(--font-mono);
   color: var(--text);
-}
-body.tab-arch .arch-arrow-counter { color: var(--text); }
-body.tab-arch .arch-arrow-label   { color: var(--text-mono); }
-
-/* Control-plane (dashed) line + meta pill — keep teal but darker */
-body.tab-arch .arch-arrow-stem--control {
-  border-left-color: var(--expanso) !important;
-}
-body.tab-arch .arch-arrow-stem--control::after {
-  border-top-color: var(--expanso) !important;
-}
-body.tab-arch .arch-arrow-meta--control {
-  border-color: rgba(37,99,235,0.45) !important;
-  background: rgba(37,99,235,0.08) !important;
-}
-body.tab-arch .arch-arrow-meta--control .arch-arrow-counter { color: var(--expanso) !important; }
-
-/* Horizontal arrow stems (data plane between Edge and fan-out boxes) —
-   the gradient was teal-on-dark; on light bg use a darker green→neutral. */
-body.tab-arch .arch-arrow-stem {
-  background: linear-gradient(90deg,
-    var(--border) 0%,
-    rgba(16,185,129,0.6) 50%,
-    var(--text-mono) 100%);
-}
-body.tab-arch .arch-arrow-stem::after {
-  border-left-color: var(--text-mono);
-}
-body.tab-arch .arch-arrow-stem--vertical {
-  background: linear-gradient(180deg,
-    var(--border) 0%,
-    rgba(16,185,129,0.6) 50%,
-    var(--text-mono) 100%);
+  background: var(--surface-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
-/* SVG converging camera curves — stroke needs more opacity on light bg */
-body.tab-arch .arch-cam-curve__path,
-body.tab-arch .arch-edge-curve__path {
-  stroke: rgba(16, 185, 129, 0.75);
-}
-body.tab-arch .arch-cam-curve__dot,
-body.tab-arch .arch-edge-curve__dot {
-  fill: var(--ok);
-  filter: drop-shadow(0 0 0.35em rgba(16,185,129,0.8));
-}
+/* ── Pipeline-updated overlay ───────────────────────────────────────── */
 
-/* Standalone destination boxes on light bg — match cloud/edge box treatment */
-body.tab-arch .arch-box--dest {
-  background: var(--surface);
-  border-color: var(--border);
-  box-shadow: 0 1px 3px rgba(15,23,42,0.05);
-}
-body.tab-arch .arch-box__tag--local {
-  background: linear-gradient(90deg, rgba(16,185,129,0.18), rgba(16,185,129,0.04));
-  color: var(--ok);
-  border-bottom-color: rgba(16,185,129,0.28);
-}
-body.tab-arch .arch-box__tag--gemini {
-  background: linear-gradient(90deg, rgba(217,119,6,0.18), rgba(217,119,6,0.04));
-  color: var(--alert);
-  border-bottom-color: rgba(217,119,6,0.28);
-}
-body.tab-arch .arch-box__tag--s3 {
-  background: linear-gradient(90deg, rgba(37,99,235,0.18), rgba(37,99,235,0.04));
-  color: var(--expanso);
-  border-bottom-color: rgba(37,99,235,0.28);
-}
-body.tab-arch .arch-box__list--local li  { background: rgba(16,185,129,0.07); border-color: rgba(16,185,129,0.22); }
-body.tab-arch .arch-box__list--gemini li { background: rgba(217,119,6,0.07);  border-color: rgba(217,119,6,0.22); }
-body.tab-arch .arch-box__list--s3 li     { background: rgba(37,99,235,0.07);  border-color: rgba(37,99,235,0.22); }
-
-/* Floating edge-out meta chips on light bg */
-body.tab-arch .arch-arrow-meta--out {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  box-shadow: 0 1px 4px rgba(15,23,42,0.08);
-  border-radius: 4px;
-  padding: 0.2em 0.55em;
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: var(--t-caption);
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0;
-  line-height: 1.1;
-}
-body.tab-arch .arch-arrow-meta--out .arch-arrow-counter { color: var(--text); font-weight: 600; }
-body.tab-arch .arch-arrow-meta--out .arch-arrow-label   { color: var(--text-mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.7em; }
-
-/* Control-plane label on light bg */
-body.tab-arch .arch-control-label {
-  background: rgba(37,99,235,0.08);
-  border-color: rgba(37,99,235,0.45);
-  color: var(--expanso);
-}
-body.tab-arch .arch-control-label .arch-arrow-counter { color: var(--expanso); }
-body.tab-arch .arch-control-label .arch-arrow-label   { color: var(--text-mono); }
-
-/* Legend strip on light bg */
-body.tab-arch .arch-legend { color: var(--text-dim); border-top-color: var(--border); }
-body.tab-arch .arch-legend__line {
-  background: linear-gradient(90deg, var(--border) 0%, var(--ok) 50%, var(--text-mono) 100%);
-}
-body.tab-arch .arch-legend__line--control {
-  background: none;
-  border-top-color: var(--expanso);
-}
-body.tab-arch .arch-footer { color: var(--text-dim); border-top-color: var(--border); }
-
-/* Platform-strip elements (always visible, even on ARCH) — light variant */
-body.tab-arch .platform-wordmark {
-  color: var(--expanso);
-  border-color: rgba(37,99,235,0.4);
-  background: rgba(37,99,235,0.06);
-}
-body.tab-arch .tier-strip-inline { color: var(--text-dim); }
-body.tab-arch .platform-strip .tier-dot { background: var(--ok); box-shadow: 0 0 0.5em rgba(16,185,129,0.45); }
-body.tab-arch .platform-strip-divider { background: var(--border); }
-body.tab-arch .platform-jobs-inline .job-inline-name   { color: var(--text); }
-body.tab-arch .platform-jobs-inline .job-inline-status { color: var(--text-mono); }
-body.tab-arch .platform-jobs-inline .job-inline-led    { background: var(--text-mono); }
-body.tab-arch .platform-jobs-inline .job-inline.running .job-inline-led { background: var(--ok); }
-body.tab-arch .platform-jobs-inline .job-inline.failed  .job-inline-led { background: var(--critical); }
-
-/* ── Pipeline-updated takeover overlay ───────────────────────────────
-   Fires on a positive moment (operator rolled out a new class). Big,
-   centered, brand-blue, breathes for ~6s then fades. Distinct from
-   the red ALERT overlay so the audience reads:
-     red = "look, something happened on a sensor"
-     blue = "look, the system itself just changed"
-*/
 .pipeline-update-overlay {
   position: fixed;
   inset: 0;
@@ -2582,292 +1280,365 @@ body.tab-arch .platform-jobs-inline .job-inline.failed  .job-inline-led { backgr
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1.2rem;
-  background:
-    radial-gradient(ellipse 60% 50% at 50% 50%, rgba(127,184,220,0.25), rgba(11,13,16,0.92) 60%),
-    rgba(11, 13, 16, 0.92);
+  gap: 1rem;
+  padding: 1rem;
+  background: var(--bg);
   pointer-events: none;
   opacity: 0;
   visibility: hidden;
   transition: opacity 0.35s ease-out, visibility 0s linear 0.35s;
 }
+
 .pipeline-update-overlay.show {
   opacity: 1;
   visibility: visible;
   transition: opacity 0.25s ease-out, visibility 0s linear 0s;
-  animation: pipeline-update-pulse 1.0s ease-in-out 5;
-}
-@keyframes pipeline-update-pulse {
-  0%, 100% { box-shadow: inset 0 0 0 0    rgba(127, 184, 220, 0); }
-  50%      { box-shadow: inset 0 0 0 0.8em rgba(127, 184, 220, 0.18); }
 }
 
-.pipeline-update-icon {
-  font-size: 6rem;
-  line-height: 1;
-  color: var(--expanso);
-  text-shadow:
-    0 0 0.3em rgba(127, 184, 220, 0.55),
-    0 0 1.2em rgba(127, 184, 220, 0.35);
-  animation: pipeline-update-spin 4s linear infinite;
-}
-@keyframes pipeline-update-spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
-}
+.pipeline-update-icon { width: 5rem; height: 5rem; color: var(--accent); }
 
-.pipeline-update-eyebrow {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: 1.15rem;
-  letter-spacing: 0.45em;
+.pipeline-update-title {
+  font-size: var(--t-h);
   font-weight: 600;
-  color: var(--expanso);
-  text-transform: uppercase;
+  color: var(--accent);
 }
 
 .pipeline-update-headline {
-  font-family: "IBM Plex Sans", sans-serif;
-  font-size: clamp(3rem, 9vw, 7rem);
+  font-size: clamp(2rem, 9vw, 6rem);
   font-weight: 700;
   letter-spacing: -0.02em;
-  color: var(--text);
+  line-height: 1.05;
   text-align: center;
-  line-height: 1;
+  color: var(--text);
 }
+
 .pipeline-update-headline .pipeline-update-class {
-  color: var(--expanso);
   display: inline-block;
   padding: 0 0.15em;
-  background: rgba(127, 184, 220, 0.10);
-  border-bottom: 4px solid var(--expanso);
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-bottom: 4px solid var(--accent);
 }
 
-.pipeline-update-sub {
-  font-size: 1rem;
-  color: var(--text-dim);
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-}
+.pipeline-update-sub { font-size: var(--t-lg); color: var(--text-dim); text-align: center; }
 
-@media (prefers-reduced-motion: reduce) {
-  .pipeline-update-overlay.show { animation: none; }
-  .pipeline-update-icon { animation: none; }
-}
+.topology { display: none; }
 
-/* ════════════════════════════════════════════════════════════════════
-   PEOPLE-COUNTING BOOTH MODE — zone tally (the merge) + crowd FLAG.
-   Sized to read across a conference hall on a 42" monitor: counts use
-   clamp() with viewport units so they're huge regardless of the
-   responsive type scale.
-   ════════════════════════════════════════════════════════════════════ */
+/* ── ARCH view ──────────────────────────────────────────────────────── */
 
-/* ── Per-zone count card ─────────────────────────────────────────── */
-.zone-card {
-  background:
-    radial-gradient(ellipse 120% 80% at 50% 0%, rgba(109,74,255,0.05), transparent 70%),
-    var(--surface);
-  box-shadow: 0 1px 3px rgba(20,26,46,0.06);
+.arch-view {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1fr) minmax(3rem, 7rem) minmax(0, 1.3fr) minmax(3rem, 7rem) minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  align-content: center;
+  column-gap: 0;
+  row-gap: 0.75rem;
+  padding: 1.25rem 1rem;
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.6rem 1rem 0.7rem;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-}
-.zone-card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-.zone-card-title {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: var(--t-h);
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  color: var(--text-dim);
-}
-.zone-card-status {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: var(--t-body);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--ok);
-  white-space: nowrap;
-}
-.zone-card-status.live { color: var(--ok); }
-.zone-card-status.offline { color: var(--alert); }
-.zone-card-status.stopped { color: var(--text-mono); }
-.zone-card-status.connecting { color: var(--text-dim); }
-.zone-card-count-wrap {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  line-height: 1;
-  margin: 0.1rem 0 0.3rem;
-}
-.zone-card-count {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-weight: 700;
-  font-size: clamp(2.5rem, 5vw, 5.5rem);
-  color: var(--ok);
-  letter-spacing: -0.03em;
-  font-variant-numeric: tabular-nums;
-  transition: color var(--m-fast) ease;
-}
-.zone-card-count.bumped { animation: zone-bump 300ms ease; }
-@keyframes zone-bump {
-  0% { transform: scale(1); }
-  40% { transform: scale(1.05); }
-  100% { transform: scale(1); }
-}
-.zone-card-unit {
-  font-size: var(--t-h);
-  font-weight: 600;
-  color: var(--text-dim);
-  text-transform: lowercase;
-  letter-spacing: 0.04em;
-}
-/* Live event ticker lives below the count, compact. */
-.zone-ticker {
-  margin-top: auto;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
+  border-radius: var(--r-md);
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
-/* ── Combined card — THE MERGE ───────────────────────────────────── */
-.combined-card {
-  background:
-    linear-gradient(180deg, rgba(109,74,255,0.06), transparent 60%),
-    var(--surface);
-  border: 2px solid var(--border);
-  box-shadow: 0 1px 3px rgba(20,26,46,0.06);
-  border-radius: var(--radius);
-  padding: 0.5rem 1rem 0.7rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  transition: border-color var(--m-base) ease, background var(--m-base) ease;
-}
-.combined-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-.combined-eyebrow {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: var(--t-body);
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-}
-.combined-state {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: var(--t-body);
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  padding: 0.15rem 0.7rem;
-  border-radius: 9999px;
-  text-transform: uppercase;
-}
-.combined-state.clear { color: var(--ok); border: 1px solid rgba(21,163,74,0.35); }
-.combined-state.flag  { color: #fff; background: var(--critical); border: 1px solid var(--critical); }
-.combined-body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-.combined-total-wrap {
-  display: flex;
-  align-items: baseline;
-  gap: 0.6rem;
-  line-height: 1;
-}
-.combined-total {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-weight: 700;
-  font-size: clamp(3.5rem, 9vw, 10rem);
-  letter-spacing: -0.03em;
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-  transition: color var(--m-base) ease;
-}
-.combined-of {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: clamp(1.4rem, 3vw, 3rem);
-  color: var(--text-dim);
-  font-weight: 600;
-}
-.combined-meter {
+.arch-view > .arch-legend { grid-column: 1 / -1; grid-row: 2; }
+
+.arch-view > .arch-footer { grid-column: 1 / -1; grid-row: 3; }
+
+.arch-col { display: flex; flex-direction: column; align-items: stretch; justify-content: center; min-width: 0; }
+
+.arch-col--cameras { grid-column: 1; grid-row: 1; }
+
+.arch-col--cam-arrow { grid-column: 2; grid-row: 1; position: relative; align-items: center; }
+
+.arch-col--center { grid-column: 3; grid-row: 1; }
+
+.arch-col--edge-out { grid-column: 4; grid-row: 1; position: relative; display: block; }
+
+.arch-col--destinations { grid-column: 5; grid-row: 1; gap: 0.7rem; }
+
+.arch-box {
   position: relative;
-  height: 0.7rem;
-  background: rgba(20,26,46,0.08);
-  border-radius: 9999px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+  padding: 0.55rem 0.85rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+}
+
+.arch-box__tag {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5em;
+  margin: -0.55rem -0.85rem 0.35rem;
+  padding: 0.4rem 0.85rem;
+  font: 700 var(--t-body)/1.3 var(--font-mono);
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+}
+
+.arch-box__tag-text { overflow-wrap: anywhere; }
+
+.arch-box__tag-host { margin-left: auto; font-size: var(--t-caption); font-weight: 500; color: var(--text-dim); }
+
+.arch-box__tag--cloud,
+.arch-box__tag--gemini,
+.arch-box__tag--s3 { background: var(--dest-soft); color: var(--dest); }
+
+.arch-box__tag--edge,
+.arch-box__tag--local { background: var(--accent-soft); color: var(--accent); }
+
+.arch-box__sub { font: 400 var(--t-caption)/1.4 var(--font-mono); color: var(--text-dim); }
+
+.arch-box__sub--lead { font-family: var(--font-sans); font-size: var(--t-body); margin-bottom: 0.2rem; }
+
+.arch-box__caption { font: 400 var(--t-caption)/1.4 var(--font-mono); color: var(--text-mute); margin-bottom: 0.3rem; }
+
+.arch-box__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+
+.arch-box__list li {
+  display: flex;
+  flex-direction: column;
+  padding: 0.4rem 0.7rem;
+  font-size: var(--t-body);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  overflow-wrap: anywhere;
+}
+
+.arch-box__list .step-name { font-weight: 600; }
+
+.arch-box__list .step-meta { font: 400 var(--t-caption)/1.4 var(--font-mono); color: var(--text-mute); }
+
+.arch-group {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
   overflow: hidden;
 }
-.combined-meter-fill {
+
+.arch-group__head {
+  padding: 0.45rem 0.85rem;
+  font: 700 var(--t-body)/1.3 var(--font-mono);
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-bottom: 1px solid var(--border);
+}
+
+.arch-group__body { display: flex; flex-direction: column; gap: 0.55rem; padding: 0.7rem; }
+
+.arch-group__caption { font: 400 var(--t-caption)/1.4 var(--font-mono); color: var(--text-mute); text-align: center; }
+
+.arch-tile {
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+}
+
+.arch-tile__label { font-weight: 600; }
+
+.arch-tile__sub { font: 400 var(--t-caption)/1.4 var(--font-mono); color: var(--text-dim); }
+
+/* Curves */
+
+.arch-cam-curves,
+.arch-edge-out-curves {
+  position: absolute;
+  inset: 0;
+  width: 100%;
   height: 100%;
-  width: 0%;
-  background: linear-gradient(90deg, var(--ok), var(--alert));
-  border-radius: 9999px;
-  transition: width var(--m-base) ease, background var(--m-base) ease;
+  overflow: visible;
+  pointer-events: none;
 }
-.combined-breakdown {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: var(--t-body-lg);
+
+.arch-cam-curve__path,
+.arch-edge-curve__path { stroke: var(--accent); stroke-width: 2; fill: none; }
+
+.arch-arrowhead { fill: var(--accent); }
+
+.arch-cam-curve__dot,
+.arch-edge-curve__dot { fill: var(--accent); }
+
+.arch-arrow-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.15em 0.55em;
+  font: 500 var(--t-caption)/1.2 var(--font-mono);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+}
+
+.arch-arrow-counter { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.arch-arrow-label { color: var(--text-dim); white-space: nowrap; }
+
+.arch-arrow-meta--cam { position: relative; z-index: 2; align-self: center; }
+
+.arch-arrow-meta--out {
+  position: absolute;
+  z-index: 2;
+  left: -9999px;
+  top: -9999px;
+  transform: translate(-50%, -50%);
+}
+
+.arch-control-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  min-height: 3.6rem;
+}
+
+.arch-arrow-stem--control {
+  align-self: stretch;
+  width: 0;
+  border-left: 3px dashed var(--dest);
+  position: relative;
+}
+
+.arch-arrow-stem--control::after {
+  content: "";
+  position: absolute;
+  left: -8px;
+  bottom: -2px;
+  border-left: 6.5px solid transparent;
+  border-right: 6.5px solid transparent;
+  border-top: 9px solid var(--dest);
+}
+
+.arch-control-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.15em 0.55em;
+  font: 500 var(--t-caption)/1.2 var(--font-mono);
+  color: var(--dest);
+  background: var(--dest-soft);
+  border: 1px solid var(--dest);
+  border-radius: var(--r-sm);
+}
+
+.arch-control-label .arch-arrow-counter { color: var(--dest); }
+
+.arch-control-label .arch-arrow-label { color: var(--dest); }
+
+.arch-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem 2.5rem;
+  padding: 0.5rem 1rem 0;
+  margin-top: 0.4rem;
+  border-top: 1px solid var(--border);
+  font: 400 var(--t-caption)/1.4 var(--font-mono);
   color: var(--text-dim);
-  letter-spacing: 0.02em;
 }
 
-/* ── OVER-THRESHOLD state: the whole right column lights red ──────── */
-.combined-card.over {
-  border-color: var(--critical);
-  background:
-    linear-gradient(180deg, rgba(255,90,60,0.14), transparent 70%),
-    var(--surface);
-  animation: combined-flag-pulse 1.1s ease-in-out infinite;
-}
-.combined-card.over .combined-total { color: var(--critical); }
-.combined-card.over .combined-meter-fill { background: var(--critical); }
-@keyframes combined-flag-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255,90,60,0.0); }
-  50%      { box-shadow: 0 0 0 7px rgba(255,90,60,0.20); }
+.arch-legend__item { display: flex; align-items: center; gap: 0.5rem; }
+
+.arch-legend__line { flex: 0 0 2.4rem; height: 0; border-top: 3px solid var(--accent); }
+
+.arch-legend__line--control { border-top: 3px dashed var(--dest); }
+
+.arch-footer {
+  padding-top: 0.5rem;
+  text-align: center;
+  font: 400 var(--t-caption)/1.5 var(--font-mono);
+  color: var(--text-dim);
 }
 
-/* ── In-card crowd alert (lives INSIDE the combined counts card) ───────
-   No floating interstitial. When the combined total crosses the threshold
-   the card flips to .over (coral) and this line appears with the crossing
-   detail; a one-shot .flash pulses the card for emphasis at the moment of
-   crossing, then it settles into the steady .over pulse. */
-.combined-alert {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: var(--t-body-lg);
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  color: var(--critical);
-  margin-top: 0.2rem;
-  /* Always reserve one line so the card height is constant whether the
-     crowd alert is showing or not — nothing below it ever shifts. */
-  min-height: 1.5em;
+/* ARCH below 56rem: stack in the same order, drop the curves, keep labels. */
+
+@media (max-width: 56rem) {
+  .arch-view {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    row-gap: 0.9rem;
+    align-content: start;
+  }
+
+  .arch-col--cameras,
+  .arch-col--cam-arrow,
+  .arch-col--center,
+  .arch-col--edge-out,
+  .arch-col--destinations { grid-column: 1; grid-row: auto; }
+
+  .arch-view > .arch-legend,
+  .arch-view > .arch-footer { grid-column: 1; grid-row: auto; }
+
+  .arch-cam-curves,
+  .arch-edge-out-curves { display: none; }
+
+  .arch-col--cam-arrow,
+  .arch-col--edge-out {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  .arch-arrow-meta--cam::after {
+    content: "";
+    display: block;
+    margin-top: 0.15rem;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 8px solid var(--accent);
+  }
+
+  .arch-arrow-meta--out {
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    transform: none !important;
+  }
+
+  .arch-legend { flex-direction: column; align-items: flex-start; }
 }
 
-/* One-shot emphasis pulse at the instant the threshold is crossed. Glow
-   only — NO transform/scale, so the card never appears to jump or move. */
-.combined-card.flash { animation: combined-flash 1.4s ease-out; }
-@keyframes combined-flash {
-  0%   { box-shadow: 0 0 0 0 rgba(255,90,60,0.55); }
-  14%  { box-shadow: 0 0 0 9px rgba(255,90,60,0.28); }
-  100% { box-shadow: 0 0 0 0 rgba(255,90,60,0.0); }
+/* ── Narrow phones ──────────────────────────────────────────────────── */
+
+@media (max-width: 480px) {
+  :root { --gap: 0.6rem; --pad: 0.75rem; }
+
+  .tab { padding: 0.35rem 0.4rem; }
+
+  .brand { font-size: var(--t-body); }
+
+  .platform-strip-divider { display: none; }
 }
+
+/* ── Reduced motion ─────────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
-  .combined-card.over { animation: none; }
-  .combined-card.flash { animation: none; }
-  .zone-card-count.bumped { animation: none; }
+  .combined-card.over,
+  .combined-card.flash,
+  .alert-tile.active,
+  .zone-card-count.bumped,
+  .egress-count.bumped .value,
+  .chip.added,
+  .cloud-banner .dot-pulse { animation: none; }
+
+  .pipeline-update-overlay,
+  .pipeline-update-overlay.show { transition: none; }
+
+  .arch-cam-curve__dot,
+  .arch-edge-curve__dot { display: none; }
 }
