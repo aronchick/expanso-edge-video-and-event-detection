@@ -1,46 +1,25 @@
-# Edge-ISR fusion node, deployed as a real Expanso pipeline (replaces
-# the standalone nohup edge-orchestrator process on the Jetson).
+# Edge ISR fusion node: the people-count merge and the dashboard backend.
 #
-# Why a pipeline, not Type: ops with a docker engine: the current Expanso
-# CLI accepts only Type: pipeline. We wrap the long-running edge-orchestrator
-# FastAPI process as a subprocess input. restart_on_exit keeps it alive
-# across crashes; output: drop because the process publishes nothing useful
-# on stdout — its real outputs are HTTP (port 8090, dashboard + sensor
-# ingest) and the events.ndjson tail consumed by the event-archive pipeline.
+# The input is the orchestrator process itself. It prints one JSON line per
+# accepted sensor event (the merged tally, per zone and combined) and one per
+# crowd alert; uvicorn and error logs stay on stderr. The processors label
+# each line CLEAR, FLAG or ALERT and stamp lineage, so the Expanso Cloud
+# Monitoring page shows the real alert and tally stream.
 #
-# Selector is empty: there is exactly one node attached to the
-# cluster (security-camera-overseer / Jetson), so it always lands there.
+# The merge itself lives in src/expanso_security_camera/orchestrator/zones.py:
+# the FLAG trips when the combined total reaches EDGE_CROWD_THRESHOLD (default
+# 3) and every zone has at least one person and the busiest has at least two.
 #
-# === DECLARATIVE EXECUTION ===
-# The Python package is pulled from GitHub at a pinned SHA via `uv run
-# --from git+...`, so the deploy and the code are the same thing — bumping
-# requires a deliberate YAML edit, no local checkout drift on the Jetson.
-# To bump: push the desired commit to main, change the SHA below, redeploy.
+# Settings come from the node's environment:
+#   EDGE_ISR_HOME        checkout of this repository   (default /opt/edge-isr/app)
+#   EDGE_ISR_STATE       database, event log, frames   (default /opt/edge-isr/state)
+#   EDGE_ISR_BIND        listen address                (default 127.0.0.1; use
+#                        0.0.0.0 only on an isolated LAN, the API has no login)
+#   EDGE_ISR_PORT        listen port                   (default 8080)
+#   EDGE_ISR_S3_BUCKET   archive bucket the ARCHIVE view reads (optional)
+#   EDGE_CROWD_THRESHOLD combined people needed to flag (default 3)
 #
-# The orchestrator is pure-CPU FastAPI (no CUDA env vars). First start
-# after a SHA bump is slow (~1–3 min to git-clone + resolve deps + build);
-# subsequent restarts hit uv's cache.
-#
-# === BEFORE FIRST DEPLOY ===
-# The Jetson must be prepped:
-#   1. Free port 8090: `pkill -f edge-orchestrator` (do this just before
-#      `expanso-cli job deploy` so Expanso can bind immediately).
-#   2. The orchestrator writes events.ndjson + orchestrator.db + snapshots/
-#      relative to its CWD. Expanso edge runs the subprocess from its own
-#      working dir; pass absolute paths so output ends up where the archive
-#      pipeline expects (/opt/edge-isr/orchestrator/events.ndjson). Create
-#      that dir first:
-#         sudo mkdir -p /opt/edge-isr/{orchestrator/snapshots,archive}
-#         sudo chown -R daaronch:daaronch /opt/edge-isr
-#   3. .env in /home/daaronch/security-cameras/.env still drives
-#      EDGE_ISR_S3_BUCKET / AWS_PROFILE / JETSON_HOST (load_dotenv walks CWD).
-#      uv will run the subprocess from its install dir, not the repo dir,
-#      so we inject those vars inline below for resilience.
-#
-# Deploy:
-#   expanso-cli profile select <your-profile>
-#   expanso-cli job deploy jobs/orchestrator-job.yaml
-#   expanso-cli job start fusion-node
+# Deploy: expanso-cli job deploy jobs/orchestrator-job.yaml
 
 name: fusion-node
 type: pipeline
@@ -50,35 +29,71 @@ config:
     subprocess:
       name: /usr/bin/env
       args:
-        # S3 archive bucket — orchestrator's S3Watcher uses this to poll
-        # the bucket and surface object counts on the dashboard's
-        # ARCHIVE tab. The agent .env currently lacks EDGE_ISR_S3_BUCKET,
-        # so we inject it inline here instead of editing the .env file
-        # (which would force a full agent restart).
-        - EDGE_ISR_S3_BUCKET=${EDGE_ISR_S3_BUCKET:}
-        - AWS_PROFILE=${AWS_PROFILE:default}
-        - /home/daaronch/.local/bin/uv
+        - EDGE_CROWD_THRESHOLD=${EDGE_CROWD_THRESHOLD:3}
+        - uv
         - run
-        # Pulled from GitHub at a pinned SHA. To bump, push to main and
-        # update the @<sha> ref below — that single edit IS the release.
-        - --from
-        - git+https://github.com/aronchick/expanso-edge-video-and-event-detection@68aff7b2838c1f88b41ccf313ea3426b14a49a37
+        - --project
+        - ${EDGE_ISR_HOME:/opt/edge-isr/app}
         - edge-orchestrator
-        - --host=0.0.0.0
-        - --port=8090
-        - --db=/opt/edge-isr/orchestrator/orchestrator.db
-        - --triggers=/opt/edge-isr/orchestrator/triggers.yaml
-        - --snapshots=/opt/edge-isr/orchestrator/snapshots
-        - --ndjson=/opt/edge-isr/orchestrator/events.ndjson
+        - --host=${EDGE_ISR_BIND:127.0.0.1}
+        - --port=${EDGE_ISR_PORT:8080}
+        - --db=${EDGE_ISR_STATE:/opt/edge-isr/state}/orchestrator.db
+        - --triggers=${EDGE_ISR_STATE:/opt/edge-isr/state}/triggers.yaml
+        - --snapshots=${EDGE_ISR_STATE:/opt/edge-isr/state}/snapshots
+        - --ndjson=${EDGE_ISR_STATE:/opt/edge-isr/state}/events.ndjson
+        - --s3-bucket=${EDGE_ISR_S3_BUCKET:}
       codec: lines
       restart_on_exit: true
       max_buffer: 1048576
 
   pipeline:
-    # uvicorn access lines aren't JSON; pass through as raw string.
-    # `mapping: root = this` would error trying to parse them as JSON.
+    threads: 1
     processors:
-      - mapping: root = content().string()
+      - label: parse-line
+        mapping: root = content().string().parse_json().catch(deleted())
+
+      - label: classify
+        mapping: |
+          root = this
+          root.state = if this.type == "alert" {
+            "ALERT"
+          } else if this.over == true {
+            "FLAG"
+          } else {
+            "CLEAR"
+          }
+
+      - label: add-lineage
+        mapping: |
+          root = this
+          root.lineage = {
+            "pipeline": "fusion-node",
+            "pipeline_version": "2.0.0",
+            "edge_node": "${EDGE_ISR_NODE:edge-node}"
+          }
+
+      - label: log-line
+        log:
+          level: INFO
+          message: fusion line
+          fields_mapping: |
+            root.state = this.state
+            root.total = this.total
+            root.threshold = this.threshold
 
   output:
-    drop: {}
+    broker:
+      pattern: fan_out
+      outputs:
+        - label: tally-file
+          file:
+            path: ${EDGE_ISR_STATE:/opt/edge-isr/state}/tally.ndjson
+            codec: lines
+
+        - label: alerts-file
+          file:
+            path: ${EDGE_ISR_STATE:/opt/edge-isr/state}/alerts.ndjson
+            codec: lines
+          processors:
+            - mapping: |
+                root = if this.state == "ALERT" { this } else { deleted() }

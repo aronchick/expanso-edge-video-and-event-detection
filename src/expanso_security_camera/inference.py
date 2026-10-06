@@ -126,6 +126,19 @@ COCO_NAMES = {
 }
 
 
+_log_file = None
+
+
+def log(msg: str) -> None:
+    """Log to file only — never stdout (Expanso JSON) or stderr."""
+    global _log_file
+    if _log_file is None:
+        log_path = os.environ.get("ESC_LOG_FILE", "/tmp/esc-infer.log")
+        _log_file = open(log_path, "a")
+    _log_file.write(f"{datetime.now().isoformat()} {msg}\n")
+    _log_file.flush()
+
+
 class CameraThread:
     """Reads frames from a camera in a background thread."""
 
@@ -137,6 +150,7 @@ class CameraThread:
         self._frame_count = 0
         self._fps = 0.0
         self._connected = False
+        self.finished = False  # a recorded file ran to its end (replay only)
 
     def start(self) -> None:
         self._thread = threading.Thread(
@@ -167,6 +181,11 @@ class CameraThread:
         url = self.config.url
         # Support integer device index for USB cameras
         source = int(url) if url.isdigit() else url
+        # A recorded file is replayed once at the speed it was captured, so a
+        # fixture run measures what a live camera would have measured. Set
+        # ESC_REPLAY_SPEED below 1.0 when inference is slower than the footage.
+        is_file = isinstance(source, str) and os.path.isfile(source)
+        speed = float(os.environ.get("ESC_REPLAY_SPEED", "1.0"))
 
         while not self._stop_event.is_set():
             try:
@@ -175,20 +194,29 @@ class CameraThread:
                     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
                 if not cap.isOpened():
-                    print(f"[{self.config.camera_id}] Cannot open {url}, retrying in 5s...")
+                    log(f"[{self.config.camera_id}] Cannot open {url}, retrying in 5s...")
                     time.sleep(5)
                     continue
 
                 self._connected = True
-                print(f"[{self.config.camera_id}] Connected to {url}")
+                log(f"[{self.config.camera_id}] Connected to {url}")
                 fps_timer = time.time()
                 fps_count = 0
 
                 while not self._stop_event.is_set():
                     ret, frame = cap.read()
                     if not ret:
-                        print(f"[{self.config.camera_id}] Frame read failed, reconnecting...")
+                        if is_file:
+                            log(f"[{self.config.camera_id}] End of recording")
+                            self.finished = True
+                            self._stop_event.set()
+                            break
+
+                        log(f"[{self.config.camera_id}] Frame read failed, reconnecting...")
                         break
+
+                    if is_file:
+                        time.sleep(1.0 / ((cap.get(cv2.CAP_PROP_FPS) or 15.0) * speed))
 
                     self._frame_count += 1
                     fps_count += 1
@@ -213,7 +241,7 @@ class CameraThread:
                 self._connected = False
 
             except Exception as e:
-                print(f"[{self.config.camera_id}] Error: {e}, reconnecting in 5s...")
+                log(f"[{self.config.camera_id}] Error: {e}, reconnecting in 5s...")
                 self._connected = False
                 time.sleep(5)
 
@@ -238,19 +266,6 @@ def map_class_name(raw_class: str, class_map: dict[str, str], mode: str) -> str:
     ):
         return "box"
     return "box"
-
-
-_log_file = None
-
-
-def log(msg: str) -> None:
-    """Log to file only — never stdout (Expanso JSON) or stderr."""
-    global _log_file
-    if _log_file is None:
-        log_path = os.environ.get("ESC_LOG_FILE", "/tmp/esc-infer.log")
-        _log_file = open(log_path, "a")
-    _log_file.write(f"{datetime.now().isoformat()} {msg}\n")
-    _log_file.flush()
 
 
 def check_commands(commands_path: str) -> str | None:
@@ -368,6 +383,10 @@ def run_pipeline(config: DemoConfig) -> None:
                     frames[cam_id] = result
 
             if not frames:
+                if all(ct.finished and ct.frame_queue.empty() for ct in camera_threads.values()):
+                    log("All recordings finished")
+                    break
+
                 continue
 
             frame_count += 1

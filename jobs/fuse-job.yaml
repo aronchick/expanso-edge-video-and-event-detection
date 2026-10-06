@@ -1,86 +1,84 @@
-# Edge-ISR cross-zone PEOPLE-COUNT MERGE — runs at the edge as an Expanso
-# pipeline, visible in cloud.expanso.io alongside sensor-north / sensor-south
-# / fusion-node. This is the headline merge expressed as its own observable
-# pipeline: it sums per-zone people counts across both cameras and fires when
-# the COMBINED total exceeds the threshold (default 5) — neither zone alone
-# trips it. Same logic as the in-orchestrator ZoneCounter (zones.py).
+# Edge ISR cross-zone people-count merge, as its own observable pipeline.
 #
-# Pipeline stages (multistep, demonstrably running on the laptop node):
-#   INPUT:      subprocess running scripts/fuse-correlator.py, which tails
-#               events.ndjson, MERGES per-zone person counts, and emits a
-#               JSON crowd alert when the combined total crosses the
-#               threshold (edge-triggered, 8s cooldown).
-#   STEP 1:     parse the correlator's JSON
-#   STEP 2:     filter to fused_alert == true (defensive)
-#   STEP 3:     add archive lineage (pipeline, version, fused_at_iso)
-#   STEP 4:     sign with a fuse-sha256 over the full record
-#   OUTPUT:     fan_out
-#                 ├─ stdout            (visible: expanso-cli job logs fuse)
-#                 └─ fused-alerts.ndjson (audit log)
-#               The dashboard tally + FLAG are driven by the in-orchestrator
-#               ZoneCounter; this pipeline is the observable, independently-
-#               deployed copy of the merge for the cloud-console narrative.
+# The input is scripts/fuse-correlator.py, which follows the orchestrator's
+# event log, merges the per-zone people counts and prints one JSON crowd alert
+# when the combined total spans both cameras. It applies the same rule as the
+# in-process ZoneCounter that drives the dashboard (zones.py: combined total at
+# least EDGE_CROWD_THRESHOLD, every zone at least one, busiest zone at least
+# two). The processors keep real alerts, stamp lineage and a SHA-256 signature
+# over the whole record, and write an audit file.
 #
-# The merge logic ITSELF is Python (Bento's cache_resources schema in this
-# build rejected the pure-Bloblang version). The Python lives in
-# scripts/fuse-correlator.py — small, single-purpose, reviewable. The crowd
-# threshold is injected inline below so this job and the orchestrator agree.
+# Settings come from the node's environment:
+#   EDGE_ISR_HOME        checkout of this repository   (default /opt/edge-isr/app)
+#   EDGE_ISR_STATE       event log and audit files     (default /opt/edge-isr/state)
+#   EDGE_CROWD_THRESHOLD combined people needed to flag (default 3)
+#
+# Deploy: expanso-cli job deploy jobs/fuse-job.yaml
 
 name: fuse
 type: pipeline
 
 selector:
   match_labels:
-    site: laptop-demo
+    role: security-camera-host
 
 config:
   input:
     subprocess:
       name: /usr/bin/env
       args:
-        # Crowd-flag rule — keep in sync with the orchestrator (zones.py).
-        # MIN_TOTAL across both zones, with the per-zone/peak shaping from the
-        # EDGE_CROWD_MIN_* defaults (>=1 each, >=2 in one). So both merge paths
-        # agree: flag when 3+ span BOTH cameras. Injected inline (env-style
-        # first arg to /usr/bin/env) rather than edited into a .env file.
-        - EDGE_CROWD_THRESHOLD=3
-        - uv
-        - run
-        - --project
-        - /Users/daaronch/code/second-brain/projects/demos/demo-drone-detection
-        - python
-        - /Users/daaronch/code/second-brain/projects/demos/demo-drone-detection/scripts/fuse-correlator.py
-        - /Users/daaronch/code/second-brain/projects/demos/demo-drone-detection/events.ndjson
+        - EDGE_CROWD_THRESHOLD=${EDGE_CROWD_THRESHOLD:3}
+        - python3
+        - ${EDGE_ISR_HOME:/opt/edge-isr/app}/scripts/fuse-correlator.py
+        - ${EDGE_ISR_STATE:/opt/edge-isr/state}/events.ndjson
       codec: lines
       restart_on_exit: true
       max_buffer: 1048576
 
   pipeline:
+    threads: 1
     processors:
-      # ── Step 1: parse JSON from the correlator
-      - mapping: 'root = this.parse_json().catch(deleted())'
+      - label: parse-alert
+        mapping: root = content().string().parse_json().catch(deleted())
 
-      # ── Step 2: defensive filter — only forward real fused alerts
-      - mapping: |
+      - label: keep-fused-alerts
+        mapping: |
           root = if this.fused_alert == true { this } else { deleted() }
 
-      # ── Step 3: add archive lineage
-      - mapping: |
+      - label: add-lineage
+        mapping: |
           root = this
-          root.archive = {"pipeline": "fuse", "pipeline_version": "1.0.0", "fused_at_iso": now(), "processor": "python-windowed-correlator"}
+          root.archive = {
+            "pipeline": "fuse",
+            "pipeline_version": "2.0.0",
+            "fused_at_iso": this.fused_at.ts_format("2006-01-02T15:04:05.000Z"),
+            "processor": "python-windowed-correlator"
+          }
 
-      # ── Step 4: sign with a fuse-sha256 over the full record
-      - mapping: |
+      - label: sign-record
+        mapping: |
           let payload = this.format_json()
           root = this
           root.fusion_signature = "fuse-sha256:" + $payload.hash("sha256").encode("hex")
+
+      - label: log-alert
+        log:
+          level: WARN
+          message: crowd alert
+          fields_mapping: |
+            root.total = this.total
+            root.threshold = this.threshold
+            root.sectors = this.sectors
 
   output:
     broker:
       pattern: fan_out
       outputs:
-        - stdout:
+        - label: alerts-stdout
+          stdout:
             codec: lines
-        - file:
-            path: /Users/daaronch/code/second-brain/projects/demos/demo-drone-detection/.demo-state/fused-alerts.ndjson
+
+        - label: alerts-file
+          file:
+            path: ${EDGE_ISR_STATE:/opt/edge-isr/state}/fused-alerts.ndjson
             codec: lines

@@ -1,67 +1,117 @@
-# Edge-ISR event archive — pure Bloblang lineage + archive pipeline.
-# Per DEMO_UI_SPEC.md §3.2. Tails the orchestrator's event log, validates
-# DBOM signature presence, adds archive lineage, writes to a daily
-# NDJSON file plus stdout (so `expanso job logs event-archive` shows
-# the platform doing real work during the demo).
+# Edge ISR event archive: verify, stamp lineage, store.
 #
-# Deploy:
-#   expanso-cli job deploy jobs/event-archive-job.yaml
+# The input follows the orchestrator's event log (scripts/tail-ndjson.py keeps
+# a byte-offset checkpoint, so a restart resumes instead of re-sending). The
+# processors parse each event, keep only sensor events, record whether its DBOM
+# signature is present and well formed, and stamp lineage. The output stamps the
+# archive time and fans out to three places:
+#   - S3 (aws_s3), batched, with the standard AWS credential chain
+#   - a daily NDJSON file, the local copy that survives a WAN drop
+#   - stdout, so the job log shows live activity
+# When the WAN is down the S3 writes retry while the sensors and the dashboard
+# keep running; Expanso Edge's offline buffer holds the backlog and drains it on
+# reconnect.
+#
+# Settings come from the node's environment:
+#   EDGE_ISR_HOME         checkout of this repository   (default /opt/edge-isr/app)
+#   EDGE_ISR_STATE        event log and checkpoint      (default /opt/edge-isr/state)
+#   EDGE_ISR_ARCHIVE      daily archive files           (default /opt/edge-isr/archive)
+#   EDGE_ISR_S3_BUCKET    destination bucket
+#   AWS_REGION            bucket region                 (default us-west-2)
+#   EDGE_ISR_S3_ENDPOINT  S3-compatible endpoint, empty for AWS
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY or an instance role for credentials
+#   AWS_CA_BUNDLE         CA file for a private TLS endpoint
+#
+# Deploy: expanso-cli job deploy jobs/event-archive-job.yaml
 
 name: event-archive
 type: pipeline
 
 config:
   input:
-    file:
-      paths:
-        - /data/orchestrator/events.ndjson
+    subprocess:
+      name: /usr/bin/env
+      args:
+        - python3
+        - ${EDGE_ISR_HOME:/opt/edge-isr/app}/scripts/tail-ndjson.py
+        - ${EDGE_ISR_STATE:/opt/edge-isr/state}/events.ndjson
+        - --checkpoint
+        - ${EDGE_ISR_STATE:/opt/edge-isr/state}/event-archive.offset
       codec: lines
-      scanner:
-        lines: {}
+      restart_on_exit: true
+      max_buffer: 1048576
 
   pipeline:
+    threads: 1
     processors:
-      # Parse JSON — drop non-JSON lines (e.g. log noise)
-      - mapping: root = this.parse_json().catch(deleted())
+      # A stray non-JSON line is dropped, never archived.
+      - label: parse-event
+        mapping: root = content().string().parse_json().catch(deleted())
 
-      # Drop fused alerts and synthetic orchestrator-emitted entries — we
-      # archive sensor-emitted events only.
-      - mapping: |
+      # Alerts raised by the fusion node are archived by the fuse job.
+      - label: keep-sensor-events
+        mapping: |
           root = if this.node == "fusion-node" || this.type == "multi_sector_correlation" {
             deleted()
           } else {
             this
           }
 
-      # Validate DBOM signature presence. Events without a signature get a
-      # warning attached; we don't drop them, but the archive shows which
-      # events failed signing so the operator can investigate.
-      - mapping: |
+      # Events without a signature are kept, flagged, never silently dropped.
+      - label: check-signature
+        mapping: |
           root = this
           root.audit = {
             "signed": this.signature != null,
-            "signature_format_ok": this.signature != null && this.signature.has_prefix("dbom:sha256:")
+            "signature_format_ok": this.signature.or("").has_prefix("dbom:sha256:")
           }
 
-      # Add archive lineage: who archived this, when, from where.
-      - mapping: |
+      - label: add-lineage
+        mapping: |
           root = this
           root.archive = {
-            "archived_at": now().ts_format("2006-01-02T15:04:05.000Z"),
-            "archived_by": env("HOSTNAME").or("unknown"),
+            "archived_by": "${EDGE_ISR_NODE:edge-node}",
             "pipeline": "event-archive",
-            "pipeline_version": "1.0.0"
+            "pipeline_version": "2.0.0"
           }
+
+      - label: log-event
+        log:
+          level: INFO
+          message: archived event
+          fields_mapping: |
+            root.node = this.node
+            root.signed = this.audit.signed
 
   output:
     broker:
       pattern: fan_out
       outputs:
-        # Daily NDJSON archive for compliance/audit
-        - file:
-            path: /data/archive/events-${! now().ts_format("2006-01-02") }.ndjson
+        - label: s3
+          aws_s3:
+            bucket: ${EDGE_ISR_S3_BUCKET:}
+            region: ${AWS_REGION:us-west-2}
+            endpoint: ${EDGE_ISR_S3_ENDPOINT:}
+            path: events/${! json("node") }/${! json("archive.archived_at") }-${! uuid_v4() }.json
+            content_type: application/json
+            server_side_encryption: AES256
+            max_in_flight: 8
+          processors:
+            - label: stamp-archive-time
+              mapping: |
+                root = this
+                root.archive.archived_at = now().ts_format("2006-01-02T15:04:05.000Z")
+
+        - label: daily-file
+          file:
+            path: ${EDGE_ISR_ARCHIVE:/opt/edge-isr/archive}/events-${! now().ts_format("2006-01-02") }.ndjson
             codec: lines
-        # Stdout so `expanso job logs event-archive` shows live activity
-        # during the demo — judges asking "where do events go" can see it.
-        - stdout:
+          processors:
+            - label: stamp-archive-time
+              mapping: |
+                root = this
+                root.archive.archived_at = now().ts_format("2006-01-02T15:04:05.000Z")
+
+        - label: job-log
+          stdout:
             codec: lines

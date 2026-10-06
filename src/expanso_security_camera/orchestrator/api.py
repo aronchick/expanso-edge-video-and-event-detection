@@ -23,7 +23,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import os
+import sys
 import time
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
@@ -47,30 +49,50 @@ from expanso_security_camera.orchestrator.store import EventStore
 from expanso_security_camera.orchestrator.triggers import TriggerStore
 from expanso_security_camera.orchestrator.zones import ZoneCounter
 
-PUBLIC_DIR = Path(__file__).parent.parent.parent.parent / "public" / "edge"
 
-# Per-sector fake provenance metadata. Stamped onto every event on receipt
-# so the DBOM payload shown in the dashboard's archive viewer carries the
-# kind of device/site provenance an operator would actually see in a real
-# deployment (lat/lon, building label, sensor serial, firmware). Doesn't
-# affect the existing DBOM signature — the signature was computed by the
-# sensor over its original payload; this is orchestrator-side enrichment.
-SECTOR_DEVICE_METADATA: dict[str, dict] = {
-    "sensor-north": {
-        "building": "Bldg A — North Perimeter",
-        "room": "Roof annex 3F",
-        "gps": {"lat": 38.8722, "lon": -77.0563},
-        "sensor_serial": "JTSN-N-018-A47",
-        "firmware": "edge-sensor v0.4.2",
-    },
-    "sensor-south": {
-        "building": "Bldg B — South Gate",
-        "room": "Pole-mount #14",
-        "gps": {"lat": 38.8709, "lon": -77.0552},
-        "sensor_serial": "JTSN-S-022-B19",
-        "firmware": "edge-sensor v0.4.2",
-    },
-}
+def _find_public_root() -> Path:
+    """Where the dashboard assets live: EDGE_ISR_PUBLIC, the copy bundled into
+    the wheel, or the repository checkout (editable installs and `uv run
+    --project`)."""
+    override = os.environ.get("EDGE_ISR_PUBLIC")
+    candidates = [
+        Path(override) if override else None,
+        Path(__file__).resolve().parent.parent / "public",
+        Path(__file__).resolve().parents[3] / "public",
+    ]
+
+    for candidate in candidates:
+        if candidate is not None and (candidate / "edge").is_dir():
+            return candidate
+
+    return Path(__file__).resolve().parents[3] / "public"
+
+
+PUBLIC_ROOT = _find_public_root()
+PUBLIC_DIR = PUBLIC_ROOT / "edge"
+GUIDE_DIR = PUBLIC_ROOT / "guide"
+
+
+def load_devices(path: str | Path | None) -> dict[str, dict]:
+    """Per-node device provenance (building, GPS, serial, firmware) stamped on
+    events on receipt. Comes only from a file the operator provides
+    (`--devices`, a YAML or JSON mapping of node id to metadata); with no file
+    nothing is stamped, so every field in an archived event is real."""
+    if not path or not Path(path).is_file():
+        return {}
+
+    import yaml
+
+    document = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+
+    return {str(node): dict(meta) for node, meta in document.items() if isinstance(meta, dict)}
+
+
+def emit_line(record: dict) -> None:
+    """One JSON line on stdout for the fusion-node pipeline. Logs and uvicorn
+    chatter stay on stderr."""
+    sys.stdout.write(json.dumps(record, separators=(",", ":")) + "\n")
+    sys.stdout.flush()
 
 
 def create_app(
@@ -81,6 +103,7 @@ def create_app(
     fake_mode: bool = True,
     s3_bucket: str | None = None,
     jetson_host: str | None = None,
+    devices_path: str | Path | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Edge ISR Orchestrator", docs_url=None, redoc_url=None)
     store = EventStore(db_path, ndjson_path=ndjson_path)
@@ -100,6 +123,7 @@ def create_app(
     s3 = S3Watcher(bucket=s3_bucket)
     s3.start()
     wan = JetsonWanController(jetson_host=jetson_host)
+    devices = load_devices(devices_path or os.environ.get("EDGE_ISR_DEVICES"))
 
     class ConnectionManager:
         def __init__(self) -> None:
@@ -138,7 +162,7 @@ def create_app(
             if isinstance(event.get("model_versions"), dict):
                 event["model_versions"]["gemini"] = None
 
-        device_meta = SECTOR_DEVICE_METADATA.get(event.get("node"))
+        device_meta = devices.get(event.get("node"))
         if device_meta and "device" not in event:
             event["device"] = device_meta
 
@@ -155,12 +179,25 @@ def create_app(
         # dashboard, then check whether the COMBINED total just crossed
         # the threshold. The crowd FLAG is the demo's headline alert.
         zones.record(event)
-        await manager.broadcast({"type": "zones", "data": zones.snapshot()})
+        snapshot = zones.snapshot()
+        await manager.broadcast({"type": "zones", "data": snapshot})
+        emit_line(
+            {
+                "type": "tally",
+                "ts": event.get("ts"),
+                "node": event.get("node"),
+                "counts": snapshot["counts"],
+                "total": snapshot["total"],
+                "threshold": snapshot["threshold"],
+                "over": snapshot["over"],
+            }
+        )
         crowd_alert = zones.evaluate_alert()
         if crowd_alert:
             store.insert({**crowd_alert, "node": "fusion-node"})
             metrics.record_fused()
             await manager.broadcast({"type": "alert", "data": crowd_alert})
+            emit_line(crowd_alert)
 
         # ── Object-class alerts (backpack / drone, opt-in) ───────────
         alert = correlator.evaluate(event)
@@ -173,6 +210,7 @@ def create_app(
             store.insert({**alert, "node": "fusion-node"})
             metrics.record_fused()
             await manager.broadcast({"type": "alert", "data": alert})
+            emit_line(alert)
 
         return {"status": "ok"}
 
@@ -459,7 +497,7 @@ def create_app(
         in muscle memory keeps functioning.
         """
         # Rehearsal preview of the headline crowd FLAG: 3 + 3 = 6 people
-        # across both zones, over a threshold of 5. Mirrors the real
+        # across both zones. Mirrors the real
         # crowd_threshold alert shape so the dashboard takeover looks
         # identical to the live moment.
         synthetic = {
@@ -528,6 +566,9 @@ def create_app(
                     resp.headers["Expires"] = "0"
                 return resp
 
+        if GUIDE_DIR.is_dir():
+            app.mount("/guide", NoCacheStatic(directory=str(GUIDE_DIR), html=True), name="guide")
+
         app.mount("/", NoCacheStatic(directory=str(PUBLIC_DIR), html=True), name="dashboard")
 
     return app
@@ -566,6 +607,12 @@ def main() -> None:
         default=None,
         help="ssh user@host for the Jetson; falls back to EDGE_ISR_JETSON_HOST env",
     )
+    parser.add_argument(
+        "--devices",
+        default=None,
+        help="YAML/JSON mapping of node id to device metadata to stamp on events; "
+        "falls back to EDGE_ISR_DEVICES. Nothing is stamped without it.",
+    )
     args = parser.parse_args()
 
     # Env-var fallbacks — the YAML pipeline doesn't propagate every flag,
@@ -583,8 +630,9 @@ def main() -> None:
         fake_mode=not args.no_fake_snapshots,
         s3_bucket=s3_bucket,
         jetson_host=jetson_host,
+        devices_path=args.devices,
     )
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    uvicorn.run(app, host=args.host, port=args.port, log_level="info", access_log=False)
 
 
 if __name__ == "__main__":

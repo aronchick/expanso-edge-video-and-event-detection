@@ -1,12 +1,27 @@
-# Edge-ISR sensor — sector south. See sensor-north-job.yaml for full
-# rationale. Identical except node id + RTSP stream + db path.
+# Edge ISR sensor, sector south. See sensor-north-job.yaml for the full notes.
+#
+# Runs the detector as the pipeline's input: one signed JSON event per line on
+# stdout (diagnostics go to stderr). The processors parse and validate each
+# event and stamp pipeline lineage; the result lands in an audit file the
+# Expanso Cloud Monitoring page sees as real output.
+#
+# Per-node settings come from the node's environment, so the same file runs on
+# a laptop (webcams through go2rtc) and on a Jetson (RTSP cameras):
+#   EDGE_ISR_HOME          checkout of this repository   (default /opt/edge-isr/app)
+#   EDGE_ISR_STATE         databases and audit files     (default /opt/edge-isr/state)
+#   EDGE_ISR_ORCHESTRATOR  fusion node URL               (default http://localhost:8080)
+#   EDGE_ISR_SOUTH_SOURCE  RTSP URL or webcam index      (default rtsp://localhost:8554/cam-inside)
+#   EDGE_ISR_YOLO_MODEL    YOLO weights or TensorRT engine
+#   EDGE_ISR_SOUTH_REPLAY  a recorded scene to replay instead of a camera
+#
+# Deploy: expanso-cli job deploy jobs/sensor-south-job.yaml
 
 name: sensor-south
 type: pipeline
 
 selector:
   match_labels:
-    site: laptop-demo
+    role: security-camera-host
 
 config:
   input:
@@ -15,22 +30,56 @@ config:
       args:
         - uv
         - run
-        # See sensor-north-job.yaml for the --project vs --from rationale.
         - --project
-        - /Users/daaronch/code/second-brain/projects/demos/demo-drone-detection
+        - ${EDGE_ISR_HOME:/opt/edge-isr/app}
+        - --extra
+        - vision
         - edge-sensor
         - --node-id=sensor-south
-        - --orchestrator=http://localhost:8080
-        - --rtsp-url=rtsp://localhost:8554/cam-inside
-        - --yolo-model=/Users/daaronch/drone-3class-v2.pt
-        - --db=/Users/daaronch/code/second-brain/projects/demos/demo-drone-detection/.demo-state/sensor-south.db
+        - --orchestrator=${EDGE_ISR_ORCHESTRATOR:http://localhost:8080}
+        - --rtsp-url=${EDGE_ISR_SOUTH_SOURCE:rtsp://localhost:8554/cam-inside}
+        - --yolo-model=${EDGE_ISR_YOLO_MODEL:/opt/edge-isr/models/yolov8s.pt}
+        - --replay=${EDGE_ISR_SOUTH_REPLAY:}
+        - --db=${EDGE_ISR_STATE:/opt/edge-isr/state}/sensor-south.db
       codec: lines
       restart_on_exit: true
       max_buffer: 1048576
 
   pipeline:
+    threads: 1
     processors:
-      - mapping: root = content().string()
+      # A stray non-JSON line is dropped, never forwarded.
+      - label: parse-event
+        mapping: root = content().string().parse_json().catch(deleted())
+
+      - label: validate-event
+        mapping: |
+          root = if this.node == null || this.ts == null || this.yolo_hits == null {
+            deleted()
+          } else {
+            this
+          }
+
+      - label: add-lineage
+        mapping: |
+          root = this
+          root.lineage = {
+            "pipeline": "sensor-south",
+            "pipeline_version": "2.0.0",
+            "edge_node": "${EDGE_ISR_NODE:edge-node}"
+          }
+
+      - label: log-event
+        log:
+          level: INFO
+          message: sensor event
+          fields_mapping: |
+            root.node = this.node
+            root.people = this.yolo_hits.filter(h -> h.label == "person").length()
+            root.signed = this.signature != null
+            root.analyst = this.gemini_description != null
 
   output:
-    drop: {}
+    file:
+      path: ${EDGE_ISR_STATE:/opt/edge-isr/state}/sensor-south.events.ndjson
+      codec: lines

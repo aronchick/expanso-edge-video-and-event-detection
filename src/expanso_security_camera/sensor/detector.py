@@ -22,36 +22,14 @@ from typing import Optional
 import cv2
 import numpy as np
 
-from expanso_security_camera.model_gateway import ask as ask_model_gateway
+from expanso_security_camera.sensor.cascade import (
+    Analyst,
+    build_event,
+    select_hits,
+    threshold_for,
+)
 from expanso_security_camera.sensor.schema import Detection, Event
 from expanso_security_camera.sensor.triggers_client import TriggerClient
-
-CONF_THRESHOLD = 0.55
-# Per-class overrides for `drone-3class-v2.pt` (Hetzner fine-tune,
-# mAP50=0.909 / mAP50-95=0.843 on val).
-PER_CLASS_THRESHOLDS: dict[str, float] = {
-    # 0.75 was tuned for a venue with full-body foot traffic crossing
-    # the FOV — false positives on shadows/posters needed suppression.
-    # For the laptop desk-cam demo, the user is OFTEN partially in
-    # frame (head cropped, legs cropped, torso-only) and YOLO confidence
-    # drops to 0.30-0.55 on partial bodies. Drop to 0.40 so partial
-    # detections actually surface. Re-tune up at venue deployments if
-    # the long-tail false positives come back.
-    "person": 0.40,
-    # Same partial-frame logic: a backpack half-occluded by a chair
-    # back or carried at the side often comes through at 0.35-0.45.
-    "backpack": 0.30,
-    # Drone stays HIGH. Training data is sparse enough that round/
-    # elongated background objects (light fixtures, ceiling vents)
-    # occasionally pull a high-confidence drone label. 0.85 allows
-    # real airborne hits while suppressing those.
-    "drone": 0.85,
-}
-
-
-def _threshold_for(label: str) -> float:
-    return PER_CLASS_THRESHOLDS.get(label, CONF_THRESHOLD)
-
 
 # Labels the cascade actually cares about. Derived to indices at runtime
 # from `self.model.names`, so this works against both the off-the-shelf
@@ -60,43 +38,6 @@ def _threshold_for(label: str) -> float:
 # drone}). Adding labels here is a no-op for models that don't expose
 # them — the index list just shrinks.
 _WANTED_LABELS = {"person", "backpack", "drone", "airplane"}
-
-# Per-sensor Gemini cooldown. With GPU YOLO at ~18 events/sec/sensor, a 3s
-# cooldown still lets ~40 cloud reachbacks/min through — too noisy for a
-# demo (and burns API quota). 15s caps each sensor at 4/min, so the audience
-# sees the cloud-reachback pill tick at a calm cadence (~8/min total across
-# both sensors) instead of a firehose. Override per-deploy with EDGE_GEMINI_COOLDOWN_SEC.
-GEMINI_COOLDOWN_SEC = float(os.environ.get("EDGE_GEMINI_COOLDOWN_SEC", "15.0"))
-ANALYST_MODEL = "model-gateway"
-
-ANALYST_SYSTEM = """You summarize local object detections for a perimeter
-camera. Return one short sentence. Use only the labels provided. Do not infer
-appearance, posture, intent, identity, or anything that local detection did
-not establish."""
-
-# Canned descriptions for graceful Gemini-down fallback (Appendix A).
-CANNED_DESCRIPTIONS: dict[tuple[str, ...] | str, str] = {
-    "person": "Adult, ambulatory, in frame.",
-    ("backpack", "person"): "Adult carrying pack, posture suggests load.",
-    ("cell phone", "person"): "Adult holding handheld electronic device.",
-    "airplane": "Small aerial vehicle, low altitude, quadcopter form.",
-    "drone": "Small aerial vehicle, low altitude, quadcopter form.",
-    "truck": "Vehicle in frame, light transport class.",
-    "car": "Vehicle in frame, passenger class.",
-    "knife": "Bladed object in frame.",
-}
-
-
-def _canned_for(hits: list[Detection]) -> Optional[str]:
-    """Return a cached description keyed by detected classes, or None."""
-    if not hits:
-        return None
-    labels = tuple(sorted({h.label for h in hits}))
-    if labels in CANNED_DESCRIPTIONS:
-        return f"{CANNED_DESCRIPTIONS[labels]} [cached]"
-    if labels[0] in CANNED_DESCRIPTIONS:
-        return f"{CANNED_DESCRIPTIONS[labels[0]]} [cached]"
-    return None
 
 
 class Detector:
@@ -126,7 +67,7 @@ class Detector:
         if self.drone_model is not None:
             self.drone_model(dummy, verbose=False)
 
-        self._last_gemini_ts = 0.0
+        self.analyst = Analyst(node_id)
         self.model_name = os.path.basename(model_path).split(".")[0]
 
     def detect(self, frame: np.ndarray, ts: float) -> Optional[Event]:
@@ -145,33 +86,16 @@ class Detector:
         # before we ever see them — and our 0.30 person bar is meaningless if
         # the candidates never arrive.
         results = self.model(frame, verbose=False, classes=wanted_indices or None, conf=0.10)[0]
-        hits: list[Detection] = []
-        # Diagnostic: log EVERY detection at the predict-time conf floor (0.10)
-        # so we can see what the model produces, including detections filtered
-        # out by per-class thresholds or by the trigger list. Cheap log per
-        # frame; revisit if it gets noisy.
-        for cls_idx, conf, box in zip(results.boxes.cls, results.boxes.conf, results.boxes.xyxy):
-            label = self.model.names[int(cls_idx)]
-            if label == "airplane":
-                label = "drone"
-            confidence = float(conf)
-            thresh = _threshold_for(label)
-            in_trig = self.triggers.contains(label)
-            passed = in_trig and confidence > thresh
-            verdict = "PASS" if passed else ("low-conf" if in_trig else "off-trigger")
-            print(
-                f"[{self.node_id}] yolo: {label:9s} conf={confidence:.2f} "
-                f"(thresh={thresh:.2f}, trigger={in_trig}, verdict={verdict})",
-                flush=True,
-            )
-            if passed:
-                hits.append(
-                    Detection(
-                        label=label,
-                        confidence=confidence,
-                        bbox=tuple(float(v) for v in box),
-                    )
+        hits = select_hits(
+            self.node_id,
+            self.triggers,
+            (
+                (self.model.names[int(cls_idx)], float(conf), tuple(float(v) for v in box))
+                for cls_idx, conf, box in zip(
+                    results.boxes.cls, results.boxes.conf, results.boxes.xyxy
                 )
+            ),
+        )
 
         # Secondary pass: fine-tuned drone model. Only consume its `drone`
         # class — person/backpack come from primary (COCO), which is denser
@@ -191,7 +115,7 @@ class Detector:
                     if self.drone_model.names[int(cls_idx)] != "drone":
                         continue
                     confidence = float(conf)
-                    if confidence > _threshold_for("drone"):
+                    if confidence > threshold_for("drone"):
                         hits.append(
                             Detection(
                                 label="drone",
@@ -203,18 +127,7 @@ class Detector:
         if not hits:
             return None
 
-        gemini_desc, gemini_used = self._maybe_describe(frame, hits, ts)
-
-        return Event(
-            node=self.node_id,
-            ts=ts,
-            yolo_hits=hits,
-            gemini_description=gemini_desc,
-            model_versions={
-                "yolo": self.model_name,
-                "gemini": ANALYST_MODEL if gemini_used else None,
-            },
-        )
+        return build_event(self.node_id, ts, hits, self.model_name, self.analyst)
 
     def annotate(self, frame: np.ndarray, event: Optional[Event]) -> np.ndarray:
         """Return a copy of `frame` with track-gate boxes + labels drawn for
@@ -254,33 +167,6 @@ class Detector:
                 )
 
         return out
-
-    def _maybe_describe(
-        self, _frame: np.ndarray, hits: list[Detection], ts: float
-    ) -> tuple[Optional[str], bool]:
-        """Return (description, used_gemini)."""
-        if ts - self._last_gemini_ts < GEMINI_COOLDOWN_SEC:
-            return None, False
-        try:
-            labels = sorted({hit.label for hit in hits})
-            prompt = "Detected object labels: " + ", ".join(labels) + "."
-            fixture = "scene-" + "-".join(labels)
-            result = ask_model_gateway(
-                prompt,
-                system=ANALYST_SYSTEM,
-                fixture=fixture,
-                timeout=1.5,
-            )
-            text = str(result["text"]).strip()
-            self._last_gemini_ts = ts
-            return text, True
-        except Exception as e:
-            # CRITICAL: update the cooldown timestamp even on failure. Otherwise,
-            # Without this, every detection would immediately re-attempt the
-            # gateway and block the YOLO worker until its timeout.
-            self._last_gemini_ts = ts
-            print(f"[{self.node_id}] model gateway unavailable: {e}", flush=True)
-            return _canned_for(hits), False
 
 
 # Per-class colors (BGR). Kept in sync with snapshots._CLASS_COLOR_BGR and

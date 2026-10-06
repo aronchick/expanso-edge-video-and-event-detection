@@ -8,6 +8,7 @@ Three modes:
 
   edge-sensor                          # real: RTSP + YOLO + Gemini (needs Jetson)
   edge-sensor --fake                   # synthetic events from one node
+  edge-sensor --replay scene.jsonl     # recorded YOLO detections, no GPU or camera
   edge-sensor --fake --multi           # synthetic events from BOTH sectors
                                        # (good for laptop end-to-end testing)
 
@@ -27,15 +28,25 @@ from __future__ import annotations
 import argparse
 import os
 import random
+import sys
 import threading
 import time
 
 from dotenv import load_dotenv
 
+from expanso_security_camera.sensor.cascade import log
 from expanso_security_camera.sensor.dbom import sign_event
 from expanso_security_camera.sensor.emitter import Emitter
 from expanso_security_camera.sensor.schema import Detection, Event
 from expanso_security_camera.sensor.triggers_client import TriggerClient
+
+
+def emit_json(event: Event) -> None:
+    """One compact JSON line per emitted event on stdout. This is the
+    stream the Expanso sensor pipeline reads; diagnostics go to stderr."""
+    sys.stdout.write(event.model_dump_json() + "\n")
+    sys.stdout.flush()
+
 
 # ── Real sensor loop ────────────────────────────────────────────────────
 
@@ -58,7 +69,7 @@ def run_real(
     from expanso_security_camera.sensor.pipeline import FreshFrameReader
 
     src_kind = "webcam" if str(rtsp_url).isdigit() else "RTSP"
-    print(f"[{node_id}] starting real sensor, {src_kind}={rtsp_url}", flush=True)
+    log(f"[{node_id}] starting real sensor, {src_kind}={rtsp_url}")
     triggers = TriggerClient(orchestrator_url)
     reader = FreshFrameReader(rtsp_url, name=node_id)
     detector = Detector(
@@ -126,7 +137,7 @@ def run_real(
             try:
                 ev = detector.detect(frame, ts)
             except Exception as e:
-                print(f"[{node_id}] yolo error: {e}", flush=True)
+                log(f"[{node_id}] yolo error: {e}")
                 continue
             with yolo_lock:
                 yolo_out["event"] = ev
@@ -145,9 +156,7 @@ def run_real(
     EMIT_INTERVAL_SEC = float(os.environ.get("EDGE_EMIT_INTERVAL_SEC", "0.5"))  # noqa: N806
     last_emit_ts = 0.0
 
-    print(
-        f"[{node_id}] warmed up, entering main loop (emit cadence {EMIT_INTERVAL_SEC}s)", flush=True
-    )
+    log(f"[{node_id}] warmed up, entering main loop (emit cadence {EMIT_INTERVAL_SEC}s)")
     while True:
         result = reader.read()
         if result is None:
@@ -200,8 +209,7 @@ def run_real(
                 )
             sign_event(ev)
             emitter.emit(ev)
-            labels = [h.label for h in ev.yolo_hits] or ["empty"]
-            print(f"[{node_id}] emitted: {labels}", flush=True)
+            emit_json(ev)
             last_emit_ts = now
 
         # Tiny sleep so we don't pin a CPU core when RTSP is firing fast.
@@ -311,7 +319,7 @@ def run_fake_node(
     """
     emitter = Emitter(node_id, db_path, orchestrator_url)
     started = time.time()
-    print(f"[{node_id}] fake sensor running, cadence={cadence_sec}s", flush=True)
+    log(f"[{node_id}] fake sensor running, cadence={cadence_sec}s")
     while True:
         elapsed = time.time() - started
         offline = offline_after_sec is not None and elapsed > offline_after_sec
@@ -322,9 +330,7 @@ def run_fake_node(
         event.yolo_hits = [h for h in event.yolo_hits if triggers.contains(h.label)]
         sign_event(event)
         emitter.emit(event)
-        labels = [h.label for h in event.yolo_hits] or ["empty"]
-        marker = " [offline]" if offline else ""
-        print(f"[{node_id}] emitted: {labels}{marker}", flush=True)
+        emit_json(event)
         # Mild jitter so the two zones don't update in lockstep.
         time.sleep(cadence_sec * (0.85 + random.random() * 0.3))
 
@@ -364,6 +370,22 @@ def main() -> None:
         "Pair with a COCO yolov8s.engine primary so person/backpack come from "
         "the dense COCO model and drone comes from the fine-tune.",
     )
+    parser.add_argument(
+        "--replay",
+        default=os.environ.get("EDGE_REPLAY_SCENE"),
+        help="Replay a recorded scene (JSON Lines of per-frame YOLO detections, see "
+        "fixtures/scenes/) through the same trigger, threshold, analyst, signing and "
+        "emit path as live capture. No camera, no GPU, no YOLO weights.",
+    )
+    parser.add_argument(
+        "--speed",
+        type=float,
+        default=float(os.environ.get("EDGE_REPLAY_SPEED", "1.0")),
+        help="(replay) playback speed multiplier; 1.0 keeps the recorded frame timing",
+    )
+    parser.add_argument(
+        "--loop", action="store_true", help="(replay) start over when the scene ends"
+    )
     parser.add_argument("--db", default=None)
     parser.add_argument(
         "--cadence", type=float, default=2.5, help="(fake) seconds between event attempts"
@@ -375,6 +397,21 @@ def main() -> None:
         help="(fake) drop Gemini descriptions after N seconds",
     )
     args = parser.parse_args()
+
+    if args.replay:
+        from expanso_security_camera.sensor.replay import run_replay_node
+
+        run_replay_node(
+            args.node_id,
+            args.replay,
+            args.orchestrator,
+            args.db or f"{args.node_id}.db",
+            TriggerClient(args.orchestrator),
+            speed=args.speed,
+            loop=args.loop,
+        )
+
+        return
 
     if args.fake:
         triggers = TriggerClient(args.orchestrator)
@@ -394,7 +431,7 @@ def main() -> None:
                 while True:
                     time.sleep(1)
             except KeyboardInterrupt:
-                print("shutting down", flush=True)
+                log("shutting down")
         else:
             db = args.db or f"{args.node_id}.db"
             run_fake_node(
@@ -432,12 +469,12 @@ def main() -> None:
             )
             t.start()
             threads.append(t)
-            print(f"[{node}] booth camera thread started on source={src!r}", flush=True)
+            log(f"[{node}] booth camera thread started on source={src!r}")
         try:
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
-            print("shutting down", flush=True)
+            log("shutting down")
         return
 
     if not args.rtsp_url:
