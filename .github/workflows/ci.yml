@@ -68,7 +68,7 @@ jobs:
           version: "0.12.17"
 
       - name: Prove the S3 output against a TLS, authenticated service
-        run: uv run -s scripts/prove-s3.py --report artifacts/s3-proof.json
+        run: uv run -s scripts/prove-s3.py --require --report artifacts/s3-proof.json
 
       - name: Upload the proof
         if: always()

@@ -29,6 +29,7 @@ import importlib.util
 import json
 import os
 import secrets
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -68,7 +69,15 @@ def load_replay():
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--report", type=Path, help="write the verification JSON here")
+    parser.add_argument(
+        "--require", action="store_true", help="fail, instead of skipping, when Docker is missing"
+    )
     args = parser.parse_args()
+
+    if shutil.which("docker") is None:
+        print("skipping the S3 proof: docker is not installed here", file=sys.stderr)
+
+        return 1 if args.require else 0
     suffix = str(os.getpid())
     network = f"edge-isr-s3-{suffix}"
     service = f"edge-isr-s3-service-{suffix}"
