@@ -194,6 +194,7 @@ def main() -> int:
             result = verify.returncode
 
             if args.report and verify.stdout:
+                args.report.parent.mkdir(parents=True, exist_ok=True)
                 args.report.write_text(verify.stdout, encoding="utf-8")
         finally:
             docker("rm", "-f", service, check=False, capture=True)
