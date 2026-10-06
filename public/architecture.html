@@ -25,7 +25,7 @@
     <main id="main" class="stack">
       <div>
         <h1 class="page-title">Two cameras, one Jetson, no cloud dependency</h1>
-        <p class="lede">Expanso Edge runs two pipelines on the device: GPU detection, then event enrichment. Everything the dashboard shows is produced and stored locally.</p>
+        <p class="lede">Expanso Edge runs the pipelines on the device: GPU detection, event enrichment, line-crossing events and a recorder. Everything the dashboard shows is produced and stored locally.</p>
       </div>
 
       <section aria-labelledby="flow-title">
@@ -92,75 +92,8 @@
       </section>
 
       <section aria-labelledby="yaml-title">
-        <h2 class="section-title" id="yaml-title">Both pipelines, abridged</h2>
-        <p class="deploy-cmd">Deploy each job with <code>expanso-cli job deploy &lt;file&gt;.yaml</code></p>
-
-        <div class="stack">
-          <div>
-            <div class="yaml-head">
-              <h3>Pipeline 1: YOLO GPU detection</h3>
-              <span class="file">yolo-detector-job.yaml</span>
-            </div>
-            <pre class="code"><code><span class="k">name:</span> yolo-detector
-<span class="k">type:</span> pipeline
-<span class="k">config:</span>
-  <span class="k">input:</span>
-    <span class="k">subprocess:</span>
-      name: /usr/bin/docker
-      args: [run, --rm, --runtime=nvidia, --network=host,
-        -v, /opt/box-monitor:/data,
-        -v, /opt/box-monitor/yolov8s-worldv2.pt:/root/yolov8s-worldv2.pt:ro,
-        -w, /root, <span class="s">ultralytics/ultralytics:latest-jetson-jetpack6</span>,
-        bash, -c, <span class="s">"pip install -q git+https://github.com/ultralytics/CLIP.git &amp;&amp; python3 /data/scripts/detect_loop.py"</span>]
-      codec: lines
-      restart_on_exit: <span class="n">true</span>
-  <span class="k">pipeline:</span>
-    <span class="k">processors:</span>
-      - mapping: root = this.parse_json().catch(deleted()) <span class="c"># parse detection events</span>
-      - mapping: | <span class="c"># enrich with device context</span>
-          root = this
-          root.source = { <span class="s">"device_id"</span>: env(<span class="s">"DEVICE_ID"</span>), <span class="s">"site_id"</span>: env(<span class="s">"SITE_ID"</span>), <span class="s">"pipeline"</span>: <span class="s">"yolo-detector"</span> }
-          root.detected_at = now()
-  <span class="k">output:</span>
-    broker: { pattern: fan_out, outputs: [
-      { file: { path: detection-events.ndjson, codec: lines } },
-      { stdout: { codec: lines } }] }</code></pre>
-          </div>
-
-          <div>
-            <div class="yaml-head">
-              <h3>Pipeline 2: event enrichment and routing</h3>
-              <span class="file">security-camera-events-job.yaml</span>
-            </div>
-            <pre class="code"><code><span class="k">name:</span> security-camera-events
-<span class="k">type:</span> pipeline
-<span class="k">config:</span>
-  <span class="k">input:</span>
-    <span class="k">subprocess:</span>
-      name: uvx
-      args: [--quiet, --from, <span class="s">"expanso-security-camera @ git+...@v0.1.0"</span>, esc-infer, config.yaml]
-      codec: lines
-      restart_on_exit: <span class="n">true</span>
-  <span class="k">pipeline:</span>
-    <span class="k">processors:</span>
-      - mapping: root = this.parse_json().catch(deleted()) <span class="c"># drop non-JSON</span>
-      - mapping: root = if this.schema_version == null { deleted() } else { this } <span class="c"># validate schema</span>
-      - mapping: | <span class="c"># enrich with device and site metadata</span>
-          root = this
-          root.source = { <span class="s">"device_id"</span>: env(<span class="s">"DEVICE_ID"</span>), <span class="s">"site_id"</span>: env(<span class="s">"SITE_ID"</span>), <span class="s">"camera_id"</span>: this.camera_id }
-          root.enriched_at = now()
-      - mapping: | <span class="c"># map COCO classes to business labels</span>
-          let mapped = match this.detection.object_class_raw.or(<span class="s">""</span>) {
-            <span class="s">"suitcase"</span> => <span class="s">"box"</span>, <span class="s">"cardboard box"</span> => <span class="s">"box"</span>, <span class="s">"person"</span> => <span class="s">"person"</span>, _ => <span class="s">"object"</span> }
-          root.detection.object_class = $mapped
-      - mapping: | <span class="c"># lineage tracking</span>
-          root.lineage = { <span class="s">"edge_node"</span>: env(<span class="s">"HOSTNAME"</span>), <span class="s">"pipeline"</span>: <span class="s">"security-camera-events"</span>, <span class="s">"ingested_at"</span>: now() }
-  <span class="k">output:</span>
-    broker: { pattern: fan_out, outputs: [
-      { file: { path: enriched-events.ndjson, codec: lines } },
-      { stdout: { codec: lines } }] }</code></pre>
-          </div>
-        </div>
+        <h2 class="section-title" id="yaml-title">The pipelines</h2>
+        <p>Four jobs run the box-counting variant: <code>yolo-detector</code>, <code>security-camera-events</code>, <code>box-crossing</code> and <code>security-camera-recorder</code>. Their exact configuration and the real records going in and out of every stage are in the <a href="/guide/#stage=yolo-detector-parse-scan">step explorer</a>. Deploy each with <code>expanso-cli job deploy jobs/&lt;name&gt;-job.yaml</code>.</p>
       </section>
 
       <section class="panel" aria-labelledby="hw-title">

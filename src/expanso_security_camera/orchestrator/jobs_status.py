@@ -33,6 +33,7 @@ EXPECTED_JOBS = [
     {"name": "fusion-node", "type": "ops", "role": "fusion + dashboard"},
     {"name": "sensor-north", "type": "ops", "role": "edge sensor"},
     {"name": "sensor-south", "type": "ops", "role": "edge sensor"},
+    {"name": "fuse", "type": "pipeline", "role": "crowd alert signing"},
     {"name": "event-archive", "type": "pipeline", "role": "S3 archive"},
 ]
 
@@ -86,7 +87,9 @@ class JobsStatus:
         # Step 2: expanso-cli job list for cloud-side jobs (S3 archive, etc.).
         # If the CLI is unauthenticated or unreachable, leave whatever we
         # already have for the archive entry as `pending`.
-        by_name["event-archive"].setdefault("status", "pending")
+        for name in ("fuse", "event-archive"):
+            by_name[name].setdefault("status", "pending")
+
         cloud_jobs = self._fetch_cloud_jobs()
         for item in cloud_jobs:
             name = item["name"]
@@ -96,15 +99,10 @@ class JobsStatus:
                 # entry doesn't mean the process is dead. Skip the cloud
                 # state to avoid overwriting "running" with stale "stopped".
                 continue
+            # Only this demo's own jobs are shown. The operator's profile may
+            # hold other, unrelated jobs and they stay off this screen.
             if name in by_name:
                 by_name[name]["status"] = item["status"]
-            else:
-                by_name[name] = {
-                    "name": name,
-                    "type": item.get("type", "pipeline"),
-                    "role": "extra",
-                    "status": item["status"],
-                }
 
         # Anything still without a status (shouldn't happen) defaults to pending.
         for job in by_name.values():

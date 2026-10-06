@@ -40,18 +40,16 @@ config:
         - ${EDGE_ISR_HOME:/opt/edge-isr/app}/scripts:/data/scripts:ro
         - -w
         - /data
-        - ultralytics/ultralytics:8.4.173-jetson-jetpack6@sha256:2d24504f89fff14ed466f159508ab476fc93bc11e411874d39df192be97ee0b1
+        - ultralytics/ultralytics:8.4.173-jetson-jetpack6
         - python3
         - /data/scripts/detect_loop.py
       codec: lines
       restart_on_exit: true
-
   pipeline:
     threads: 1
     processors:
       - label: parse-scan
         mapping: root = content().string().parse_json().catch(deleted())
-
       - label: add-source
         mapping: |
           root = this
@@ -61,7 +59,6 @@ config:
             "pipeline": "yolo-detector",
             "pipeline_version": "2.0.0"
           }
-
       - label: log-scan
         log:
           level: INFO
@@ -69,8 +66,8 @@ config:
           fields_mapping: |
             root.outside = this.detections."cam-outside".boxes
             root.inside = this.detections."cam-inside".boxes
-
   output:
+    label: scan-outputs
     broker:
       pattern: fan_out
       outputs:
@@ -83,7 +80,6 @@ config:
               mapping: |
                 root = this
                 root.detected_at = now().ts_format("2006-01-02T15:04:05.000Z")
-
         - label: scans-stdout
           stdout:
             codec: lines

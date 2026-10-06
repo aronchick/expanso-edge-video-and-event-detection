@@ -1,0 +1,11 @@
+{
+  "objects": 82,
+  "expected_objects": 82,
+  "sample_key": "events/sensor-north/20261006T034423.834Z-6bd9c684-c65c-436d-acd5-05842b7c3a98.json",
+  "all_have_archive_time": true,
+  "all_signed": true,
+  "wrong_secret_refused": "SignatureDoesNotMatch",
+  "writer_cannot_list": "AccessDenied",
+  "writer_cannot_write_outside_events": "AccessDenied",
+  "plaintext_http": "refused (HTTPError)"
+}

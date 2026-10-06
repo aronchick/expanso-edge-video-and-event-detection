@@ -39,13 +39,11 @@ config:
       codec: lines
       restart_on_exit: true
       max_buffer: 1048576
-
   pipeline:
     threads: 1
     processors:
       - label: parse-segment
         mapping: root = content().string().parse_json().catch(deleted())
-
       - label: add-source
         mapping: |
           root = this
@@ -54,7 +52,6 @@ config:
             "site_id": "${SITE_ID:warehouse-demo}",
             "pipeline_version": "2.0.0"
           }
-
       - label: log-segment
         log:
           level: INFO
@@ -63,8 +60,8 @@ config:
             root.camera = this.camera_id
             root.frames = this.frames
             root.size_bytes = this.size_bytes
-
   output:
+    label: catalog-outputs
     broker:
       pattern: fan_out
       outputs:
@@ -77,7 +74,6 @@ config:
               mapping: |
                 root = this
                 root.recorded_at = now().ts_format("2006-01-02T15:04:05.000Z")
-
         - label: catalog-stdout
           stdout:
             codec: lines

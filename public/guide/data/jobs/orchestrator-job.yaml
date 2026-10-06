@@ -45,13 +45,11 @@ config:
       codec: lines
       restart_on_exit: true
       max_buffer: 1048576
-
   pipeline:
     threads: 1
     processors:
       - label: parse-line
         mapping: root = content().string().parse_json().catch(deleted())
-
       - label: classify
         mapping: |
           root = this
@@ -62,7 +60,6 @@ config:
           } else {
             "CLEAR"
           }
-
       - label: add-lineage
         mapping: |
           root = this
@@ -71,7 +68,6 @@ config:
             "pipeline_version": "2.0.0",
             "edge_node": "${EDGE_ISR_NODE:edge-node}"
           }
-
       - label: log-line
         log:
           level: INFO
@@ -80,8 +76,8 @@ config:
             root.state = this.state
             root.total = this.total
             root.threshold = this.threshold
-
   output:
+    label: fusion-outputs
     broker:
       pattern: fan_out
       outputs:
@@ -89,7 +85,6 @@ config:
           file:
             path: ${EDGE_ISR_STATE:/opt/edge-isr/state}/tally.ndjson
             codec: lines
-
         - label: alerts-file
           file:
             path: ${EDGE_ISR_STATE:/opt/edge-isr/state}/alerts.ndjson

@@ -34,17 +34,14 @@ config:
       codec: lines
       restart_on_exit: true
       max_buffer: 1048576
-
   pipeline:
     threads: 1
     processors:
       - label: parse-alert
         mapping: root = content().string().parse_json().catch(deleted())
-
       - label: keep-fused-alerts
         mapping: |
           root = if this.fused_alert == true { this } else { deleted() }
-
       - label: add-lineage
         mapping: |
           root = this
@@ -54,13 +51,11 @@ config:
             "fused_at_iso": this.fused_at.ts_format("2006-01-02T15:04:05.000Z"),
             "processor": "python-windowed-correlator"
           }
-
       - label: sign-record
         mapping: |
           let payload = this.format_json()
           root = this
           root.fusion_signature = "fuse-sha256:" + $payload.hash("sha256").encode("hex")
-
       - label: log-alert
         log:
           level: WARN
@@ -69,15 +64,14 @@ config:
             root.total = this.total
             root.threshold = this.threshold
             root.sectors = this.sectors
-
   output:
+    label: alert-outputs
     broker:
       pattern: fan_out
       outputs:
         - label: alerts-stdout
           stdout:
             codec: lines
-
         - label: alerts-file
           file:
             path: ${EDGE_ISR_STATE:/opt/edge-isr/state}/fused-alerts.ndjson

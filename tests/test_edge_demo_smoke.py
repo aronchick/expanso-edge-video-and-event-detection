@@ -104,3 +104,75 @@ def test_theme_system_is_light_by_default_with_explicit_dark():
     assert "prefers-color-scheme" not in css
     assert "edge-isr-theme" in theme and "try" in theme
     assert "aria-pressed" in ui
+
+
+def test_fake_sensor_can_produce_a_drone_when_armed(monkeypatch):
+    """Arming `drone` (F4) needs something to show: the fake scene must offer one."""
+    import random
+
+    from expanso_security_camera.sensor import main as sensor_main
+
+    monkeypatch.setattr(random, "random", lambda: 0.0)
+    event = sensor_main._fake_one_event("sensor-north", simulate_offline=False)
+
+    assert "drone" in {hit.label for hit in event.yolo_hits}
+
+
+def test_jetson_updater_install_has_every_file_it_copies():
+    scripts = ROOT / "scripts"
+
+    for name in ("jetson_update_expanso_edge.sh", "install_jetson_update_timer.sh"):
+        assert (scripts / name).is_file()
+
+    for unit in ("edge-isr-update.service", "edge-isr-update.timer"):
+        assert (scripts / "jetson-systemd" / unit).is_file()
+
+
+def test_archive_job_writes_to_s3_with_the_standard_credential_chain():
+    import yaml
+
+    job = yaml.safe_load((ROOT / "jobs" / "event-archive-job.yaml").read_text())
+    outputs = {o["label"]: o for o in job["config"]["output"]["broker"]["outputs"]}
+    s3 = outputs["s3"]["aws_s3"]
+
+    assert s3["bucket"].startswith("${EDGE_ISR_S3_BUCKET")
+    assert "credentials" not in s3  # no hard-coded profile or keys
+    assert "daily-file" in outputs and "job-log" in outputs
+
+
+def test_no_job_pins_a_user_home_directory_or_a_cluster_name():
+    for job in (ROOT / "jobs").glob("*.yaml"):
+        text = job.read_text()
+
+        assert "/Users/" not in text and "/home/" not in text, job.name
+
+
+def test_dashboard_has_the_tier_strip_and_alert_tile():
+    html = (ROOT / "public" / "edge" / "index.html").read_text()
+
+    for marker in ("tier-edge", "tier-fusion", "tier-cloud", "alert-tile"):
+        assert marker in html, marker
+
+
+def test_platform_strip_lists_only_this_demos_jobs(monkeypatch):
+    from expanso_security_camera.orchestrator import jobs_status
+
+    monkeypatch.setattr(
+        jobs_status.JobsStatus,
+        "_fetch_cloud_jobs",
+        lambda self: [
+            {"name": "event-archive", "type": "pipeline", "status": "running"},
+            {"name": "someone-elses-job", "type": "pipeline", "status": "running"},
+        ],
+    )
+    names = {job["name"] for job in jobs_status.JobsStatus().get()}
+
+    assert "someone-elses-job" not in names
+    assert {"fusion-node", "sensor-north", "sensor-south", "fuse", "event-archive"} <= names
+
+
+def test_synthesized_frames_carry_no_invented_site_data():
+    source = (ROOT / "src/expanso_security_camera/orchestrator/snapshots.py").read_text()
+
+    for invented in ("_SENSOR_META", "gps", "FOV", "AZ "):
+        assert invented not in source, invented

@@ -18,7 +18,6 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from ultralytics import YOLO
 
 from expanso_security_camera.config import CameraConfig, DemoConfig
 from expanso_security_camera.counter import (
@@ -292,6 +291,8 @@ def run_pipeline(config: DemoConfig) -> None:
     log_path = os.environ.get("ESC_LOG_FILE", "/tmp/esc-infer.log")
     stderr_log = open(log_path, "a")
     os.dup2(stderr_log.fileno(), sys.stderr.fileno())
+
+    from ultralytics import YOLO  # heavy; only the live pipeline needs the vision extra
 
     log(f"Starting pipeline: device={config.device_id} mode={config.detect_mode}")
 

@@ -38,17 +38,14 @@ config:
       codec: lines
       restart_on_exit: true
       max_buffer: 1048576
-
   pipeline:
     threads: 1
     processors:
       - label: parse-event
         mapping: root = content().string().parse_json().catch(deleted())
-
       - label: require-schema
         mapping: |
           root = if this.schema_version == null { deleted() } else { this }
-
       - label: add-source
         mapping: |
           root = this
@@ -58,7 +55,6 @@ config:
             "camera_id": this.camera_id.or("unknown"),
             "pipeline_version": "2.0.0"
           }
-
       # Only crossings carry a detection. Reconciliation events pass through.
       - label: normalise-class
         mapping: |
@@ -77,7 +73,6 @@ config:
           }
           root = this
           root.detection.object_class = if this.detection != null { $mapped } else { deleted() }
-
       - label: add-lineage
         mapping: |
           root = this
@@ -85,7 +80,6 @@ config:
             "edge_node": "${EDGE_NODE_ID:edge-node}",
             "pipeline": "box-crossing"
           }
-
       - label: log-event
         log:
           level: INFO
@@ -93,8 +87,8 @@ config:
           fields_mapping: |
             root.event_type = this.event_type
             root.camera = this.camera_id.or("")
-
   output:
+    label: crossing-outputs
     broker:
       pattern: fan_out
       outputs:
@@ -107,7 +101,6 @@ config:
               mapping: |
                 root = this
                 root.lineage.ingested_at = now().ts_format("2006-01-02T15:04:05.000Z")
-
         - label: enriched-stdout
           stdout:
             codec: lines

@@ -44,14 +44,12 @@ config:
       codec: lines
       restart_on_exit: true
       max_buffer: 1048576
-
   pipeline:
     threads: 1
     processors:
       # A stray non-JSON line is dropped, never forwarded.
       - label: parse-event
         mapping: root = content().string().parse_json().catch(deleted())
-
       - label: validate-event
         mapping: |
           root = if this.node == null || this.ts == null || this.yolo_hits == null {
@@ -59,7 +57,6 @@ config:
           } else {
             this
           }
-
       - label: add-lineage
         mapping: |
           root = this
@@ -68,7 +65,6 @@ config:
             "pipeline_version": "2.0.0",
             "edge_node": "${EDGE_ISR_NODE:edge-node}"
           }
-
       - label: log-event
         log:
           level: INFO
@@ -78,8 +74,8 @@ config:
             root.people = this.yolo_hits.filter(h -> h.label == "person").length()
             root.signed = this.signature != null
             root.analyst = this.gemini_description != null
-
   output:
+    label: sensor-events
     file:
       path: ${EDGE_ISR_STATE:/opt/edge-isr/state}/sensor-north.events.ndjson
       codec: lines

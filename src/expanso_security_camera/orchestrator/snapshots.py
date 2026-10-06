@@ -38,22 +38,9 @@ _SECTOR_COLOR = {
 }
 
 
-_SENSOR_META = {
-    "sensor-north": {
-        "id": "EO-N-01",
-        "lat": 35.2451,
-        "lon": -116.7682,
-        "az": 327,
-        "fov": 18.0,
-    },
-    "sensor-south": {
-        "id": "IR-S-02",
-        "lat": 35.2398,
-        "lon": -116.7704,
-        "az": 153,
-        "fov": 24.0,
-    },
-}
+def _label_for(sector: str) -> str:
+    """The on-frame name is the sensor's own node id; no invented site data."""
+    return sector.upper()
 
 
 def synthesize_snapshot(
@@ -123,20 +110,14 @@ def synthesize_snapshot(
         cv2.line(bg, (cx, cy + r), (cx, cy + r + 6), reticle, 1, cv2.LINE_AA)
     cv2.circle(bg, (cx, cy), 2, reticle, -1, cv2.LINE_AA)
 
-    # ── Corner sensor metadata (ISO 8601 UTC + sensor ID + GPS + FOV) ──
-    meta = _SENSOR_META.get(sector, {"id": "?", "lat": 0.0, "lon": 0.0, "az": 0, "fov": 0.0})
+    # ── Corner metadata: the sensor's node id and the UTC time ──
     iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
     font = cv2.FONT_HERSHEY_SIMPLEX
     text_white = (220, 230, 240)
     text_dim = (160, 175, 190)
-    # Top-left: sensor ID + DTG (vertically stacked)
-    cv2.putText(bg, meta["id"], (24, 38), font, 0.7, text_white, 1, cv2.LINE_AA)
+    # Top-left: node id + time (vertically stacked)
+    cv2.putText(bg, _label_for(sector), (24, 38), font, 0.7, text_white, 1, cv2.LINE_AA)
     cv2.putText(bg, iso, (24, 62), font, 0.55, text_dim, 1, cv2.LINE_AA)
-    # Top-right: GPS + azimuth + FOV
-    gps = f"{meta['lat']:.4f}N {abs(meta['lon']):.4f}W"
-    az_fov = f"AZ {meta['az']:03d}  FOV {meta['fov']:.1f}"
-    cv2.putText(bg, gps, (w - 320, 38), font, 0.55, text_dim, 1, cv2.LINE_AA)
-    cv2.putText(bg, az_fov, (w - 320, 62), font, 0.55, text_dim, 1, cv2.LINE_AA)
     # Top-right REC indicator (pulses red dot at 1Hz so the feed reads "live")
     rec_on = (int(t * 2) % 2) == 0
     rec_color = (40, 40, 230) if rec_on else (40, 40, 90)  # BGR red
@@ -286,16 +267,12 @@ def synthesize_awaiting_start(sector: str) -> bytes:
         cv2.LINE_AA,
     )
 
-    # Corner sensor metadata (same identity card as the live frame, so a
-    # judge comparing the two reads it as "same sensor, different state").
-    meta = _SENSOR_META.get(sector, {"id": "?", "lat": 0.0, "lon": 0.0, "az": 0, "fov": 0.0})
+    # Corner metadata, the same as the live frame: node id and time.
     iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     text_white = (220, 230, 240)
     text_dim = (140, 155, 170)
-    cv2.putText(bg, meta["id"], (24, 38), font, 0.7, text_white, 1, cv2.LINE_AA)
+    cv2.putText(bg, _label_for(sector), (24, 38), font, 0.7, text_white, 1, cv2.LINE_AA)
     cv2.putText(bg, iso, (24, 62), font, 0.55, text_dim, 1, cv2.LINE_AA)
-    gps = f"{meta['lat']:.4f}N {abs(meta['lon']):.4f}W"
-    cv2.putText(bg, gps, (w - 320, 38), font, 0.55, text_dim, 1, cv2.LINE_AA)
     cv2.putText(bg, "STOPPED", (w - 320, 62), font, 0.55, (90, 100, 115), 1, cv2.LINE_AA)
 
     # NO REC pulse. NO reticle. NO scan-line. Stillness = stopped.

@@ -712,7 +712,8 @@ mapping: &quot;root = this\nroot.lineage = {\n  \&quot;pipeline\&quot;: \&quot;s
       &quot;label&quot;: &quot;person&quot;
     }
   ]
-}</pre><p class="note">records 2 to 4 of 41</p></div></div></div></article><article class="stage" data-stage-id="sensor-north-deliver" data-pipeline="sensor-north" data-index="3" hidden data-input-file="data/stages/sensor-north/04-deliver.input.jsonl" data-output-file="data/stages/sensor-north/04-deliver.output.jsonl"><h4 class="stage-h">Stage 4 of 4: deliver</h4><p class="what">The job&#x27;s own outputs. The delivery time is stamped here, at the moment of writing.</p><p class="counts">41 in, 41 out</p><h5 class="io-h">Configuration</h5><pre class="code" data-yaml tabindex="0">file:
+}</pre><p class="note">records 2 to 4 of 41</p></div></div></div></article><article class="stage" data-stage-id="sensor-north-deliver" data-pipeline="sensor-north" data-index="3" hidden data-input-file="data/stages/sensor-north/04-deliver.input.jsonl" data-output-file="data/stages/sensor-north/04-deliver.output.jsonl"><h4 class="stage-h">Stage 4 of 4: deliver</h4><p class="what">The job&#x27;s own outputs. The delivery time is stamped here, at the moment of writing.</p><p class="counts">41 in, 41 out</p><h5 class="io-h">Configuration</h5><pre class="code" data-yaml tabindex="0">label: sensor-events
+file:
   path: ${EDGE_ISR_STATE:/opt/edge-isr/state}/sensor-north.events.ndjson
   codec: lines</pre><div class="io"><div class="io-col"><h5 class="io-h">Input from the previous stage</h5><div data-input><pre class="json" data-public-json tabindex="0">{
   &quot;gemini_description&quot;: &quot;One person was detected.&quot;,
@@ -1432,7 +1433,8 @@ mapping: &quot;root = this\nroot.lineage = {\n  \&quot;pipeline\&quot;: \&quot;s
       &quot;label&quot;: &quot;person&quot;
     }
   ]
-}</pre><p class="note">records 1 to 3 of 41</p></div></div></div></article><article class="stage" data-stage-id="sensor-south-deliver" data-pipeline="sensor-south" data-index="3" hidden data-input-file="data/stages/sensor-south/04-deliver.input.jsonl" data-output-file="data/stages/sensor-south/04-deliver.output.jsonl"><h4 class="stage-h">Stage 4 of 4: deliver</h4><p class="what">The job&#x27;s own outputs. The delivery time is stamped here, at the moment of writing.</p><p class="counts">41 in, 41 out</p><h5 class="io-h">Configuration</h5><pre class="code" data-yaml tabindex="0">file:
+}</pre><p class="note">records 1 to 3 of 41</p></div></div></div></article><article class="stage" data-stage-id="sensor-south-deliver" data-pipeline="sensor-south" data-index="3" hidden data-input-file="data/stages/sensor-south/04-deliver.input.jsonl" data-output-file="data/stages/sensor-south/04-deliver.output.jsonl"><h4 class="stage-h">Stage 4 of 4: deliver</h4><p class="what">The job&#x27;s own outputs. The delivery time is stamped here, at the moment of writing.</p><p class="counts">41 in, 41 out</p><h5 class="io-h">Configuration</h5><pre class="code" data-yaml tabindex="0">label: sensor-events
+file:
   path: ${EDGE_ISR_STATE:/opt/edge-isr/state}/sensor-south.events.ndjson
   codec: lines</pre><div class="io"><div class="io-col"><h5 class="io-h">Input from the previous stage</h5><div data-input><pre class="json" data-public-json tabindex="0">{
   &quot;gemini_description&quot;: &quot;One person was detected.&quot;,
@@ -1951,7 +1953,8 @@ mapping: &quot;root = this\nroot.lineage = {\n  \&quot;pipeline\&quot;: \&quot;f
   &quot;total&quot;: 4,
   &quot;ts&quot;: 1791254888.002955,
   &quot;type&quot;: &quot;tally&quot;
-}</pre><p class="note">records 5 to 7 of 83</p></div></div></div></article><article class="stage" data-stage-id="fusion-node-deliver" data-pipeline="fusion-node" data-index="3" hidden data-input-file="data/stages/fusion-node/04-deliver.input.jsonl" data-output-file="data/stages/fusion-node/04-deliver.output.jsonl"><h4 class="stage-h">Stage 4 of 4: deliver</h4><p class="what">The job&#x27;s own outputs. The delivery time is stamped here, at the moment of writing.</p><p class="counts">83 in, 83 out</p><h5 class="io-h">Configuration</h5><pre class="code" data-yaml tabindex="0">broker:
+}</pre><p class="note">records 5 to 7 of 83</p></div></div></div></article><article class="stage" data-stage-id="fusion-node-deliver" data-pipeline="fusion-node" data-index="3" hidden data-input-file="data/stages/fusion-node/04-deliver.input.jsonl" data-output-file="data/stages/fusion-node/04-deliver.output.jsonl"><h4 class="stage-h">Stage 4 of 4: deliver</h4><p class="what">The job&#x27;s own outputs. The delivery time is stamped here, at the moment of writing.</p><p class="counts">83 in, 83 out</p><h5 class="io-h">Configuration</h5><pre class="code" data-yaml tabindex="0">label: fusion-outputs
+broker:
   pattern: fan_out
   outputs:
   - label: tally-file
@@ -2256,7 +2259,8 @@ mapping: &#x27;let payload = this.format_json()
   &quot;threshold&quot;: 3,
   &quot;total&quot;: 4,
   &quot;type&quot;: &quot;crowd_threshold&quot;
-}</pre></div></div></div></article><article class="stage" data-stage-id="fuse-deliver" data-pipeline="fuse" data-index="4" hidden data-input-file="data/stages/fuse/05-deliver.input.jsonl" data-output-file="data/stages/fuse/05-deliver.output.jsonl"><h4 class="stage-h">Stage 5 of 5: deliver</h4><p class="what">The job&#x27;s own outputs. The delivery time is stamped here, at the moment of writing.</p><p class="counts">1 in, 1 out</p><h5 class="io-h">Configuration</h5><pre class="code" data-yaml tabindex="0">broker:
+}</pre></div></div></div></article><article class="stage" data-stage-id="fuse-deliver" data-pipeline="fuse" data-index="4" hidden data-input-file="data/stages/fuse/05-deliver.input.jsonl" data-output-file="data/stages/fuse/05-deliver.output.jsonl"><h4 class="stage-h">Stage 5 of 5: deliver</h4><p class="what">The job&#x27;s own outputs. The delivery time is stamped here, at the moment of writing.</p><p class="counts">1 in, 1 out</p><h5 class="io-h">Configuration</h5><pre class="code" data-yaml tabindex="0">label: alert-outputs
+broker:
   pattern: fan_out
   outputs:
   - label: alerts-stdout
@@ -2975,7 +2979,8 @@ mapping: &quot;root = this\nroot.archive = {\n  \&quot;archived_by\&quot;: \&quo
       &quot;label&quot;: &quot;person&quot;
     }
   ]
-}</pre><p class="note">records 2 to 4 of 82</p></div></div></div></article><article class="stage" data-stage-id="event-archive-deliver" data-pipeline="event-archive" data-index="4" hidden data-input-file="data/stages/event-archive/05-deliver.input.jsonl" data-output-file="data/stages/event-archive/05-deliver.output.jsonl"><h4 class="stage-h">Stage 5 of 5: deliver</h4><p class="what">The job&#x27;s own outputs. The delivery time is stamped here, at the moment of writing.</p><p class="counts">82 in, 82 out</p><h5 class="io-h">Configuration</h5><pre class="code" data-yaml tabindex="0">broker:
+}</pre><p class="note">records 2 to 4 of 82</p></div></div></div></article><article class="stage" data-stage-id="event-archive-deliver" data-pipeline="event-archive" data-index="4" hidden data-input-file="data/stages/event-archive/05-deliver.input.jsonl" data-output-file="data/stages/event-archive/05-deliver.output.jsonl"><h4 class="stage-h">Stage 5 of 5: deliver</h4><p class="what">The job&#x27;s own outputs. The delivery time is stamped here, at the moment of writing.</p><p class="counts">82 in, 82 out</p><h5 class="io-h">Configuration</h5><pre class="code" data-yaml tabindex="0">label: archive-outputs
+broker:
   pattern: fan_out
   outputs:
   - label: s3
@@ -3407,7 +3412,8 @@ mapping: &quot;root = this\nroot.source = {\n  \&quot;device_id\&quot;: \&quot;$
     &quot;site_id&quot;: &quot;warehouse-demo&quot;
   },
   &quot;timestamp&quot;: &quot;2026-10-06T03:03:25Z&quot;
-}</pre><p class="note">records 1 to 3 of 21</p></div></div></div></article><article class="stage" data-stage-id="yolo-detector-deliver" data-pipeline="yolo-detector" data-index="2" hidden data-input-file="data/stages/yolo-detector/03-deliver.input.jsonl" data-output-file="data/stages/yolo-detector/03-deliver.output.jsonl"><h4 class="stage-h">Stage 3 of 3: deliver</h4><p class="what">The job&#x27;s own outputs. The delivery time is stamped here, at the moment of writing.</p><p class="counts">21 in, 21 out</p><h5 class="io-h">Configuration</h5><pre class="code" data-yaml tabindex="0">broker:
+}</pre><p class="note">records 1 to 3 of 21</p></div></div></div></article><article class="stage" data-stage-id="yolo-detector-deliver" data-pipeline="yolo-detector" data-index="2" hidden data-input-file="data/stages/yolo-detector/03-deliver.input.jsonl" data-output-file="data/stages/yolo-detector/03-deliver.output.jsonl"><h4 class="stage-h">Stage 3 of 3: deliver</h4><p class="what">The job&#x27;s own outputs. The delivery time is stamped here, at the moment of writing.</p><p class="counts">21 in, 21 out</p><h5 class="io-h">Configuration</h5><pre class="code" data-yaml tabindex="0">label: scan-outputs
+broker:
   pattern: fan_out
   outputs:
   - label: scans-file
@@ -4071,7 +4077,8 @@ mapping: &quot;root = this\nroot.lineage = {\n  \&quot;edge_node\&quot;: \&quot;
     &quot;site_id&quot;: &quot;warehouse-demo&quot;
   },
   &quot;timestamp&quot;: &quot;2026-10-06T03:03:25Z&quot;
-}</pre><p class="note">records 1 to 3 of 21</p></div></div></div></article><article class="stage" data-stage-id="security-camera-events-deliver" data-pipeline="security-camera-events" data-index="4" hidden data-input-file="data/stages/security-camera-events/05-deliver.input.jsonl" data-output-file="data/stages/security-camera-events/05-deliver.output.jsonl"><h4 class="stage-h">Stage 5 of 5: deliver</h4><p class="what">The job&#x27;s own outputs. The delivery time is stamped here, at the moment of writing.</p><p class="counts">21 in, 21 out</p><h5 class="io-h">Configuration</h5><pre class="code" data-yaml tabindex="0">broker:
+}</pre><p class="note">records 1 to 3 of 21</p></div></div></div></article><article class="stage" data-stage-id="security-camera-events-deliver" data-pipeline="security-camera-events" data-index="4" hidden data-input-file="data/stages/security-camera-events/05-deliver.input.jsonl" data-output-file="data/stages/security-camera-events/05-deliver.output.jsonl"><h4 class="stage-h">Stage 5 of 5: deliver</h4><p class="what">The job&#x27;s own outputs. The delivery time is stamped here, at the moment of writing.</p><p class="counts">21 in, 21 out</p><h5 class="io-h">Configuration</h5><pre class="code" data-yaml tabindex="0">label: enriched-outputs
+broker:
   pattern: fan_out
   outputs:
   - label: enriched-file
@@ -5027,7 +5034,8 @@ mapping: &quot;root = this\nroot.lineage = {\n  \&quot;edge_node\&quot;: \&quot;
   },
   &quot;status&quot;: &quot;DISCREPANCY&quot;,
   &quot;timestamp&quot;: &quot;2026-10-06T03:09:56.441327+00:00&quot;
-}</pre><p class="note">records 1 to 3 of 10</p></div></div></div></article><article class="stage" data-stage-id="box-crossing-deliver" data-pipeline="box-crossing" data-index="5" hidden data-input-file="data/stages/box-crossing/06-deliver.input.jsonl" data-output-file="data/stages/box-crossing/06-deliver.output.jsonl"><h4 class="stage-h">Stage 6 of 6: deliver</h4><p class="what">The job&#x27;s own outputs. The delivery time is stamped here, at the moment of writing.</p><p class="counts">10 in, 10 out</p><h5 class="io-h">Configuration</h5><pre class="code" data-yaml tabindex="0">broker:
+}</pre><p class="note">records 1 to 3 of 10</p></div></div></div></article><article class="stage" data-stage-id="box-crossing-deliver" data-pipeline="box-crossing" data-index="5" hidden data-input-file="data/stages/box-crossing/06-deliver.input.jsonl" data-output-file="data/stages/box-crossing/06-deliver.output.jsonl"><h4 class="stage-h">Stage 6 of 6: deliver</h4><p class="what">The job&#x27;s own outputs. The delivery time is stamped here, at the moment of writing.</p><p class="counts">10 in, 10 out</p><h5 class="io-h">Configuration</h5><pre class="code" data-yaml tabindex="0">label: crossing-outputs
+broker:
   pattern: fan_out
   outputs:
   - label: enriched-file
@@ -5402,7 +5410,8 @@ mapping: &quot;root = this\nroot.source = {\n  \&quot;device_id\&quot;: \&quot;$
     &quot;site_id&quot;: &quot;warehouse-demo&quot;
   },
   &quot;start_time&quot;: &quot;2026-10-06T03:02:55.104419+00:00&quot;
-}</pre><p class="note">records 1 to 3 of 8</p></div></div></div></article><article class="stage" data-stage-id="security-camera-recorder-deliver" data-pipeline="security-camera-recorder" data-index="2" hidden data-input-file="data/stages/security-camera-recorder/03-deliver.input.jsonl" data-output-file="data/stages/security-camera-recorder/03-deliver.output.jsonl"><h4 class="stage-h">Stage 3 of 3: deliver</h4><p class="what">The job&#x27;s own outputs. The delivery time is stamped here, at the moment of writing.</p><p class="counts">8 in, 8 out</p><h5 class="io-h">Configuration</h5><pre class="code" data-yaml tabindex="0">broker:
+}</pre><p class="note">records 1 to 3 of 8</p></div></div></div></article><article class="stage" data-stage-id="security-camera-recorder-deliver" data-pipeline="security-camera-recorder" data-index="2" hidden data-input-file="data/stages/security-camera-recorder/03-deliver.input.jsonl" data-output-file="data/stages/security-camera-recorder/03-deliver.output.jsonl"><h4 class="stage-h">Stage 3 of 3: deliver</h4><p class="what">The job&#x27;s own outputs. The delivery time is stamped here, at the moment of writing.</p><p class="counts">8 in, 8 out</p><h5 class="io-h">Configuration</h5><pre class="code" data-yaml tabindex="0">label: catalog-outputs
+broker:
   pattern: fan_out
   outputs:
   - label: catalog-file

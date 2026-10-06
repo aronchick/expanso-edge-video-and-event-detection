@@ -32,17 +32,14 @@ config:
       codec: lines
       restart_on_exit: true
       max_buffer: 1048576
-
   pipeline:
     threads: 1
     processors:
       - label: parse-scan
         mapping: root = content().string().parse_json().catch(deleted())
-
       - label: require-schema
         mapping: |
           root = if this.schema_version == null { deleted() } else { this }
-
       - label: add-source
         mapping: |
           root = this
@@ -52,7 +49,6 @@ config:
             "pipeline": "security-camera-events",
             "pipeline_version": "2.0.0"
           }
-
       - label: add-lineage
         mapping: |
           root = this
@@ -60,7 +56,6 @@ config:
             "edge_node": "${EDGE_NODE_ID:edge-node}",
             "pipeline": "security-camera-events"
           }
-
       - label: log-scan
         log:
           level: INFO
@@ -68,8 +63,8 @@ config:
           fields_mapping: |
             root.outside = this.detections."cam-outside".boxes
             root.inside = this.detections."cam-inside".boxes
-
   output:
+    label: enriched-outputs
     broker:
       pattern: fan_out
       outputs:
@@ -82,7 +77,6 @@ config:
               mapping: |
                 root = this
                 root.lineage.ingested_at = now().ts_format("2006-01-02T15:04:05.000Z")
-
         - label: enriched-stdout
           stdout:
             codec: lines

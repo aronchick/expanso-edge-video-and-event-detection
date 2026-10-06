@@ -235,6 +235,11 @@ _fake_occupancy: dict[str, int] = {}
 # the operator has armed the backpack trigger (filter in run_fake_node).
 _FAKE_BACKPACK_PROB = 0.25
 
+# A drone crossing the frame, so the live trigger update (arming `drone`) can be
+# rehearsed without real aerial footage. Like the backpack it only surfaces once
+# the operator has armed it.
+_FAKE_DRONE_PROB = 0.15
+
 
 def _fake_step_occupancy(node_id: str) -> int:
     """Advance this zone's occupancy by one smooth random-walk step."""
@@ -281,6 +286,15 @@ def _fake_one_event(node_id: str, simulate_offline: bool) -> Event:
                 label="backpack",
                 confidence=round(random.uniform(0.55, 0.8), 2),
                 bbox=(bx1 + 20, by1 + 90, bx1 + 110, by1 + 200),
+            )
+        )
+
+    if random.random() < _FAKE_DRONE_PROB:
+        hits.append(
+            Detection(
+                label="drone",
+                confidence=round(random.uniform(0.86, 0.97), 2),
+                bbox=(900.0, 60.0, 1010.0, 130.0),
             )
         )
 

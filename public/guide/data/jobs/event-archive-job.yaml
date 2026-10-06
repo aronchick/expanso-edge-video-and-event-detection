@@ -40,14 +40,12 @@ config:
       codec: lines
       restart_on_exit: true
       max_buffer: 1048576
-
   pipeline:
     threads: 1
     processors:
       # A stray non-JSON line is dropped, never archived.
       - label: parse-event
         mapping: root = content().string().parse_json().catch(deleted())
-
       # Alerts raised by the fusion node are archived by the fuse job.
       - label: keep-sensor-events
         mapping: |
@@ -56,7 +54,6 @@ config:
           } else {
             this
           }
-
       # Events without a signature are kept, flagged, never silently dropped.
       - label: check-signature
         mapping: |
@@ -65,7 +62,6 @@ config:
             "signed": this.signature != null,
             "signature_format_ok": this.signature.or("").has_prefix("dbom:sha256:")
           }
-
       - label: add-lineage
         mapping: |
           root = this
@@ -74,7 +70,6 @@ config:
             "pipeline": "event-archive",
             "pipeline_version": "2.0.0"
           }
-
       - label: log-event
         log:
           level: INFO
@@ -82,8 +77,8 @@ config:
           fields_mapping: |
             root.node = this.node
             root.signed = this.audit.signed
-
   output:
+    label: archive-outputs
     broker:
       pattern: fan_out
       outputs:
@@ -92,8 +87,9 @@ config:
             bucket: ${EDGE_ISR_S3_BUCKET:}
             region: ${AWS_REGION:us-west-2}
             endpoint: ${EDGE_ISR_S3_ENDPOINT:}
-            # No colons in the key: basic ISO 8601 time sorts chronologically and needs no escaping.
-            path: events/${! json("node") }/${! now().ts_format("20060102T150405.000Z") }-${! uuid_v4() }.json
+            # No colons in the key: basic ISO 8601 time sorts and needs no escaping.
+            path: "events/${! json(\"node\") }/\
+              ${! now().ts_format(\"20060102T150405.000Z\") }-${! uuid_v4() }.json"
             content_type: application/json
             max_in_flight: 8
           processors:
@@ -101,17 +97,16 @@ config:
               mapping: |
                 root = this
                 root.archive.archived_at = now().ts_format("2006-01-02T15:04:05.000Z")
-
         - label: daily-file
           file:
-            path: ${EDGE_ISR_ARCHIVE:/opt/edge-isr/archive}/events-${! now().ts_format("2006-01-02") }.ndjson
+            path: "${EDGE_ISR_ARCHIVE:/opt/edge-isr/archive}/\
+              events-${! now().ts_format(\"2006-01-02\") }.ndjson"
             codec: lines
           processors:
             - label: stamp-archive-time-file
               mapping: |
                 root = this
                 root.archive.archived_at = now().ts_format("2006-01-02T15:04:05.000Z")
-
         - label: job-log
           stdout:
             codec: lines

@@ -59,3 +59,35 @@ class TestCheckCommands:
         Path(cmd_path).write_text(json.dumps({"other": "value"}))
         result = check_commands(cmd_path)
         assert result is None
+
+
+class TestRecordedFileReplay:
+    """A recorded file is played once at its own speed, then the thread reports finished."""
+
+    def test_file_source_finishes_after_one_pass(self, tmp_path, monkeypatch):
+        import time
+
+        import cv2
+        import numpy as np
+
+        from expanso_security_camera.config import CameraConfig
+        from expanso_security_camera.inference import CameraThread
+
+        clip = tmp_path / "clip.mp4"
+        writer = cv2.VideoWriter(str(clip), cv2.VideoWriter.fourcc(*"mp4v"), 30.0, (64, 48))
+
+        for _ in range(12):
+            writer.write(np.zeros((48, 64, 3), dtype=np.uint8))
+
+        writer.release()
+        monkeypatch.setenv("ESC_REPLAY_SPEED", "20")
+        thread = CameraThread(CameraConfig(camera_id="cam-test", url=str(clip)))
+        thread.start()
+        deadline = time.time() + 10
+
+        while not thread.finished and time.time() < deadline:
+            time.sleep(0.05)
+
+        thread.stop()
+
+        assert thread.finished

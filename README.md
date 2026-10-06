@@ -1,205 +1,121 @@
-# Expanso Edge — Video & Event Detection
+# Expanso Edge: video and event detection
 
-Built off potential user requirements for perimeter security and low-latency edge vision cascades.
+Edge sensors usually ship every frame to the cloud and wait for someone to decide whether it mattered. That costs bandwidth on a contested link, latency on every decision, emissions an adversary can detect, and a single point of failure.
 
-Edge sensors today ship every frame to the cloud and wait for someone to decide whether what they saw mattered. That costs you bandwidth on a contested link, latency on every decision, emissions an adversary can detect, and a single point of failure they will exploit.
+This repository is a working reference for moving the workload to the data. A local YOLO detector counts people in each camera, a fusion node merges the counts into one combined number and flags a crowd, an optional analyst summary comes through the demo-kit model gateway, and every event is signed and archived. It runs as nine [Expanso Edge](https://expanso.io) pipelines, and each one is proven on real recorded data.
 
-This repo is a working reference for **moving the workload to the data**: local YOLO detection, recorded analyst summaries through the demo-kit model gateway, a FastAPI/WebSocket fusion node on a laptop, two cameras, a **cross-zone people tally that merges both feeds into one combined count**, and an S3 archive, built on [Expanso Edge](https://expanso.io). Detection stays local. Rehearsals replay committed answers with no model calls; live answers are recorded deliberately through a capped subscription backend.
-
-**Headline demo (booth):** two cameras watch two zones; the fusion node counts people in each and **merges the counts**. Neither zone alone trips the alarm — but when the **combined** total across both cameras exceeds the threshold (default 5), the dashboard throws a full-screen **CROWD FLAG**. The merge is the point: 3 people north + 3 people south = 6 → FLAG.
-
----
+**Start with the guide.** It has the explanation, a step explorer that shows the real input and output of every stage of every pipeline, and the run and deploy instructions. Serve it with `uv run edge-orchestrator` and open <http://localhost:8080/guide/>, or run `python3 scripts/serve-guide.py` and open <http://127.0.0.1:18281/guide/>. The page is generated: `public/guide/index.html`.
 
 ## What it delivers
 
-Five outcomes a perimeter operator would actually ask for:
+1. **Detection stays local.** YOLO runs on the node. Nothing leaves it for the node to know what it is looking at.
+2. **The merge happens at the edge.** The fusion node adds the per-zone people counts into one combined count. The crowd flag trips when the combined count is at least 3 (`EDGE_CROWD_THRESHOLD`), every zone has at least one person, and the busiest has at least two. North 2 and south 1 flag; north 4 and south 0 does not.
+3. **An analyst summary is optional.** When a detection warrants it the sensor asks the demo model gateway for one sentence. Rehearsals replay recorded answers (`fixtures/model/`); no model is called.
+4. **The mission updates live.** Arm a class (F4 adds `backpack` and `drone`) and every sensor picks it up within about a second, with no restart.
+5. **The link can drop.** Sensors keep detecting and the dashboard keeps painting. The sensor queues events in SQLite and replays them when the orchestrator returns; Expanso Edge buffers archive writes until the WAN is back.
 
-1. **Detection runs local. Always.** YOLO v8 on a Jetson, sub-50ms inference. No network call required to know what you're looking at.
-2. **Cloud is a bonus, not a precondition.** When a contact warrants richer context, the *edge* decides to call Gemini Flash for a description — only on the events that need it. The cloud being unreachable doesn't stop the sensor from working.
-3. **Zones merge at the edge.** A local fusion node sums the people count across both cameras into one combined total and flags when it exceeds the threshold — the cross-zone merge happens on the laptop, no round-trip to a TOC. One busy zone is fine; it's the *combined* crowd that matters.
-4. **Mission parameters update in seconds.** Push a new threat class (e.g., `drone`) once from the cloud control plane and every sensor on the network picks it up within ~1 second. No restart, no firmware push, no truck roll.
-5. **Zero loss when the link drops.** When the WAN goes away the sensors keep detecting and the local dashboard keeps painting; events buffer to disk via Expanso Edge's offline queue. On reconnect, the cluster pulls the latest pipeline definition from the cloud and drains the buffered events to S3 — with the new transformation applied. Provenance preserved end-to-end.
+## The pipelines
 
----
+| Job | What runs in it |
+|---|---|
+| `sensor-north`, `sensor-south` | `edge-sensor` on a camera. Prints one signed JSON event per frame. |
+| `fusion-node` | `edge-orchestrator`: the people-count merge and the dashboard backend. Prints a tally line per event and an alert line on a flag. |
+| `fuse` | The cross-zone merge as its own pipeline (`scripts/fuse-correlator.py`). Signs each crowd alert. |
+| `event-archive` | Follows the event log, checks signatures, writes to S3, a daily file and the job log. |
+| `yolo-detector` | Box counting: the GPU loop on a Jetson. |
+| `security-camera-events` | Box counting: validates and enriches the detection scans. |
+| `box-crossing` | Box counting: `esc-infer` line crossings and the arrivals-versus-departures reconciliation. |
+| `security-camera-recorder` | Box counting: segmented video evidence. |
 
-## Run it on a laptop in 60 seconds
+Every job is in `jobs/`. Each processor is labelled, so Expanso Cloud shows named stages, and each job logs one line per event so the Logs page is live.
 
-No GPU, no cameras, no Jetson required — synthetic crowd events + procedurally generated camera feeds. The fake sensors emit varying crowd sizes per zone, so the combined total drifts above and below the threshold on its own and the CROWD FLAG fires hands-off.
+## Run it on a laptop
+
+No GPU, camera or model weights. The two recorded scenes are real YOLO measurements (`fixtures/scenes/`).
 
 ```bash
-uv sync                                                # one-time
+uv sync
 
-# Terminal 1 — fusion node (dashboard backend)
+# Terminal 1: the fusion node, dashboard and guide
 uv run edge-orchestrator --port 8080
 
-# Terminal 2 — synthetic sensor pair (crowd scenes)
-uv run edge-sensor --fake --multi --orchestrator http://localhost:8080 --cadence 0.6
+# Terminals 2 and 3: replay the recorded scenes
+uv run edge-sensor --replay fixtures/scenes/north.jsonl \
+  --node-id sensor-north --orchestrator http://localhost:8080 --speed 2
+uv run edge-sensor --replay fixtures/scenes/south.jsonl \
+  --node-id sensor-south --orchestrator http://localhost:8080 --speed 2
 ```
 
-## Run it at the booth — through Expanso Edge (the real path)
-
-The capture, the merge, and the archive all run **as Expanso Edge pipeline
-jobs** deployed from `jobs/*.yaml`, not as loose processes. `go2rtc` bridges
-the two USB webcams to RTSP (and serves low-latency WebRTC to the dashboard);
-each stage is a job you can watch in `cloud.expanso.io`:
-
-| Expanso job | What runs in it |
-|---|---|
-| `sensor-north`, `sensor-south` | USB webcam → go2rtc RTSP → `edge-sensor` (YOLO capture) |
-| `fusion-node` | `edge-orchestrator` — the **people-count merge** (`zones.py`) + dashboard |
-| `fuse` | standalone, observable copy of the cross-zone merge (`scripts/fuse-correlator.py`) |
-| `event-archive` | Bloblang fan-out to S3 with store-and-forward |
-
-```bash
-# 1. Bridge both USB webcams (renders go2rtc.yaml for the current AVFoundation
-#    indices, then starts go2rtc on :8554 RTSP + :1984 WebRTC).
-./scripts/render-go2rtc-yaml.sh && ./bin/go2rtc -config go2rtc.yaml &
-
-# 2. Deploy every stage as an Expanso Edge job.
-expanso-cli profile select <your-profile>
-for j in orchestrator-job sensor-north-job sensor-south-job fuse-job event-archive-job; do
-  expanso-cli job deploy jobs/$j.yaml
-done
-expanso-cli job list        # sensor-north / sensor-south / fusion-node / fuse all RUNNING
-```
-
-Open the dashboard on the 42" monitor, hit F11. Crowd threshold is
-`EDGE_CROWD_THRESHOLD` (default 5), set in both `fusion-node` and `fuse` jobs.
-
-> **Quick local check (NOT Expanso):** `uv run edge-sensor --cameras 0,1` runs
-> both webcams in one bare process, bypassing go2rtc and Expanso Edge. Handy
-> for a 30-second "do the cameras work + does the merge flag" smoke test on a
-> laptop — but it is **not** the booth path. The booth runs the Expanso jobs above.
+`edge-sensor --fake --multi` plays random crowds instead. With two USB webcams, `uv run --extra vision edge-sensor --cameras 0,1`.
 
 | Key | Action |
 |---|---|
-| `F1` | Cloud DOWN — banner appears within ~3s (auto-detected by WAN probe) |
-| `F2` | Cloud UP — buffered events drain to S3 with current pipeline applied |
-| `F3` | Rehearsal: fire a synthetic CROWD FLAG takeover (6 people, 3+3) |
-| `F4` | Push live trigger update — adds `backpack`+`drone` to the watch list |
+| `F1` | Take the cloud link down. The banner appears within about 3 s. |
+| `F2` | Restore the link; buffered events drain to the archive. |
+| `F3` | Rehearse the crowd flag (6 people, 3+3). It holds for 6 s. |
+| `F4` | Arm `backpack` and `drone` live. |
 
-The dashboard has two views: `OPS` (live operations — cameras, events, triggers, platform strip) and `ARCH` (light-themed architecture diagram with animated data-flow lines).
+## Run it through Expanso Edge
 
----
+Capture, merge and archive run as Expanso pipeline jobs deployed from `jobs/`. Prepare the node, set the `EDGE_ISR_*` variables the jobs read (the guide's Deploy section lists them), then:
+
+```bash
+for job in orchestrator sensor-north sensor-south fuse event-archive; do
+  expanso-cli job deploy jobs/$job-job.yaml
+done
+expanso-cli job list
+```
+
+The archive writes to S3 over HTTPS with the standard AWS credential chain. It needs only `s3:PutObject` on `events/*` of the bucket. Box counting deploys the same way (`yolo-detector`, `security-camera-events`, `box-crossing`, `recorder`); its GPU detector runs in the pinned Ultralytics Jetson image with the NVIDIA runtime.
+
+The fusion node's API has no login. It listens on `127.0.0.1` unless `EDGE_ISR_BIND` says otherwise; open it to a LAN only on an isolated network.
+
+## How it is proven
+
+| Claim | Proof | Command |
+|---|---|---|
+| Every pipeline validates and produces its expected output on real input | `fixtures/<pipeline>/` holds the input, the expected output and, per stage, the input and output, all produced by Expanso Edge v2.1.21 | `uv run -s scripts/build-fixtures.py` |
+| The five public-bar criteria hold | `docs/PROOF.md` | `uv run -s .demo-kit/public-bar.py --repo . --manifest public-bar.toml --lane all` |
+| The archive writes to S3 over TLS with least-privilege credentials | `docs/s3-proof.json` | `uv run -s scripts/prove-s3.py` |
+| The guide matches the fixtures | CI | `uv run -s scripts/build-guide.py --check` |
+
+`scripts/edge-replay.py` runs one job over one input in a throwaway Expanso Edge container (`proof/Dockerfile`), so no host Expanso configuration is touched.
 
 ## Architecture
 
 ```
-              ┌──────────────────────┐
-              │   Expanso Cloud      │  ← control plane
-              │                      │     (config + jobs only,
-              │                      │      no customer data)
-              └──────────┬───────────┘
-                         │ dashed control plane
-                         ▼
-   ┌────────┐  RTSP  ┌─────────────────────────────┐  HTTP  ┌──────────────┐
-   │ Camera │───────▶│  Jetson — Expanso Edge      │───────▶│ Local fusion │
-   │ north  │        │   YOLO v8 GPU               │        │ node + dash  │
-   └────────┘        │   trigger filter + cascade  │        └──────┬───────┘
-   ┌────────┐  RTSP  │   DBOM sign + SQLite store  │               │
-   │ Camera │───────▶│   offline replay queue      │               ▼
-   │ south  │        └─────────────┬───────────────┘        ┌──────────────┐
-   └────────┘                      │ fan-out                │ Browser:     │
-                          ┌────────┼────────┐               │  WebRTC video│
-                          ▼        ▼        ▼               │  WS events   │
-                     ┌──────┐ ┌────────┐ ┌──────────┐       └──────────────┘
-                     │Local │ │Gemini  │ │S3 archive│
-                     │alerts│ │analyst │ │store-    │
-                     │(corr)│ │per-evt │ │forward   │
-                     └──────┘ └────────┘ └──────────┘
+                         Expanso Cloud: jobs and config only
+                                       |
+   camera north --RTSP--> sensor-north --\                      /--> event-archive --> S3
+                                          >--> fusion-node ----+--> fuse (signed alerts)
+   camera south --RTSP--> sensor-south --/       (merge)        \--> dashboard (WebSocket)
 ```
 
-Every component runs as an Expanso job (`jobs/*.yaml`). On a real cluster you'll see four jobs in `expanso-cli job list`:
+The link to Expanso Cloud is the control plane (job specs and trigger config). Frames, events and S3 objects are the data plane and never pass through Expanso Cloud.
 
-- `fusion-node` — local FastAPI backend (event store + cross-sensor correlator + dashboard)
-- `sensor-north`, `sensor-south` — YOLO + Gemini cascade per camera
-- `event-archive` — Bloblang pipeline that signs every event and ships to S3 with offline buffering
-
-The dashed line is the **control plane**: job specs, trigger config, pipeline updates. The solid lines are **data plane**: video frames, events, S3 objects. Customer data never traverses Expanso Cloud — it's an architectural property of Expanso Edge, not a configuration choice.
-
----
-
-## Repo layout
+## Repository layout
 
 ```
+jobs/                  the nine Expanso Edge jobs
+fixtures/              recorded scenes, producer output, and per-pipeline, per-stage fixtures
+public/guide/          the guide (generated), public/edge/ the dashboard, public/*.html box pages
+scripts/               record-scene, record-fixtures, build-fixtures, build-guide, edge-replay,
+                       prove-s3, tail-ndjson, fuse-correlator, detect_loop, Jetson setup scripts
 src/expanso_security_camera/
-  sensor/        Edge sensor: pipeline, detector (YOLO+Gemini), emitter, dbom, triggers_client
-  orchestrator/  FastAPI + WS backend: store, correlator, metrics, jobs_status, snapshots
-  inference.py + simulate.py + dataset.py + finetune.py + recorder.py + server.py
-                 The original box-counting demo variant — same engine, different application
-
-public/
-  edge/          Stage-scale dashboard (HTML/CSS/JS) — OPS dark theme + ARCH light theme
-  index.html     Box-counting dashboard
-
-jobs/
-  sensor-north-job.yaml / sensor-south-job.yaml   YOLO + Gemini per camera
-  orchestrator-job.yaml                           Local fusion node
-  event-archive-job.yaml                          S3 archive Bloblang pipeline
-  yolo-detector-job.yaml + security-camera-events-job.yaml   Box-counting variant
-
-scripts/
-  detect_loop.py / export_tensorrt.py / setup_jetson_lan.sh / run_sensor.sh
-  install_jetson_update_timer.sh / jetson_update_expanso_edge.sh / rollback_engine.sh
-  ingest_drone_video.py / ingest_3class.py / export_3class.py
-  claude_relabel_drones.py / relabel_video.py
-
-pipelines/      Bloblang pipelines
-openspec/       Public design specs / change proposals
-Dockerfile.jetson + Dockerfile.sensor
+  sensor/              edge-sensor: cascade, detector, replay, emitter, dbom
+  orchestrator/        edge-orchestrator: API, zones (the merge), store, S3 watcher
+proof/                 runner images for the replay, the S3 proof and the public-bar check
+public-bar.toml        the public-bar manifest; public-features.json lists retained features
 ```
-
----
 
 ## Configuration
 
-`config.yaml` (gitignored — copy from `config.example.yaml`) drives the box-counting variant. The Edge-ISR demo reads camera + cluster credentials from `.env`:
-
-```bash
-export CAM_USER=admin
-export CAM_PASS_OUTSIDE=...     export CAM_PASS_INSIDE=...
-export CAM_IP_OUTSIDE=...       export CAM_IP_INSIDE=...
-export GEMINI_API_KEY=...
-```
-
-The reference deployment puts cameras on the wired LAN (192.168.2.x via PoE) and uses the Jetson's WiFi only for WAN egress — so the F1 demo can kill cloud reachability without touching the cameras.
-
----
-
-## Build for a Jetson
-
-```bash
-# On the target Jetson:
-python scripts/export_tensorrt.py            # produces yolo11s.engine
-
-# Back on dev machine:
-docker build -f Dockerfile.sensor -t ghcr.io/<you>/edge-isr-sensor:latest .
-docker push ghcr.io/<you>/edge-isr-sensor:latest
-
-# Deploy:
-expanso-cli job deploy jobs/orchestrator-job.yaml
-expanso-cli job deploy jobs/sensor-north-job.yaml
-expanso-cli job deploy jobs/sensor-south-job.yaml
-expanso-cli job deploy jobs/event-archive-job.yaml
-expanso-cli job list
-```
-
-Cold-boot recovery on the reference Jetson is **~43 seconds** from `sudo reboot` to first HTTP 200 on `/metrics`. Camera tiles populate ~5–10s after that as CUDA + the YOLO TensorRT engine warm up.
-
----
+`config.yaml` (gitignored; copy `config.example.yaml`) drives `esc-infer` for box counting. Camera credentials come from the environment (`CAM_USER`, `CAM_PASS_*`, `CAM_IP_*`) and never from a committed file. The Edge ISR jobs read `EDGE_ISR_*` variables from the node; the guide lists them.
 
 ## Development
 
 ```bash
 uv sync --extra test
-uv run ruff check . --fix
-uv run ruff format .
-uv run pytest                                  # 120+ tests
-uv run pytest tests/test_counter.py::test_name # one test
+uv run ruff check . && uv run ruff format --check .
+uv run pytest
 ```
-
----
-
-## License
-
-Apache-2.0 — see [LICENSE](./LICENSE). For the Expanso platform itself, see [expanso.io](https://expanso.io).
