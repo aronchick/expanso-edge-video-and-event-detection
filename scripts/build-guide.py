@@ -526,7 +526,7 @@ PAGE = """<!doctype html>
   <p>The Edge ISR cascade is the headline: five pipelines. Box counting is the original warehouse demo: four pipelines. Both run as Expanso Edge jobs from <code>jobs/</code>, and the explorer below walks through every one of them.</p>
 
   <h2>Where the sample data comes from</h2>
-  <p>Every record in the explorer is the output of a real run, never typed in. The stage inputs and outputs were produced by Expanso Edge {engine} on {built}.</p>
+  <p>Every record in the explorer is real output, never typed in. The stage inputs and outputs were produced by Expanso Edge {engine} on {built}.</p>
   <ul class="plain">{sample_data}</ul>
 </section>
 

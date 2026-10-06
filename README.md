@@ -57,7 +57,10 @@ uv run edge-sensor --replay fixtures/scenes/south.jsonl \
 
 ## Run it through Expanso Edge
 
-On the booth Mac with two webcams, `just up` starts everything: the Expanso Edge node, the fusion node and dashboard, go2rtc and the camera capture. `just down` stops and cleans up all of it and checks that its ports are free.
+On the booth Mac with two webcams, `just up` deploys or updates the Cloud jobs,
+then starts the Expanso Edge node, fusion node and dashboard, go2rtc, and camera
+capture. `just down` stops and cleans up all of it and checks that its ports are
+free.
 
 ```bash
 just up

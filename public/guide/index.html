@@ -48,7 +48,7 @@
   <p>The Edge ISR cascade is the headline: five pipelines. Box counting is the original warehouse demo: four pipelines. Both run as Expanso Edge jobs from <code>jobs/</code>, and the explorer below walks through every one of them.</p>
 
   <h2>Where the sample data comes from</h2>
-  <p>Every record in the explorer is the output of a real run, never typed in. The stage inputs and outputs were produced by Expanso Edge v2.1.21 on 2026-10-05.</p>
+  <p>Every record in the explorer is real output, never typed in. The stage inputs and outputs were produced by Expanso Edge v2.1.21 on 2026-10-05.</p>
   <ul class="plain"><li><code>fixtures/scenes/north.jsonl</code>: YOLO yolov8s detections measured on a viewing window panned down the Ultralytics sample photograph bus.jpg (41 frames).</li><li><code>fixtures/scenes/south.jsonl</code>: The same weights on a window panned across zidane.jpg (41 frames).</li><li><code>fixtures/capture/</code>: The output of the real producers on those scenes: edge-sensor, edge-orchestrator and the fuse correlator, with the analyst answers replayed from fixtures/model/.</li><li><code>recordings (not committed)</code>: Two cameras filmed for two minutes while boxes were carried through a door. esc-infer, detect_loop.py and esc-record ran on that footage with the yolov8s-worldv2 weights; their output is in fixtures/capture/.</li></ul>
 </section>
 
@@ -2172,8 +2172,8 @@ mapping: &#x27;root = if this.fused_alert == true { this } else { deleted() }
   &quot;type&quot;: &quot;crowd_threshold&quot;
 }</pre></div></div></div></article><article class="stage" data-stage-id="fuse-add-lineage" data-pipeline="fuse" data-index="2" hidden data-input-file="data/stages/fuse/03-add-lineage.input.jsonl" data-output-file="data/stages/fuse/03-add-lineage.output.jsonl"><h4 class="stage-h">Stage 3 of 5: add-lineage</h4><p class="what">Stamps which pipeline and node handled the record.</p><p class="counts">1 in, 1 out</p><h5 class="io-h">Configuration</h5><pre class="code" data-yaml tabindex="0">label: add-lineage
 mapping: &quot;root = this\nroot.archive = {\n  \&quot;pipeline\&quot;: \&quot;fuse\&quot;,\n  \&quot;pipeline_version\&quot;\
-  : \&quot;2.0.0\&quot;,\n  \&quot;fused_at_iso\&quot;: this.fused_at.ts_format(\&quot;2006-01-02T15:04:05.000Z\&quot;),\n\
-  \  \&quot;processor\&quot;: \&quot;python-windowed-correlator\&quot;\n}\n&quot;</pre><div class="io"><div class="io-col"><h5 class="io-h">Input from the previous stage</h5><div data-input><pre class="json" data-public-json tabindex="0">{
+  : \&quot;2.0.0\&quot;,\n\&quot;fused_at_iso\&quot;: this.fused_at.ts_format(\&quot;2006-01-02T15:04:05.000Z\&quot;, \&quot;\
+  UTC\&quot;),\n  \&quot;processor\&quot;: \&quot;python-windowed-correlator\&quot;\n}\n&quot;</pre><div class="io"><div class="io-col"><h5 class="io-h">Input from the previous stage</h5><div data-input><pre class="json" data-public-json tabindex="0">{
   &quot;counts&quot;: {
     &quot;sensor-north&quot;: 3,
     &quot;sensor-south&quot;: 1

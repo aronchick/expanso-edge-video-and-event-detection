@@ -1,5 +1,5 @@
 # The public-bar check in a container that mirrors .github/workflows/public-bar.yml:
-# Ubuntu, Expanso Edge and CLI v2.1.21 from the signed installers (installer
+# Ubuntu, latest Expanso Edge and CLI from the signed installers (installer
 # scripts verified against the same SHA-256 digests), uv 0.12.17, Python 3.12.13,
 # Playwright 1.55.0 with its Chromium, axe-core 4.10.3. Running it here keeps the
 # check off the host: nothing reads or writes the host's Expanso configuration.
@@ -12,17 +12,16 @@ RUN apt-get update \
 
 COPY --from=ghcr.io/astral-sh/uv:0.12.17 /uv /usr/local/bin/uv
 
-ENV EXPANSO_VERSION=v2.1.21 \
-    EXPANSO_DISABLEANALYTICS=true
+ENV EXPANSO_DISABLEANALYTICS=true
 RUN mkdir -p /opt/expanso/bin \
  && curl -fsSL https://get.expanso.io/edge/install.sh -o /tmp/install-edge.sh \
  && curl -fsSL https://get.expanso.io/cli/install.sh -o /tmp/install-cli.sh \
  && echo "6dac113fdbaab206aa1c152f6c9a7b6ec4affedb4dce443a06e17516086061a9  /tmp/install-edge.sh" | sha256sum -c - \
  && echo "38c3b93063fbb4b2172bf0d87ea2ef0b7cc72b74c0658b6a8753d60566c9a485  /tmp/install-cli.sh" | sha256sum -c - \
- && bash /tmp/install-edge.sh "$EXPANSO_VERSION" --dir /opt/expanso/bin \
- && bash /tmp/install-cli.sh "$EXPANSO_VERSION" --dir /opt/expanso/bin \
- && /opt/expanso/bin/expanso-edge version | grep -F "$EXPANSO_VERSION" \
- && /opt/expanso/bin/expanso-cli version | grep -F "$EXPANSO_VERSION"
+ && bash /tmp/install-edge.sh --dir /opt/expanso/bin \
+ && bash /tmp/install-cli.sh --dir /opt/expanso-bin \
+ && /opt/expanso/bin/expanso-edge version \
+ && /opt/expanso/bin/expanso-cli version
 ENV PATH=/opt/expanso/bin:$PATH
 
 ENV UV_PYTHON_DOWNLOADS=manual

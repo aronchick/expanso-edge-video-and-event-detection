@@ -361,7 +361,7 @@ tunnel-down:
 # each Anker stream. No fake events. Also bootstraps + runs the Expanso
 # Edge daemon so the laptop appears as a node in cloud.expanso.io and
 # jobs can be deployed from the cloud control plane.
-up: install-go2rtc
+up: install-go2rtc deploy-jobs
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p {{state_dir}}
@@ -445,7 +445,7 @@ up: install-go2rtc
     echo "    Watch the dashboard light up with bracketed detections."
     echo "    Stop later: click Stop in the UI, or 'just detect-off'."
     echo
-    echo "  First-time-on-this-cluster: 'just deploy-jobs' to push the YAML specs."
+    echo "  Cloud specs were deployed or updated by 'just up'."
     echo "  CLI shortcut (no UI):       'just detect-on' starts both at once."
     echo
     echo "  follow: just logs    stop: just down"

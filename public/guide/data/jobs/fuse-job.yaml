@@ -48,7 +48,7 @@ config:
           root.archive = {
             "pipeline": "fuse",
             "pipeline_version": "2.0.0",
-            "fused_at_iso": this.fused_at.ts_format("2006-01-02T15:04:05.000Z"),
+          "fused_at_iso": this.fused_at.ts_format("2006-01-02T15:04:05.000Z", "UTC"),
             "processor": "python-windowed-correlator"
           }
       - label: sign-record
