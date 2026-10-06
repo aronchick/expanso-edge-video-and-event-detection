@@ -239,7 +239,7 @@ function summarizeLabels(labels) {
 // Trim a ticker so only whole rows show. In the stage layout the ticker has a
 // fixed height; in the stacked layout it is auto height and nothing is cut.
 function trimTicker(container) {
-  while (container.children.length > 1 && container.scrollHeight > container.clientHeight + 1) {
+  while (container.children.length > 0 && container.scrollHeight > container.clientHeight + 1) {
     container.lastChild.remove();
   }
 }
