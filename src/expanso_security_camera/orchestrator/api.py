@@ -154,9 +154,9 @@ def create_app(
     async def receive_event(request: Request) -> dict:
         event = await request.json()
 
-        # If the operator simulated cloud-down, strip Gemini descriptions so
+        # If the operator took the cloud link down, strip analyst descriptions so
         # the dashboard reflects degraded state for events received during
-        # the simulated outage. The sensor itself doesn't know we're
+        # the outage. The sensor itself doesn't know we're
         # pretending; this is a stage convenience.
         if not metrics.is_cloud_up() and event.get("gemini_description"):
             event["gemini_description"] = None

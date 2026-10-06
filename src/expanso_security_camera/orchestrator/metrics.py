@@ -4,7 +4,7 @@ Per DEMO_UI_SPEC.md §5.1. Maintains a 60s window of event timestamps for
 events/min, plus running totals for events, fused alerts, and signed
 events.
 
-Also tracks the simulated cloud-up state (per §5.3 / §4.3) so /demo/wan-down
+Also tracks the operator-set cloud-up state (per §5.3 / §4.3) so /demo/wan-down
 flips a flag the orchestrator's event handler reads.
 """
 
