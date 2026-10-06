@@ -1,0 +1,83 @@
+# Box counting evidence: segmented video recorder.
+#
+# esc-record writes each camera's main stream to segmented MP4 files and prints
+# one `recording_segment` JSON event per finished segment (path, start and end,
+# frames, size). The processors stamp source and write a catalog; analytics
+# runs on the sub-stream in parallel, this job keeps the evidence.
+#
+# Settings come from the node's environment:
+#   EDGE_ISR_HOME     checkout of this repository   (default /opt/edge-isr/app)
+#   ESC_CONFIG        esc-record config             (default $EDGE_ISR_HOME/config.yaml)
+#   RECORDING_DIR     where segments are written    (default /opt/box-monitor/recordings)
+#   SEGMENT_DURATION  seconds per segment           (default 300)
+#   BOX_DATA_DIR      recording catalog output      (default /opt/box-monitor)
+#
+# Deploy: expanso-cli job deploy jobs/recorder-job.yaml
+
+name: security-camera-recorder
+type: pipeline
+
+selector:
+  match_labels:
+    role: box-detector
+
+config:
+  input:
+    subprocess:
+      name: /usr/bin/env
+      args:
+        - SEGMENT_DURATION=${SEGMENT_DURATION:300}
+        - RECORDING_DIR=${RECORDING_DIR:/opt/box-monitor/recordings}
+        - uv
+        - run
+        - --project
+        - ${EDGE_ISR_HOME:/opt/edge-isr/app}
+        - --extra
+        - vision
+        - esc-record
+        - ${ESC_CONFIG:/opt/edge-isr/app/config.yaml}
+      codec: lines
+      restart_on_exit: true
+      max_buffer: 1048576
+
+  pipeline:
+    threads: 1
+    processors:
+      - label: parse-segment
+        mapping: root = content().string().parse_json().catch(deleted())
+
+      - label: add-source
+        mapping: |
+          root = this
+          root.source = {
+            "device_id": "${DEVICE_ID:recomputer-j3011-001}",
+            "site_id": "${SITE_ID:warehouse-demo}",
+            "pipeline_version": "2.0.0"
+          }
+
+      - label: log-segment
+        log:
+          level: INFO
+          message: recording segment
+          fields_mapping: |
+            root.camera = this.camera_id
+            root.frames = this.frames
+            root.size_bytes = this.size_bytes
+
+  output:
+    broker:
+      pattern: fan_out
+      outputs:
+        - label: catalog-file
+          file:
+            path: ${BOX_DATA_DIR:/opt/box-monitor}/recording-catalog.ndjson
+            codec: lines
+          processors:
+            - label: stamp-recorded-at
+              mapping: |
+                root = this
+                root.recorded_at = now().ts_format("2006-01-02T15:04:05.000Z")
+
+        - label: catalog-stdout
+          stdout:
+            codec: lines

@@ -60,6 +60,9 @@ class SegmentRecorder:
         self.segment_duration = segment_duration_seconds
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
+        self.finished = False  # a recorded input file ran to its end
+        self._is_file = False
+        self._ended = False
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -79,6 +82,7 @@ class SegmentRecorder:
     def _record_loop(self) -> None:
         url = self.config.url
         source = int(url) if url.isdigit() else url
+        self._is_file = isinstance(source, str) and os.path.isfile(source)
 
         while not self._stop_event.is_set():
             try:
@@ -104,6 +108,10 @@ class SegmentRecorder:
                 while not self._stop_event.is_set():
                     self._record_segment(cap, fps, width, height)
 
+                    if self._is_file and self._ended:
+                        self.finished = True
+                        self._stop_event.set()
+
                 cap.release()
 
             except Exception as e:
@@ -128,18 +136,22 @@ class SegmentRecorder:
         start_time = now
         frame_count = 0
         segment_start = time.time()
+        self._ended = False
 
         try:
             while not self._stop_event.is_set():
                 ret, frame = cap.read()
                 if not ret:
+                    self._ended = True
                     log(f"[{self.config.camera_id}] Frame read failed during recording")
                     break
 
                 writer.write(frame)
                 frame_count += 1
 
-                elapsed = time.time() - segment_start
+                # A live stream is cut by the wall clock; a recorded file by the
+                # amount of video written, since it is read faster than it played.
+                elapsed = frame_count / fps if self._is_file else time.time() - segment_start
                 if elapsed >= self.segment_duration:
                     break
 
@@ -207,7 +219,7 @@ def run_recorder(config: DemoConfig) -> None:
     log("\nRecording started. Press Ctrl+C to stop.\n")
 
     try:
-        while True:
+        while not all(r.finished for r in recorders):
             time.sleep(1)
     except KeyboardInterrupt:
         log("\nStopping recorders...")

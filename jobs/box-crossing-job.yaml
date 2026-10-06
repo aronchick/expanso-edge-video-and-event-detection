@@ -1,0 +1,113 @@
+# Box counting, the directional variant: line-crossing events from esc-infer.
+#
+# esc-infer runs YOLO with ByteTrack on each camera, counts objects that cross
+# a virtual line, and prints one JSON event per crossing plus a reconciliation
+# event while arrivals and departures disagree. The processors validate the
+# schema, stamp source and lineage, and normalise the raw detector class
+# (suitcase, cardboard box, package ...) to a business label. To change what is
+# counted, edit the class mapping in the normalise-class stage.
+#
+# Settings come from the node's environment:
+#   EDGE_ISR_HOME  checkout of this repository   (default /opt/edge-isr/app)
+#   ESC_CONFIG     esc-infer config               (default $EDGE_ISR_HOME/config.yaml)
+#   BOX_DATA_DIR   enriched event output          (default /opt/box-monitor)
+#   ESC_REPLAY_SPEED  1.0 plays a recorded file at its own speed
+#
+# Deploy: expanso-cli job deploy jobs/box-crossing-job.yaml
+
+name: box-crossing
+type: pipeline
+
+selector:
+  match_labels:
+    role: box-detector
+
+config:
+  input:
+    subprocess:
+      name: /usr/bin/env
+      args:
+        - uv
+        - run
+        - --project
+        - ${EDGE_ISR_HOME:/opt/edge-isr/app}
+        - --extra
+        - vision
+        - esc-infer
+        - ${ESC_CONFIG:/opt/edge-isr/app/config.yaml}
+      codec: lines
+      restart_on_exit: true
+      max_buffer: 1048576
+
+  pipeline:
+    threads: 1
+    processors:
+      - label: parse-event
+        mapping: root = content().string().parse_json().catch(deleted())
+
+      - label: require-schema
+        mapping: |
+          root = if this.schema_version == null { deleted() } else { this }
+
+      - label: add-source
+        mapping: |
+          root = this
+          root.source = {
+            "device_id": "${DEVICE_ID:recomputer-j3011-001}",
+            "site_id": "${SITE_ID:warehouse-demo}",
+            "camera_id": this.camera_id.or("unknown"),
+            "pipeline_version": "2.0.0"
+          }
+
+      # Only crossings carry a detection. Reconciliation events pass through.
+      - label: normalise-class
+        mapping: |
+          let mapped = match this.detection.object_class_raw.or("") {
+            "suitcase" => "box",
+            "backpack" => "box",
+            "handbag" => "box",
+            "sports ball" => "box",
+            "bottle" => "box",
+            "cup" => "box",
+            "cardboard box" => "box",
+            "shipping box" => "box",
+            "package" => "box",
+            "person" => "person",
+            _ => "object"
+          }
+          root = this
+          root.detection.object_class = if this.detection != null { $mapped } else { deleted() }
+
+      - label: add-lineage
+        mapping: |
+          root = this
+          root.lineage = {
+            "edge_node": "${EDGE_NODE_ID:edge-node}",
+            "pipeline": "box-crossing"
+          }
+
+      - label: log-event
+        log:
+          level: INFO
+          message: box event
+          fields_mapping: |
+            root.event_type = this.event_type
+            root.camera = this.camera_id.or("")
+
+  output:
+    broker:
+      pattern: fan_out
+      outputs:
+        - label: enriched-file
+          file:
+            path: ${BOX_DATA_DIR:/opt/box-monitor}/crossing-events.ndjson
+            codec: lines
+          processors:
+            - label: stamp-ingested-at
+              mapping: |
+                root = this
+                root.lineage.ingested_at = now().ts_format("2006-01-02T15:04:05.000Z")
+
+        - label: enriched-stdout
+          stdout:
+            codec: lines

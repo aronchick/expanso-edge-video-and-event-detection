@@ -1,0 +1,84 @@
+# Edge ISR cross-zone people-count merge, as its own observable pipeline.
+#
+# The input is scripts/fuse-correlator.py, which follows the orchestrator's
+# event log, merges the per-zone people counts and prints one JSON crowd alert
+# when the combined total spans both cameras. It applies the same rule as the
+# in-process ZoneCounter that drives the dashboard (zones.py: combined total at
+# least EDGE_CROWD_THRESHOLD, every zone at least one, busiest zone at least
+# two). The processors keep real alerts, stamp lineage and a SHA-256 signature
+# over the whole record, and write an audit file.
+#
+# Settings come from the node's environment:
+#   EDGE_ISR_HOME        checkout of this repository   (default /opt/edge-isr/app)
+#   EDGE_ISR_STATE       event log and audit files     (default /opt/edge-isr/state)
+#   EDGE_CROWD_THRESHOLD combined people needed to flag (default 3)
+#
+# Deploy: expanso-cli job deploy jobs/fuse-job.yaml
+
+name: fuse
+type: pipeline
+
+selector:
+  match_labels:
+    role: security-camera-host
+
+config:
+  input:
+    subprocess:
+      name: /usr/bin/env
+      args:
+        - EDGE_CROWD_THRESHOLD=${EDGE_CROWD_THRESHOLD:3}
+        - python3
+        - ${EDGE_ISR_HOME:/opt/edge-isr/app}/scripts/fuse-correlator.py
+        - ${EDGE_ISR_STATE:/opt/edge-isr/state}/events.ndjson
+      codec: lines
+      restart_on_exit: true
+      max_buffer: 1048576
+
+  pipeline:
+    threads: 1
+    processors:
+      - label: parse-alert
+        mapping: root = content().string().parse_json().catch(deleted())
+
+      - label: keep-fused-alerts
+        mapping: |
+          root = if this.fused_alert == true { this } else { deleted() }
+
+      - label: add-lineage
+        mapping: |
+          root = this
+          root.archive = {
+            "pipeline": "fuse",
+            "pipeline_version": "2.0.0",
+            "fused_at_iso": this.fused_at.ts_format("2006-01-02T15:04:05.000Z"),
+            "processor": "python-windowed-correlator"
+          }
+
+      - label: sign-record
+        mapping: |
+          let payload = this.format_json()
+          root = this
+          root.fusion_signature = "fuse-sha256:" + $payload.hash("sha256").encode("hex")
+
+      - label: log-alert
+        log:
+          level: WARN
+          message: crowd alert
+          fields_mapping: |
+            root.total = this.total
+            root.threshold = this.threshold
+            root.sectors = this.sectors
+
+  output:
+    broker:
+      pattern: fan_out
+      outputs:
+        - label: alerts-stdout
+          stdout:
+            codec: lines
+
+        - label: alerts-file
+          file:
+            path: ${EDGE_ISR_STATE:/opt/edge-isr/state}/fused-alerts.ndjson
+            codec: lines

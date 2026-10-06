@@ -1,88 +1,52 @@
-"""Tests for scripts/detect_loop.py — env parsing, output format, model selection."""
+"""scripts/detect_loop.py: environment handling, camera sources, model choice."""
 
 from __future__ import annotations
 
+import importlib.util
 import json
+from pathlib import Path
+
+SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "detect_loop.py"
+spec = importlib.util.spec_from_file_location("detect_loop", SCRIPT)
+detect_loop = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(detect_loop)
 
 
-class TestDetectLoopEnvParsing:
-    """Test .env file parsing logic from detect_loop.py."""
+def test_parse_env_file_skips_comments_and_keeps_equals_in_values(tmp_path):
+    env_file = tmp_path / ".env"
+    env_file.write_text("CAM_USER=admin\n# comment\n\nURL=rtsp://user:p=ss@host\n")
+    env = detect_loop.parse_env_file(env_file)
 
-    def test_parse_env_file(self, tmp_path):
-        env_file = tmp_path / ".env"
-        env_file.write_text(
-            "CAM_USER=admin\n"
-            "CAM_PASS_OUTSIDE=pass1\n"
-            "CAM_PASS_INSIDE=pass2\n"
-            "CAM_IP_OUTSIDE=192.168.1.10\n"
-            "CAM_IP_INSIDE=192.168.1.11\n"
-            "# This is a comment\n"
-            "\n"
-            "EXTRA_VAR=value\n"
-        )
-        env = {}
-        with open(str(env_file)) as f:
-            for line in f:
-                if "=" in line and not line.startswith("#"):
-                    k, v = line.strip().split("=", 1)
-                    env[k] = v
-        assert env["CAM_USER"] == "admin"
-        assert env["CAM_PASS_OUTSIDE"] == "pass1"
-        assert env["CAM_IP_INSIDE"] == "192.168.1.11"
-        assert "#" not in env  # Comment not parsed
-
-    def test_env_with_equals_in_value(self, tmp_path):
-        env_file = tmp_path / ".env"
-        env_file.write_text("URL=rtsp://user:p=ss@host\n")
-        env = {}
-        with open(str(env_file)) as f:
-            for line in f:
-                if "=" in line and not line.startswith("#"):
-                    k, v = line.strip().split("=", 1)
-                    env[k] = v
-        assert env["URL"] == "rtsp://user:p=ss@host"
+    assert env == {"CAM_USER": "admin", "URL": "rtsp://user:p=ss@host"}
+    assert detect_loop.parse_env_file(tmp_path / "missing") == {}
 
 
-class TestDetectLoopModelSelection:
-    """Test that detect_loop.py prefers fine-tuned model."""
+def test_camera_sources_prefer_a_full_url_over_credentials():
+    env = {
+        "CAM_USER": "admin",
+        "CAM_PASS_OUTSIDE": "p1",
+        "CAM_IP_OUTSIDE": "192.168.1.10",
+        "CAM_URL_INSIDE": "/data/recordings/inside.mp4",
+    }
+    sources = detect_loop.camera_sources(env)
 
-    def test_finetuned_path_check(self, tmp_path):
-        finetuned = tmp_path / "box-detector-finetuned.pt"
-        assert not finetuned.exists()  # No fine-tuned model
-        finetuned.touch()
-        assert finetuned.exists()  # Now it exists
+    assert sources["cam-outside"] == "rtsp://admin:p1@192.168.1.10:554/h264Preview_01_sub"
+    assert sources["cam-inside"] == "/data/recordings/inside.mp4"
 
 
-class TestDetectLoopOutputFormat:
-    """Test the NDJSON event format."""
+def test_choose_model_prefers_the_finetuned_weights(tmp_path):
+    assert detect_loop.choose_model(tmp_path, None) == ("yolov8s-worldv2.pt", 0.08, True)
+    (tmp_path / detect_loop.FINETUNED_NAME).touch()
+    weights, conf, world = detect_loop.choose_model(tmp_path, None)
 
-    def test_event_schema(self):
-        import time
+    assert weights.endswith(detect_loop.FINETUNED_NAME)
+    assert (conf, world) == (0.25, False)
+    assert detect_loop.choose_model(tmp_path, "custom.pt")[0] == "custom.pt"
 
-        event = {
-            "schema_version": "1.0.0",
-            "event_type": "detection_scan",
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "detections": {
-                "cam-outside": {"boxes": 5, "status": "online"},
-                "cam-inside": {"boxes": 0, "status": "offline"},
-            },
-        }
-        serialized = json.dumps(event)
-        parsed = json.loads(serialized)
-        assert parsed["schema_version"] == "1.0.0"
-        assert parsed["event_type"] == "detection_scan"
-        assert parsed["detections"]["cam-outside"]["boxes"] == 5
 
-    def test_detections_json_format(self, tmp_path):
-        detections = {
-            "cam-outside": {"boxes": 3, "status": "online"},
-            "cam-inside": {"boxes": 0, "status": "online"},
-        }
-        det_path = tmp_path / "detections.json"
-        with open(str(det_path), "w") as f:
-            json.dump(detections, f)
-        data = json.loads(det_path.read_text())
-        assert "cam-outside" in data
-        assert data["cam-outside"]["boxes"] == 3
-        assert data["cam-outside"]["status"] == "online"
+def test_scan_event_matches_the_pipeline_contract():
+    event = detect_loop.scan_event({"cam-outside": {"boxes": 3, "status": "online"}})
+
+    assert event["schema_version"] == "1.0.0"
+    assert event["event_type"] == "detection_scan"
+    assert json.loads(json.dumps(event))["detections"]["cam-outside"]["boxes"] == 3

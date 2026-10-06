@@ -299,9 +299,16 @@ def run_pipeline(config: DemoConfig) -> None:
     finetuned = Path("box-detector-finetuned.pt")
     if finetuned.exists() and config.detect_mode == "box":
         log(f"Using fine-tuned model: {finetuned}")
-        model = YOLO(str(finetuned))
+        weights = str(finetuned)
     else:
-        model = YOLO(f"{config.model_name}.pt")
+        weights = f"{config.model_name}.pt"
+
+    model = YOLO(weights)
+    # Report what actually ran, not what the config hoped for.
+    weights_stem = Path(weights).stem
+    engine_name = "tensorrt" if weights.endswith(".engine") else "pytorch"
+    precision = config.model_precision if engine_name == "tensorrt" else "fp32"
+    runtime_version = getattr(sys.modules.get("ultralytics"), "__version__", "unknown")
 
     # If using YOLO-World (open-vocabulary), set custom classes
     if "world" in config.model_name.lower() and not finetuned.exists():
@@ -461,13 +468,16 @@ def run_pipeline(config: DemoConfig) -> None:
                             crossing_line_id=f"{cam_id}-line-1",
                         ),
                         model=ModelInfo(
-                            model_name=config.model_name,
-                            precision=config.model_precision,
+                            model_name=weights_stem,
+                            model_version=runtime_version,
+                            precision=precision,
+                            engine=engine_name,
                             inference_time_ms=round(inference_ms, 1),
                         ),
                         frame=FrameInfo(
                             frame_number=cam_frame_num,
                             frame_timestamp=datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(),
+                            resolution=f"{frame.shape[1]}x{frame.shape[0]}",
                         ),
                         counts={
                             "camera_departures": evt_data["departures"],

@@ -33,8 +33,7 @@ own ground, and the palette is drawn from the subject, not from another demo.
 ## Type
 
 Self-hosted IBM Plex Sans for text and IBM Plex Mono for counts, labels and
-data (`public/edge/fonts`, a copy of `public/fonts` because the orchestrator
-serves only `public/edge`). Sizes come off one scale (13, 15, 18, 22, 32 px,
+data (`public/fonts`, mounted at `/fonts` by the orchestrator). Sizes come off one scale (13, 15, 18, 22, 32 px,
 plus clamped counts); radii off three steps (4px, 8px, pill). Headings are
 sentence case; there are no small uppercase kickers above headings.
 

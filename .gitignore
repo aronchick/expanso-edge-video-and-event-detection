@@ -82,3 +82,6 @@ nohup.out
 # Agent scratch and local permission files
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+
+# public-bar reports
+artifacts/

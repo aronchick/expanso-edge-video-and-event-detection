@@ -1,0 +1,475 @@
+version = 1
+
+[repository]
+name = "demo-drone-detection"
+published = true
+
+[web]
+document = "public/guide/index.html"
+explanation_selector = "#explanation"
+explorer_selector = "#explorer"
+run_selector = "#run"
+deploy_selector = "#deploy"
+
+[browser]
+url = "http://127.0.0.1:18281/guide/"
+ready_url = "http://127.0.0.1:18281/guide/"
+start_command = ["python3", "scripts/serve-guide.py"]
+stop_command = ["python3", "scripts/serve-guide.py", "--stop"]
+theme_toggle_selector = "#theme-toggle"
+stage_selector = "[data-stage-id]"
+current_stage_selector = "[data-stage-id][aria-current='step']"
+scroll_anchor_selector = "#explorer"
+json_selectors = ["[data-public-json]"]
+
+[[browser.controls]]
+id = "copy-stage-yaml"
+kind = "copy"
+selector = "#copy-stage-yaml"
+feedback_selector = "#copy-yaml-status"
+success_text = "Copied"
+failure_text = "Copy failed"
+
+[[browser.controls]]
+id = "copy-stage-output"
+kind = "copy"
+selector = "#copy-stage-output"
+feedback_selector = "#copy-output-status"
+success_text = "Copied"
+failure_text = "Copy failed"
+
+[[browser.controls]]
+id = "download-stage-output"
+kind = "download"
+selector = "#download-stage-output"
+feedback_selector = "#download-output-status"
+success_text = "Downloaded"
+failure_text = "Download failed"
+failure_url_pattern = "**/data/stages/**"
+
+[[browser.controls]]
+id = "copy-run-install"
+kind = "copy"
+selector = "#copy-run-install"
+feedback_selector = "#feedback-run-install"
+success_text = "Copied"
+failure_text = "Copy failed"
+
+[[browser.controls]]
+id = "copy-deploy-jobs"
+kind = "copy"
+selector = "#copy-dep-jobs"
+feedback_selector = "#feedback-dep-jobs"
+success_text = "Copied"
+failure_text = "Copy failed"
+
+[[browser.controls]]
+id = "download-job"
+kind = "download"
+selector = "#download-job"
+feedback_selector = "#download-job-status"
+success_text = "Downloaded"
+failure_text = "Download failed"
+failure_url_pattern = "**/data/jobs/**"
+
+[[pipelines]]
+id = "sensor-north"
+path = "jobs/sensor-north-job.yaml"
+input = "fixtures/sensor-north/input.jsonl"
+expected = "fixtures/sensor-north/expected.jsonl"
+timeout_seconds = 60
+
+[[stages]]
+id = "sensor-north-parse-event"
+pipeline = "sensor-north"
+selector = "[data-stage-id='sensor-north-parse-event']"
+input = "fixtures/sensor-north/stages/01-parse-event.input.jsonl"
+output = "fixtures/sensor-north/stages/01-parse-event.output.jsonl"
+
+[[stages]]
+id = "sensor-north-validate-event"
+pipeline = "sensor-north"
+selector = "[data-stage-id='sensor-north-validate-event']"
+input = "fixtures/sensor-north/stages/02-validate-event.input.jsonl"
+output = "fixtures/sensor-north/stages/02-validate-event.output.jsonl"
+
+[[stages]]
+id = "sensor-north-add-lineage"
+pipeline = "sensor-north"
+selector = "[data-stage-id='sensor-north-add-lineage']"
+input = "fixtures/sensor-north/stages/03-add-lineage.input.jsonl"
+output = "fixtures/sensor-north/stages/03-add-lineage.output.jsonl"
+
+[[stages]]
+id = "sensor-north-deliver"
+pipeline = "sensor-north"
+selector = "[data-stage-id='sensor-north-deliver']"
+input = "fixtures/sensor-north/stages/04-deliver.input.jsonl"
+output = "fixtures/sensor-north/stages/04-deliver.output.jsonl"
+
+[[pipelines]]
+id = "sensor-south"
+path = "jobs/sensor-south-job.yaml"
+input = "fixtures/sensor-south/input.jsonl"
+expected = "fixtures/sensor-south/expected.jsonl"
+timeout_seconds = 60
+
+[[stages]]
+id = "sensor-south-parse-event"
+pipeline = "sensor-south"
+selector = "[data-stage-id='sensor-south-parse-event']"
+input = "fixtures/sensor-south/stages/01-parse-event.input.jsonl"
+output = "fixtures/sensor-south/stages/01-parse-event.output.jsonl"
+
+[[stages]]
+id = "sensor-south-validate-event"
+pipeline = "sensor-south"
+selector = "[data-stage-id='sensor-south-validate-event']"
+input = "fixtures/sensor-south/stages/02-validate-event.input.jsonl"
+output = "fixtures/sensor-south/stages/02-validate-event.output.jsonl"
+
+[[stages]]
+id = "sensor-south-add-lineage"
+pipeline = "sensor-south"
+selector = "[data-stage-id='sensor-south-add-lineage']"
+input = "fixtures/sensor-south/stages/03-add-lineage.input.jsonl"
+output = "fixtures/sensor-south/stages/03-add-lineage.output.jsonl"
+
+[[stages]]
+id = "sensor-south-deliver"
+pipeline = "sensor-south"
+selector = "[data-stage-id='sensor-south-deliver']"
+input = "fixtures/sensor-south/stages/04-deliver.input.jsonl"
+output = "fixtures/sensor-south/stages/04-deliver.output.jsonl"
+
+[[pipelines]]
+id = "fusion-node"
+path = "jobs/orchestrator-job.yaml"
+input = "fixtures/fusion-node/input.jsonl"
+expected = "fixtures/fusion-node/expected.jsonl"
+timeout_seconds = 60
+
+[[stages]]
+id = "fusion-node-parse-line"
+pipeline = "fusion-node"
+selector = "[data-stage-id='fusion-node-parse-line']"
+input = "fixtures/fusion-node/stages/01-parse-line.input.jsonl"
+output = "fixtures/fusion-node/stages/01-parse-line.output.jsonl"
+
+[[stages]]
+id = "fusion-node-classify"
+pipeline = "fusion-node"
+selector = "[data-stage-id='fusion-node-classify']"
+input = "fixtures/fusion-node/stages/02-classify.input.jsonl"
+output = "fixtures/fusion-node/stages/02-classify.output.jsonl"
+
+[[stages]]
+id = "fusion-node-add-lineage"
+pipeline = "fusion-node"
+selector = "[data-stage-id='fusion-node-add-lineage']"
+input = "fixtures/fusion-node/stages/03-add-lineage.input.jsonl"
+output = "fixtures/fusion-node/stages/03-add-lineage.output.jsonl"
+
+[[stages]]
+id = "fusion-node-deliver"
+pipeline = "fusion-node"
+selector = "[data-stage-id='fusion-node-deliver']"
+input = "fixtures/fusion-node/stages/04-deliver.input.jsonl"
+output = "fixtures/fusion-node/stages/04-deliver.output.jsonl"
+
+[[pipelines]]
+id = "fuse"
+path = "jobs/fuse-job.yaml"
+input = "fixtures/fuse/input.jsonl"
+expected = "fixtures/fuse/expected.jsonl"
+timeout_seconds = 60
+
+[[stages]]
+id = "fuse-parse-alert"
+pipeline = "fuse"
+selector = "[data-stage-id='fuse-parse-alert']"
+input = "fixtures/fuse/stages/01-parse-alert.input.jsonl"
+output = "fixtures/fuse/stages/01-parse-alert.output.jsonl"
+
+[[stages]]
+id = "fuse-keep-fused-alerts"
+pipeline = "fuse"
+selector = "[data-stage-id='fuse-keep-fused-alerts']"
+input = "fixtures/fuse/stages/02-keep-fused-alerts.input.jsonl"
+output = "fixtures/fuse/stages/02-keep-fused-alerts.output.jsonl"
+
+[[stages]]
+id = "fuse-add-lineage"
+pipeline = "fuse"
+selector = "[data-stage-id='fuse-add-lineage']"
+input = "fixtures/fuse/stages/03-add-lineage.input.jsonl"
+output = "fixtures/fuse/stages/03-add-lineage.output.jsonl"
+
+[[stages]]
+id = "fuse-sign-record"
+pipeline = "fuse"
+selector = "[data-stage-id='fuse-sign-record']"
+input = "fixtures/fuse/stages/04-sign-record.input.jsonl"
+output = "fixtures/fuse/stages/04-sign-record.output.jsonl"
+
+[[stages]]
+id = "fuse-deliver"
+pipeline = "fuse"
+selector = "[data-stage-id='fuse-deliver']"
+input = "fixtures/fuse/stages/05-deliver.input.jsonl"
+output = "fixtures/fuse/stages/05-deliver.output.jsonl"
+
+[[pipelines]]
+id = "event-archive"
+path = "jobs/event-archive-job.yaml"
+input = "fixtures/event-archive/input.jsonl"
+expected = "fixtures/event-archive/expected.jsonl"
+timeout_seconds = 60
+
+[[stages]]
+id = "event-archive-parse-event"
+pipeline = "event-archive"
+selector = "[data-stage-id='event-archive-parse-event']"
+input = "fixtures/event-archive/stages/01-parse-event.input.jsonl"
+output = "fixtures/event-archive/stages/01-parse-event.output.jsonl"
+
+[[stages]]
+id = "event-archive-keep-sensor-events"
+pipeline = "event-archive"
+selector = "[data-stage-id='event-archive-keep-sensor-events']"
+input = "fixtures/event-archive/stages/02-keep-sensor-events.input.jsonl"
+output = "fixtures/event-archive/stages/02-keep-sensor-events.output.jsonl"
+
+[[stages]]
+id = "event-archive-check-signature"
+pipeline = "event-archive"
+selector = "[data-stage-id='event-archive-check-signature']"
+input = "fixtures/event-archive/stages/03-check-signature.input.jsonl"
+output = "fixtures/event-archive/stages/03-check-signature.output.jsonl"
+
+[[stages]]
+id = "event-archive-add-lineage"
+pipeline = "event-archive"
+selector = "[data-stage-id='event-archive-add-lineage']"
+input = "fixtures/event-archive/stages/04-add-lineage.input.jsonl"
+output = "fixtures/event-archive/stages/04-add-lineage.output.jsonl"
+
+[[stages]]
+id = "event-archive-deliver"
+pipeline = "event-archive"
+selector = "[data-stage-id='event-archive-deliver']"
+input = "fixtures/event-archive/stages/05-deliver.input.jsonl"
+output = "fixtures/event-archive/stages/05-deliver.output.jsonl"
+
+[[pipelines]]
+id = "yolo-detector"
+path = "jobs/yolo-detector-job.yaml"
+input = "fixtures/yolo-detector/input.jsonl"
+expected = "fixtures/yolo-detector/expected.jsonl"
+timeout_seconds = 60
+
+[[stages]]
+id = "yolo-detector-parse-scan"
+pipeline = "yolo-detector"
+selector = "[data-stage-id='yolo-detector-parse-scan']"
+input = "fixtures/yolo-detector/stages/01-parse-scan.input.jsonl"
+output = "fixtures/yolo-detector/stages/01-parse-scan.output.jsonl"
+
+[[stages]]
+id = "yolo-detector-add-source"
+pipeline = "yolo-detector"
+selector = "[data-stage-id='yolo-detector-add-source']"
+input = "fixtures/yolo-detector/stages/02-add-source.input.jsonl"
+output = "fixtures/yolo-detector/stages/02-add-source.output.jsonl"
+
+[[stages]]
+id = "yolo-detector-deliver"
+pipeline = "yolo-detector"
+selector = "[data-stage-id='yolo-detector-deliver']"
+input = "fixtures/yolo-detector/stages/03-deliver.input.jsonl"
+output = "fixtures/yolo-detector/stages/03-deliver.output.jsonl"
+
+[[pipelines]]
+id = "security-camera-events"
+path = "jobs/security-camera-events-job.yaml"
+input = "fixtures/security-camera-events/input.jsonl"
+expected = "fixtures/security-camera-events/expected.jsonl"
+timeout_seconds = 60
+
+[[stages]]
+id = "security-camera-events-parse-scan"
+pipeline = "security-camera-events"
+selector = "[data-stage-id='security-camera-events-parse-scan']"
+input = "fixtures/security-camera-events/stages/01-parse-scan.input.jsonl"
+output = "fixtures/security-camera-events/stages/01-parse-scan.output.jsonl"
+
+[[stages]]
+id = "security-camera-events-require-schema"
+pipeline = "security-camera-events"
+selector = "[data-stage-id='security-camera-events-require-schema']"
+input = "fixtures/security-camera-events/stages/02-require-schema.input.jsonl"
+output = "fixtures/security-camera-events/stages/02-require-schema.output.jsonl"
+
+[[stages]]
+id = "security-camera-events-add-source"
+pipeline = "security-camera-events"
+selector = "[data-stage-id='security-camera-events-add-source']"
+input = "fixtures/security-camera-events/stages/03-add-source.input.jsonl"
+output = "fixtures/security-camera-events/stages/03-add-source.output.jsonl"
+
+[[stages]]
+id = "security-camera-events-add-lineage"
+pipeline = "security-camera-events"
+selector = "[data-stage-id='security-camera-events-add-lineage']"
+input = "fixtures/security-camera-events/stages/04-add-lineage.input.jsonl"
+output = "fixtures/security-camera-events/stages/04-add-lineage.output.jsonl"
+
+[[stages]]
+id = "security-camera-events-deliver"
+pipeline = "security-camera-events"
+selector = "[data-stage-id='security-camera-events-deliver']"
+input = "fixtures/security-camera-events/stages/05-deliver.input.jsonl"
+output = "fixtures/security-camera-events/stages/05-deliver.output.jsonl"
+
+[[pipelines]]
+id = "box-crossing"
+path = "jobs/box-crossing-job.yaml"
+input = "fixtures/box-crossing/input.jsonl"
+expected = "fixtures/box-crossing/expected.jsonl"
+timeout_seconds = 60
+
+[[stages]]
+id = "box-crossing-parse-event"
+pipeline = "box-crossing"
+selector = "[data-stage-id='box-crossing-parse-event']"
+input = "fixtures/box-crossing/stages/01-parse-event.input.jsonl"
+output = "fixtures/box-crossing/stages/01-parse-event.output.jsonl"
+
+[[stages]]
+id = "box-crossing-require-schema"
+pipeline = "box-crossing"
+selector = "[data-stage-id='box-crossing-require-schema']"
+input = "fixtures/box-crossing/stages/02-require-schema.input.jsonl"
+output = "fixtures/box-crossing/stages/02-require-schema.output.jsonl"
+
+[[stages]]
+id = "box-crossing-add-source"
+pipeline = "box-crossing"
+selector = "[data-stage-id='box-crossing-add-source']"
+input = "fixtures/box-crossing/stages/03-add-source.input.jsonl"
+output = "fixtures/box-crossing/stages/03-add-source.output.jsonl"
+
+[[stages]]
+id = "box-crossing-normalise-class"
+pipeline = "box-crossing"
+selector = "[data-stage-id='box-crossing-normalise-class']"
+input = "fixtures/box-crossing/stages/04-normalise-class.input.jsonl"
+output = "fixtures/box-crossing/stages/04-normalise-class.output.jsonl"
+
+[[stages]]
+id = "box-crossing-add-lineage"
+pipeline = "box-crossing"
+selector = "[data-stage-id='box-crossing-add-lineage']"
+input = "fixtures/box-crossing/stages/05-add-lineage.input.jsonl"
+output = "fixtures/box-crossing/stages/05-add-lineage.output.jsonl"
+
+[[stages]]
+id = "box-crossing-deliver"
+pipeline = "box-crossing"
+selector = "[data-stage-id='box-crossing-deliver']"
+input = "fixtures/box-crossing/stages/06-deliver.input.jsonl"
+output = "fixtures/box-crossing/stages/06-deliver.output.jsonl"
+
+[[pipelines]]
+id = "security-camera-recorder"
+path = "jobs/recorder-job.yaml"
+input = "fixtures/security-camera-recorder/input.jsonl"
+expected = "fixtures/security-camera-recorder/expected.jsonl"
+timeout_seconds = 60
+
+[[stages]]
+id = "security-camera-recorder-parse-segment"
+pipeline = "security-camera-recorder"
+selector = "[data-stage-id='security-camera-recorder-parse-segment']"
+input = "fixtures/security-camera-recorder/stages/01-parse-segment.input.jsonl"
+output = "fixtures/security-camera-recorder/stages/01-parse-segment.output.jsonl"
+
+[[stages]]
+id = "security-camera-recorder-add-source"
+pipeline = "security-camera-recorder"
+selector = "[data-stage-id='security-camera-recorder-add-source']"
+input = "fixtures/security-camera-recorder/stages/02-add-source.input.jsonl"
+output = "fixtures/security-camera-recorder/stages/02-add-source.output.jsonl"
+
+[[stages]]
+id = "security-camera-recorder-deliver"
+pipeline = "security-camera-recorder"
+selector = "[data-stage-id='security-camera-recorder-deliver']"
+input = "fixtures/security-camera-recorder/stages/03-deliver.input.jsonl"
+output = "fixtures/security-camera-recorder/stages/03-deliver.output.jsonl"
+
+[[yaml]]
+path = "triggers.yaml"
+role = "support"
+
+[[yaml]]
+path = ".demo.yaml"
+role = "support"
+
+[[yaml]]
+path = "config.example.yaml"
+role = "support"
+
+[[yaml]]
+path = "scripts/expanso-edge-labels.yaml"
+role = "support"
+
+[[yaml]]
+path = "openspec/changes/add-disco-mode/.openspec.yaml"
+role = "support"
+
+[[yaml]]
+path = "public/guide/data/jobs/box-crossing-job.yaml"
+role = "support"
+
+[[yaml]]
+path = "public/guide/data/jobs/event-archive-job.yaml"
+role = "support"
+
+[[yaml]]
+path = "public/guide/data/jobs/fuse-job.yaml"
+role = "support"
+
+[[yaml]]
+path = "public/guide/data/jobs/orchestrator-job.yaml"
+role = "support"
+
+[[yaml]]
+path = "public/guide/data/jobs/recorder-job.yaml"
+role = "support"
+
+[[yaml]]
+path = "public/guide/data/jobs/security-camera-events-job.yaml"
+role = "support"
+
+[[yaml]]
+path = "public/guide/data/jobs/sensor-north-job.yaml"
+role = "support"
+
+[[yaml]]
+path = "public/guide/data/jobs/sensor-south-job.yaml"
+role = "support"
+
+[[yaml]]
+path = "public/guide/data/jobs/yolo-detector-job.yaml"
+role = "support"
+
+[[platforms]]
+name = "aws"
+profile = "managed-cloud"
+files = ["jobs/event-archive-job.yaml"]
+local_replay_pipeline = "event-archive"
+
+[regressions]
+features = "public-features.json"
+removal_files = ["public-removals/*.json"]

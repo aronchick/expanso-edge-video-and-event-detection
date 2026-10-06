@@ -1,0 +1,300 @@
+{
+  "built": "2026-10-05",
+  "engine": "v2.1.21",
+  "pipelines": [
+    {
+      "id": "sensor-north",
+      "example": "edge-isr",
+      "job": "jobs/sensor-north-job.yaml",
+      "name": "sensor-north",
+      "records_in": 41,
+      "records_out": 41,
+      "stages": [
+        {
+          "id": "sensor-north-parse-event",
+          "label": "parse-event",
+          "kind": "mapping"
+        },
+        {
+          "id": "sensor-north-validate-event",
+          "label": "validate-event",
+          "kind": "mapping"
+        },
+        {
+          "id": "sensor-north-add-lineage",
+          "label": "add-lineage",
+          "kind": "mapping"
+        },
+        {
+          "id": "sensor-north-deliver",
+          "label": "deliver",
+          "kind": "output"
+        }
+      ],
+      "delivered_to": "sensor-north.events.ndjson"
+    },
+    {
+      "id": "sensor-south",
+      "example": "edge-isr",
+      "job": "jobs/sensor-south-job.yaml",
+      "name": "sensor-south",
+      "records_in": 41,
+      "records_out": 41,
+      "stages": [
+        {
+          "id": "sensor-south-parse-event",
+          "label": "parse-event",
+          "kind": "mapping"
+        },
+        {
+          "id": "sensor-south-validate-event",
+          "label": "validate-event",
+          "kind": "mapping"
+        },
+        {
+          "id": "sensor-south-add-lineage",
+          "label": "add-lineage",
+          "kind": "mapping"
+        },
+        {
+          "id": "sensor-south-deliver",
+          "label": "deliver",
+          "kind": "output"
+        }
+      ],
+      "delivered_to": "sensor-south.events.ndjson"
+    },
+    {
+      "id": "fusion-node",
+      "example": "edge-isr",
+      "job": "jobs/orchestrator-job.yaml",
+      "name": "fusion-node",
+      "records_in": 83,
+      "records_out": 83,
+      "stages": [
+        {
+          "id": "fusion-node-parse-line",
+          "label": "parse-line",
+          "kind": "mapping"
+        },
+        {
+          "id": "fusion-node-classify",
+          "label": "classify",
+          "kind": "mapping"
+        },
+        {
+          "id": "fusion-node-add-lineage",
+          "label": "add-lineage",
+          "kind": "mapping"
+        },
+        {
+          "id": "fusion-node-deliver",
+          "label": "deliver",
+          "kind": "output"
+        }
+      ],
+      "delivered_to": "tally.ndjson"
+    },
+    {
+      "id": "fuse",
+      "example": "edge-isr",
+      "job": "jobs/fuse-job.yaml",
+      "name": "fuse",
+      "records_in": 1,
+      "records_out": 1,
+      "stages": [
+        {
+          "id": "fuse-parse-alert",
+          "label": "parse-alert",
+          "kind": "mapping"
+        },
+        {
+          "id": "fuse-keep-fused-alerts",
+          "label": "keep-fused-alerts",
+          "kind": "mapping"
+        },
+        {
+          "id": "fuse-add-lineage",
+          "label": "add-lineage",
+          "kind": "mapping"
+        },
+        {
+          "id": "fuse-sign-record",
+          "label": "sign-record",
+          "kind": "mapping"
+        },
+        {
+          "id": "fuse-deliver",
+          "label": "deliver",
+          "kind": "output"
+        }
+      ],
+      "delivered_to": "fused-alerts.ndjson"
+    },
+    {
+      "id": "event-archive",
+      "example": "edge-isr",
+      "job": "jobs/event-archive-job.yaml",
+      "name": "event-archive",
+      "records_in": 82,
+      "records_out": 82,
+      "stages": [
+        {
+          "id": "event-archive-parse-event",
+          "label": "parse-event",
+          "kind": "mapping"
+        },
+        {
+          "id": "event-archive-keep-sensor-events",
+          "label": "keep-sensor-events",
+          "kind": "mapping"
+        },
+        {
+          "id": "event-archive-check-signature",
+          "label": "check-signature",
+          "kind": "mapping"
+        },
+        {
+          "id": "event-archive-add-lineage",
+          "label": "add-lineage",
+          "kind": "mapping"
+        },
+        {
+          "id": "event-archive-deliver",
+          "label": "deliver",
+          "kind": "output"
+        }
+      ],
+      "delivered_to": "events-2026-10-06.ndjson"
+    },
+    {
+      "id": "yolo-detector",
+      "example": "box-counting",
+      "job": "jobs/yolo-detector-job.yaml",
+      "name": "yolo-detector",
+      "records_in": 21,
+      "records_out": 21,
+      "stages": [
+        {
+          "id": "yolo-detector-parse-scan",
+          "label": "parse-scan",
+          "kind": "mapping"
+        },
+        {
+          "id": "yolo-detector-add-source",
+          "label": "add-source",
+          "kind": "mapping"
+        },
+        {
+          "id": "yolo-detector-deliver",
+          "label": "deliver",
+          "kind": "output"
+        }
+      ],
+      "delivered_to": "detection-events.ndjson"
+    },
+    {
+      "id": "security-camera-events",
+      "example": "box-counting",
+      "job": "jobs/security-camera-events-job.yaml",
+      "name": "security-camera-events",
+      "records_in": 21,
+      "records_out": 21,
+      "stages": [
+        {
+          "id": "security-camera-events-parse-scan",
+          "label": "parse-scan",
+          "kind": "mapping"
+        },
+        {
+          "id": "security-camera-events-require-schema",
+          "label": "require-schema",
+          "kind": "mapping"
+        },
+        {
+          "id": "security-camera-events-add-source",
+          "label": "add-source",
+          "kind": "mapping"
+        },
+        {
+          "id": "security-camera-events-add-lineage",
+          "label": "add-lineage",
+          "kind": "mapping"
+        },
+        {
+          "id": "security-camera-events-deliver",
+          "label": "deliver",
+          "kind": "output"
+        }
+      ],
+      "delivered_to": "enriched-events.ndjson"
+    },
+    {
+      "id": "box-crossing",
+      "example": "box-counting",
+      "job": "jobs/box-crossing-job.yaml",
+      "name": "box-crossing",
+      "records_in": 10,
+      "records_out": 10,
+      "stages": [
+        {
+          "id": "box-crossing-parse-event",
+          "label": "parse-event",
+          "kind": "mapping"
+        },
+        {
+          "id": "box-crossing-require-schema",
+          "label": "require-schema",
+          "kind": "mapping"
+        },
+        {
+          "id": "box-crossing-add-source",
+          "label": "add-source",
+          "kind": "mapping"
+        },
+        {
+          "id": "box-crossing-normalise-class",
+          "label": "normalise-class",
+          "kind": "mapping"
+        },
+        {
+          "id": "box-crossing-add-lineage",
+          "label": "add-lineage",
+          "kind": "mapping"
+        },
+        {
+          "id": "box-crossing-deliver",
+          "label": "deliver",
+          "kind": "output"
+        }
+      ],
+      "delivered_to": "crossing-events.ndjson"
+    },
+    {
+      "id": "security-camera-recorder",
+      "example": "box-counting",
+      "job": "jobs/recorder-job.yaml",
+      "name": "security-camera-recorder",
+      "records_in": 8,
+      "records_out": 8,
+      "stages": [
+        {
+          "id": "security-camera-recorder-parse-segment",
+          "label": "parse-segment",
+          "kind": "mapping"
+        },
+        {
+          "id": "security-camera-recorder-add-source",
+          "label": "add-source",
+          "kind": "mapping"
+        },
+        {
+          "id": "security-camera-recorder-deliver",
+          "label": "deliver",
+          "kind": "output"
+        }
+      ],
+      "delivered_to": "recording-catalog.ndjson"
+    }
+  ]
+}

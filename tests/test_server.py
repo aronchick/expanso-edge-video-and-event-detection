@@ -208,7 +208,7 @@ class TestBoxPages:
     def test_local_assets_exist(self, name):
         text = _public_text(name)
         refs = re.findall(r'(?:href|src)="([^"#]+)"', text)
-        local = [r for r in refs if not r.startswith(("http", "/api", "/architecture"))]
+        local = [r for r in refs if not r.startswith(("http", "/api", "/architecture", "/guide"))]
         for ref in local:
             if ref in {"/"} or ref.endswith(".html"):
                 continue
@@ -250,3 +250,9 @@ class TestBoxPages:
     def test_raw_json_is_pretty_printed(self):
         assert "JSON.stringify(app.state, null, 2)" in _public_text("dashboard.js")
         assert "pre-wrap" in _public_text("box.css")
+
+
+class TestGuideServedByBoxServer:
+    def test_guide_and_fonts_are_mounted(self, client):
+        assert client.get("/guide/").status_code == 200
+        assert client.get("/fonts/fonts.css").status_code == 200

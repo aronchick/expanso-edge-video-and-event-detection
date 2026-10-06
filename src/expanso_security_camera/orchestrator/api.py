@@ -71,6 +71,7 @@ def _find_public_root() -> Path:
 PUBLIC_ROOT = _find_public_root()
 PUBLIC_DIR = PUBLIC_ROOT / "edge"
 GUIDE_DIR = PUBLIC_ROOT / "guide"
+FONTS_DIR = PUBLIC_ROOT / "fonts"
 
 
 def load_devices(path: str | Path | None) -> dict[str, dict]:
@@ -565,6 +566,9 @@ def create_app(
                     resp.headers["Pragma"] = "no-cache"
                     resp.headers["Expires"] = "0"
                 return resp
+
+        if FONTS_DIR.is_dir():
+            app.mount("/fonts", NoCacheStatic(directory=str(FONTS_DIR)), name="fonts")
 
         if GUIDE_DIR.is_dir():
             app.mount("/guide", NoCacheStatic(directory=str(GUIDE_DIR), html=True), name="guide")

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -25,7 +26,24 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 STATE_PATH = Path("state.json")
-PUBLIC_DIR = Path(__file__).parent.parent.parent / "public"
+
+
+def _find_public_dir() -> Path:
+    """EDGE_ISR_PUBLIC, the copy bundled in the wheel, or the repository checkout."""
+    override = os.environ.get("EDGE_ISR_PUBLIC")
+
+    for candidate in (
+        Path(override) if override else None,
+        Path(__file__).resolve().parent / "public",
+        Path(__file__).resolve().parents[2] / "public",
+    ):
+        if candidate is not None and candidate.is_dir():
+            return candidate
+
+    return Path(__file__).resolve().parents[2] / "public"
+
+
+PUBLIC_DIR = _find_public_dir()
 SNAPSHOTS_DIR = Path("snapshots")
 
 app = FastAPI(title="Box Transfer Monitor", docs_url=None, redoc_url=None)
@@ -125,6 +143,14 @@ async def architecture() -> HTMLResponse:
 
 if PUBLIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(PUBLIC_DIR)), name="static")
+
+    for _name in ("fonts", "guide"):
+        if (PUBLIC_DIR / _name).is_dir():
+            app.mount(
+                f"/{_name}",
+                StaticFiles(directory=str(PUBLIC_DIR / _name), html=True),
+                name=_name,
+            )
 
 
 def main() -> None:

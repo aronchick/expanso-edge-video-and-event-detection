@@ -1,0 +1,525 @@
+{
+  "version": 1,
+  "features": [
+    {
+      "id": "edge-tabs",
+      "description": "Dashboard tabs Ops, Architecture, Archive with hash routing"
+    },
+    {
+      "id": "edge-tab-keyboard",
+      "description": "Tabs follow the ARIA pattern: Left, Right, Home and End move between tabs"
+    },
+    {
+      "id": "edge-auto-rotate",
+      "description": "Ops and Architecture auto-rotate every 5 s with a pause and resume control"
+    },
+    {
+      "id": "edge-header-pills",
+      "description": "Header pills: events per minute, alerts, analyst replay count, cloud link"
+    },
+    {
+      "id": "edge-cloud-banner",
+      "description": "Cloud-down banner with queued event count"
+    },
+    {
+      "id": "edge-trigger-chips",
+      "description": "Trigger chips with per-class colors and the drone ghost chip"
+    },
+    {
+      "id": "edge-pipeline-update-overlay",
+      "description": "Pipeline updated overlay after the live trigger update"
+    },
+    {
+      "id": "edge-camera-tiles",
+      "description": "Two camera tiles: WebRTC video, MJPEG fallback, box overlay, status badge"
+    },
+    {
+      "id": "edge-combined-card",
+      "description": "Combined people count with CLEAR and FLAG state, meter and breakdown"
+    },
+    {
+      "id": "edge-zone-cards",
+      "description": "Per-zone count cards with event tickers"
+    },
+    {
+      "id": "edge-alert-tile",
+      "description": "Alert tile: STANDBY, then ACTIVE for 6 s with the rule label and last-alert time"
+    },
+    {
+      "id": "edge-crowd-flag-latch",
+      "description": "F3 rehearsal holds the crowd flag for 6 s"
+    },
+    {
+      "id": "edge-platform-strip",
+      "description": "Platform strip with tier dots and live job list"
+    },
+    {
+      "id": "edge-footer-stats",
+      "description": "Footer totals: jobs, events, signed, fused"
+    },
+    {
+      "id": "edge-topology-canvas",
+      "description": "Topology mini canvas"
+    },
+    {
+      "id": "edge-arch-diagram",
+      "description": "Architecture view with animated flow lines"
+    },
+    {
+      "id": "edge-archive-egress",
+      "description": "Archive view: egress tile and S3 object list"
+    },
+    {
+      "id": "edge-s3-modal",
+      "description": "S3 object modal with pretty-printed JSON; Escape and backdrop close it"
+    },
+    {
+      "id": "edge-key-f1",
+      "description": "F1 simulates the WAN going down"
+    },
+    {
+      "id": "edge-key-f2",
+      "description": "F2 restores the WAN"
+    },
+    {
+      "id": "edge-key-f3",
+      "description": "F3 fires a rehearsal crowd alert"
+    },
+    {
+      "id": "edge-key-f4",
+      "description": "F4 arms backpack and drone live"
+    },
+    {
+      "id": "edge-keys-help",
+      "description": "Visible keyboard help"
+    },
+    {
+      "id": "edge-theme-toggle",
+      "description": "Light default and explicit dark toggle on the dashboard"
+    },
+    {
+      "id": "edge-reconnect",
+      "description": "Dashboard reconnects in place and shows a disconnected banner"
+    },
+    {
+      "id": "box-dashboard",
+      "description": "Box dashboard with inventory banner, baseline, new session"
+    },
+    {
+      "id": "box-reconciliation",
+      "description": "Departed and arrived reconciliation with unaccounted-for verdict"
+    },
+    {
+      "id": "box-architecture-page",
+      "description": "Architecture page"
+    },
+    {
+      "id": "box-live-viewer",
+      "description": "Live viewer with two go2rtc streams"
+    },
+    {
+      "id": "box-record-viewer",
+      "description": "Synced two-up recordings viewer"
+    },
+    {
+      "id": "guide-explorer",
+      "description": "Step explorer for every pipeline with real stage input and output"
+    },
+    {
+      "id": "guide-run",
+      "description": "Run instructions"
+    },
+    {
+      "id": "guide-deploy",
+      "description": "Deploy instructions"
+    },
+    {
+      "id": "replay-sensor",
+      "description": "edge-sensor --replay plays a recorded scene through the live decision path"
+    },
+    {
+      "id": "fixture-rebuild",
+      "description": "scripts/build-fixtures.py rebuilds every fixture from a real engine run"
+    },
+    {
+      "id": "jetson-updater",
+      "description": "Nightly Expanso Edge updater service and timer for the Jetson"
+    },
+    {
+      "id": "s3-archive-output",
+      "description": "The archive job writes batched events to S3 over TLS with the AWS credential chain"
+    },
+    {
+      "id": "pipeline-sensor-north",
+      "description": "Pipeline sensor-north (jobs/sensor-north-job.yaml)"
+    },
+    {
+      "id": "pipeline-sensor-south",
+      "description": "Pipeline sensor-south (jobs/sensor-south-job.yaml)"
+    },
+    {
+      "id": "pipeline-fusion-node",
+      "description": "Pipeline fusion-node (jobs/orchestrator-job.yaml)"
+    },
+    {
+      "id": "pipeline-fuse",
+      "description": "Pipeline fuse (jobs/fuse-job.yaml)"
+    },
+    {
+      "id": "pipeline-event-archive",
+      "description": "Pipeline event-archive (jobs/event-archive-job.yaml)"
+    },
+    {
+      "id": "pipeline-yolo-detector",
+      "description": "Pipeline yolo-detector (jobs/yolo-detector-job.yaml)"
+    },
+    {
+      "id": "pipeline-security-camera-events",
+      "description": "Pipeline security-camera-events (jobs/security-camera-events-job.yaml)"
+    },
+    {
+      "id": "pipeline-box-crossing",
+      "description": "Pipeline box-crossing (jobs/box-crossing-job.yaml)"
+    },
+    {
+      "id": "pipeline-security-camera-recorder",
+      "description": "Pipeline security-camera-recorder (jobs/recorder-job.yaml)"
+    },
+    {
+      "id": "cli-esc-infer",
+      "description": "Command esc-infer"
+    },
+    {
+      "id": "cli-esc-record",
+      "description": "Command esc-record"
+    },
+    {
+      "id": "cli-esc-server",
+      "description": "Command esc-server"
+    },
+    {
+      "id": "cli-esc-simulate",
+      "description": "Command esc-simulate"
+    },
+    {
+      "id": "cli-esc-test-cameras",
+      "description": "Command esc-test-cameras"
+    },
+    {
+      "id": "cli-esc-diagnose",
+      "description": "Command esc-diagnose"
+    },
+    {
+      "id": "cli-esc-dataset",
+      "description": "Command esc-dataset"
+    },
+    {
+      "id": "cli-esc-finetune",
+      "description": "Command esc-finetune"
+    },
+    {
+      "id": "cli-edge-sensor",
+      "description": "Command edge-sensor"
+    },
+    {
+      "id": "cli-edge-orchestrator",
+      "description": "Command edge-orchestrator"
+    },
+    {
+      "id": "api-events",
+      "description": "Orchestrator route events"
+    },
+    {
+      "id": "api-triggers",
+      "description": "Orchestrator route triggers"
+    },
+    {
+      "id": "api-metrics",
+      "description": "Orchestrator route metrics"
+    },
+    {
+      "id": "api-zones",
+      "description": "Orchestrator route zones"
+    },
+    {
+      "id": "api-jobs",
+      "description": "Orchestrator route jobs"
+    },
+    {
+      "id": "api-snapshot",
+      "description": "Orchestrator route snapshot"
+    },
+    {
+      "id": "api-stream",
+      "description": "Orchestrator route stream"
+    },
+    {
+      "id": "api-demo-wan-down",
+      "description": "Orchestrator route demo-wan-down"
+    },
+    {
+      "id": "api-demo-wan-up",
+      "description": "Orchestrator route demo-wan-up"
+    },
+    {
+      "id": "api-demo-alert-test",
+      "description": "Orchestrator route demo-alert-test"
+    },
+    {
+      "id": "api-demo-fused-test",
+      "description": "Orchestrator route demo-fused-test"
+    },
+    {
+      "id": "api-s3",
+      "description": "Orchestrator route s3"
+    },
+    {
+      "id": "api-s3-object",
+      "description": "Orchestrator route s3-object"
+    },
+    {
+      "id": "api-ws",
+      "description": "Orchestrator route ws"
+    },
+    {
+      "id": "sensor-north-parse-event",
+      "description": "Inspect the parse-event stage of sensor-north"
+    },
+    {
+      "id": "sensor-north-validate-event",
+      "description": "Inspect the validate-event stage of sensor-north"
+    },
+    {
+      "id": "sensor-north-add-lineage",
+      "description": "Inspect the add-lineage stage of sensor-north"
+    },
+    {
+      "id": "sensor-north-deliver",
+      "description": "Inspect the deliver stage of sensor-north"
+    },
+    {
+      "id": "sensor-south-parse-event",
+      "description": "Inspect the parse-event stage of sensor-south"
+    },
+    {
+      "id": "sensor-south-validate-event",
+      "description": "Inspect the validate-event stage of sensor-south"
+    },
+    {
+      "id": "sensor-south-add-lineage",
+      "description": "Inspect the add-lineage stage of sensor-south"
+    },
+    {
+      "id": "sensor-south-deliver",
+      "description": "Inspect the deliver stage of sensor-south"
+    },
+    {
+      "id": "fusion-node-parse-line",
+      "description": "Inspect the parse-line stage of fusion-node"
+    },
+    {
+      "id": "fusion-node-classify",
+      "description": "Inspect the classify stage of fusion-node"
+    },
+    {
+      "id": "fusion-node-add-lineage",
+      "description": "Inspect the add-lineage stage of fusion-node"
+    },
+    {
+      "id": "fusion-node-deliver",
+      "description": "Inspect the deliver stage of fusion-node"
+    },
+    {
+      "id": "fuse-parse-alert",
+      "description": "Inspect the parse-alert stage of fuse"
+    },
+    {
+      "id": "fuse-keep-fused-alerts",
+      "description": "Inspect the keep-fused-alerts stage of fuse"
+    },
+    {
+      "id": "fuse-add-lineage",
+      "description": "Inspect the add-lineage stage of fuse"
+    },
+    {
+      "id": "fuse-sign-record",
+      "description": "Inspect the sign-record stage of fuse"
+    },
+    {
+      "id": "fuse-deliver",
+      "description": "Inspect the deliver stage of fuse"
+    },
+    {
+      "id": "event-archive-parse-event",
+      "description": "Inspect the parse-event stage of event-archive"
+    },
+    {
+      "id": "event-archive-keep-sensor-events",
+      "description": "Inspect the keep-sensor-events stage of event-archive"
+    },
+    {
+      "id": "event-archive-check-signature",
+      "description": "Inspect the check-signature stage of event-archive"
+    },
+    {
+      "id": "event-archive-add-lineage",
+      "description": "Inspect the add-lineage stage of event-archive"
+    },
+    {
+      "id": "event-archive-deliver",
+      "description": "Inspect the deliver stage of event-archive"
+    },
+    {
+      "id": "yolo-detector-parse-scan",
+      "description": "Inspect the parse-scan stage of yolo-detector"
+    },
+    {
+      "id": "yolo-detector-add-source",
+      "description": "Inspect the add-source stage of yolo-detector"
+    },
+    {
+      "id": "yolo-detector-deliver",
+      "description": "Inspect the deliver stage of yolo-detector"
+    },
+    {
+      "id": "security-camera-events-parse-scan",
+      "description": "Inspect the parse-scan stage of security-camera-events"
+    },
+    {
+      "id": "security-camera-events-require-schema",
+      "description": "Inspect the require-schema stage of security-camera-events"
+    },
+    {
+      "id": "security-camera-events-add-source",
+      "description": "Inspect the add-source stage of security-camera-events"
+    },
+    {
+      "id": "security-camera-events-add-lineage",
+      "description": "Inspect the add-lineage stage of security-camera-events"
+    },
+    {
+      "id": "security-camera-events-deliver",
+      "description": "Inspect the deliver stage of security-camera-events"
+    },
+    {
+      "id": "box-crossing-parse-event",
+      "description": "Inspect the parse-event stage of box-crossing"
+    },
+    {
+      "id": "box-crossing-require-schema",
+      "description": "Inspect the require-schema stage of box-crossing"
+    },
+    {
+      "id": "box-crossing-add-source",
+      "description": "Inspect the add-source stage of box-crossing"
+    },
+    {
+      "id": "box-crossing-normalise-class",
+      "description": "Inspect the normalise-class stage of box-crossing"
+    },
+    {
+      "id": "box-crossing-add-lineage",
+      "description": "Inspect the add-lineage stage of box-crossing"
+    },
+    {
+      "id": "box-crossing-deliver",
+      "description": "Inspect the deliver stage of box-crossing"
+    },
+    {
+      "id": "security-camera-recorder-parse-segment",
+      "description": "Inspect the parse-segment stage of security-camera-recorder"
+    },
+    {
+      "id": "security-camera-recorder-add-source",
+      "description": "Inspect the add-source stage of security-camera-recorder"
+    },
+    {
+      "id": "security-camera-recorder-deliver",
+      "description": "Inspect the deliver stage of security-camera-recorder"
+    }
+  ],
+  "routes": [
+    {
+      "id": "guide",
+      "path": "/guide/"
+    },
+    {
+      "id": "dashboard-source",
+      "path": "/edge/index.html"
+    }
+  ],
+  "controls": [
+    {
+      "id": "copy-stage-yaml",
+      "selector": "#copy-stage-yaml"
+    },
+    {
+      "id": "copy-stage-output",
+      "selector": "#copy-stage-output"
+    },
+    {
+      "id": "copy-run-install",
+      "selector": "#copy-run-install"
+    },
+    {
+      "id": "copy-deploy-jobs",
+      "selector": "#copy-dep-jobs"
+    },
+    {
+      "id": "theme-toggle",
+      "selector": "#theme-toggle"
+    },
+    {
+      "id": "stage-prev",
+      "selector": "#stage-prev"
+    },
+    {
+      "id": "stage-next",
+      "selector": "#stage-next"
+    }
+  ],
+  "downloads": [
+    {
+      "id": "download-stage-output",
+      "selector": "#download-stage-output"
+    },
+    {
+      "id": "download-job",
+      "selector": "#download-job"
+    }
+  ],
+  "browser_assertions": [
+    {
+      "id": "page-stages",
+      "description": "Arrow keys page stages"
+    },
+    {
+      "id": "scroll-anchor-stable",
+      "description": "Paging does not move the explorer"
+    },
+    {
+      "id": "light-default",
+      "description": "Light is the default theme"
+    },
+    {
+      "id": "dark-toggle",
+      "description": "An explicit dark toggle"
+    },
+    {
+      "id": "no-horizontal-scroll",
+      "description": "No horizontal scroll at 320, 400, 768 and 1440"
+    },
+    {
+      "id": "contrast-aa",
+      "description": "Text meets WCAG AA contrast in both themes"
+    },
+    {
+      "id": "copy-feedback",
+      "description": "Copy shows success and failure beside the control"
+    },
+    {
+      "id": "download-feedback",
+      "description": "Download shows success and failure beside the control"
+    }
+  ]
+}

@@ -48,7 +48,7 @@
   --crit-fill: #c62f25;
   --crit-soft: #f6e0dd;
   --crit-solid: #b3261e;
-  --on-crit: #ffffff;
+  --on-crit: #fbfcfb;
 
   /* Camera tile overlays: opaque, same in both themes. */
   --cam-bg: #0b1214;
@@ -108,7 +108,7 @@
   --crit-fill: #e5483c;
   --crit-soft: #43201e;
   --crit-solid: #b3261e;
-  --on-crit: #ffffff;
+  --on-crit: #fbfcfb;
 }
 
 * { box-sizing: border-box; }

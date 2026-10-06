@@ -1,0 +1,1 @@
+{"counts":{"sensor-north":3,"sensor-south":1},"fused_alert":true,"fused_at":1791254888.2707999,"rule":"crowd_threshold","sectors":["sensor-north","sensor-south"],"threshold":3,"total":4,"type":"crowd_threshold"}
