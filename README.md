@@ -4,7 +4,7 @@ Edge sensors usually ship every frame to the cloud and wait for someone to decid
 
 This repository is a working reference for moving the workload to the data. A local YOLO detector counts people in each camera, a fusion node merges the counts into one combined number and flags a crowd, an optional analyst summary comes through the demo-kit model gateway, and every event is signed and archived. It runs as nine [Expanso Edge](https://expanso.io) pipelines, and each one is proven on real recorded data.
 
-**Start with the guide.** It has the explanation, a step explorer that shows the real input and output of every stage of every pipeline, and the run and deploy instructions. Serve it with `uv run edge-orchestrator` and open <http://localhost:8080/guide/>, or run `python3 scripts/serve-guide.py` and open <http://127.0.0.1:18281/guide/>. The page is generated: `public/guide/index.html`.
+**Start with the guide.** It has the explanation, a step explorer that shows the real input and output of every stage of every pipeline, and the run and deploy instructions. Serve it with `uv run edge-orchestrator` and open <http://localhost:8080/guide/>, or run `just guide` and open <http://127.0.0.1:18281/guide/> (Ctrl-C, or `just guide-down` from another terminal, stops it). The page is generated: `public/guide/index.html`.
 
 ## What it delivers
 
@@ -31,7 +31,7 @@ Every job is in `jobs/`. Each processor is labelled, so Expanso Cloud shows name
 
 ## Run it on a laptop
 
-No GPU, camera or model weights. The two recorded scenes are real YOLO measurements (`fixtures/scenes/`).
+No GPU, camera or model weights. The two recorded scenes are real YOLO measurements (`fixtures/scenes/`). For synthetic crowds in one command, run `just fake`; Ctrl-C stops everything it started.
 
 ```bash
 uv sync
@@ -56,6 +56,13 @@ uv run edge-sensor --replay fixtures/scenes/south.jsonl \
 | `F4` | Arm `backpack` and `drone` live. |
 
 ## Run it through Expanso Edge
+
+On the booth Mac with two webcams, `just up` starts everything: the Expanso Edge node, the fusion node and dashboard, go2rtc and the camera capture. `just down` stops and cleans up all of it and checks that its ports are free.
+
+```bash
+just up
+just down
+```
 
 Capture, merge and archive run as Expanso pipeline jobs deployed from `jobs/`. Prepare the node, set the `EDGE_ISR_*` variables the jobs read (the guide's Deploy section lists them), then:
 

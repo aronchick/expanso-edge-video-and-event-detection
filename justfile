@@ -61,6 +61,14 @@ job_names := "fusion-node sensor-north sensor-south fuse"
 default:
     @just --list
 
+# guide: serve the generated guide on http://127.0.0.1:18281/guide/ (Ctrl-C stops it)
+guide:
+    python3 scripts/serve-guide.py
+
+# guide-down: stop the guide server started by `just guide`
+guide-down:
+    python3 scripts/serve-guide.py --stop
+
 # cams: show what AVFoundation cameras macOS exposes + which the demo would
 # pick. Use this to debug enumeration (e.g. Ankers dropping off the USB bus)
 # without parsing ffmpeg by hand.
