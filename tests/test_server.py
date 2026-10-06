@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
 
-from expanso_security_camera.server import app
+from expanso_security_camera.server import PUBLIC_DIR, app
 
 
 @pytest.fixture
@@ -132,9 +133,120 @@ class TestResetEndpoint:
 class TestHTMLEndpoints:
     def test_index(self, client):
         resp = client.get("/")
-        # May return 200 (if public/ exists) or 404
-        assert resp.status_code in (200, 404)
+        assert resp.status_code == 200
+        assert "Box Transfer Monitor" in resp.text
 
     def test_architecture(self, client):
         resp = client.get("/architecture")
-        assert resp.status_code in (200, 404)
+        assert resp.status_code == 200
+        assert "Architecture" in resp.text
+
+
+PAGES = ("index.html", "architecture.html", "live-viewer.html", "record-viewer.html")
+SHARED_ASSETS = (
+    "box.css",
+    "theme.js",
+    "dashboard.js",
+    "live-viewer.js",
+    "fonts/fonts.css",
+)
+
+
+def _public_text(name: str) -> str:
+    return (PUBLIC_DIR / name).read_text(encoding="utf-8")
+
+
+class TestBoxPages:
+    """The four box-counting pages: served, themed, and free of banned copy."""
+
+    @pytest.mark.parametrize("name", PAGES + SHARED_ASSETS)
+    def test_served_from_static(self, client, name):
+        assert client.get(f"/static/{name}").status_code == 200
+
+    @pytest.mark.parametrize("name", PAGES)
+    def test_light_default_with_explicit_dark_toggle(self, name):
+        text = _public_text(name)
+        assert 'data-theme="light"' in text
+        assert 'class="btn theme-toggle"' in text
+        assert 'aria-pressed="false"' in text
+
+    def test_dark_theme_ignores_os_preference(self):
+        css = _public_text("box.css")
+        assert 'html[data-theme="dark"]' in css or ':root[data-theme="dark"]' in css
+        assert "prefers-color-scheme" not in css
+        assert "prefers-color-scheme" not in _public_text("theme.js")
+
+    def test_theme_choice_is_stored_defensively(self):
+        js = _public_text("theme.js")
+        assert "localStorage" in js
+        assert js.count("try {") >= 2
+
+    @pytest.mark.parametrize("name", PAGES)
+    def test_every_page_links_to_the_others(self, name):
+        text = _public_text(name)
+        for target in ("architecture", "live-viewer", "record-viewer"):
+            if target not in name:
+                assert target in text
+
+    @pytest.mark.parametrize("name", PAGES + ("box.css", "dashboard.js", "live-viewer.js"))
+    def test_no_banned_visible_copy_or_decoration(self, name):
+        text = _public_text(name)
+        lowered = text.lower()
+        for word in ("illustrative", "modeled", "simulated", "demo scale"):
+            assert word not in lowered
+        assert "\u2014" not in text  # em dash
+        assert "&mdash;" not in lowered
+        assert "gradient" not in lowered
+        assert "box-shadow" not in lowered
+        assert "border-left" not in lowered
+        assert "border-right" not in lowered
+        assert "cdn." not in lowered
+        assert not [c for c in text if "\U0001f300" <= c <= "\U0001faff"]
+        assert not [c for c in text if "\u2600" <= c <= "\u27bf"]
+
+    @pytest.mark.parametrize("name", PAGES[:3])
+    def test_local_assets_exist(self, name):
+        text = _public_text(name)
+        refs = re.findall(r'(?:href|src)="([^"#]+)"', text)
+        local = [r for r in refs if not r.startswith(("http", "/api", "/architecture"))]
+        for ref in local:
+            if ref in {"/"} or ref.endswith(".html"):
+                continue
+            rel = ref.removeprefix("/static/")
+            assert (PUBLIC_DIR / rel).is_file(), ref
+
+    def test_dashboard_shows_reconciliation_and_inventory(self):
+        """The arrivals/departures reconciliation from state.json must stay on the page."""
+        html = _public_text("index.html")
+        js = _public_text("dashboard.js")
+        for dom_id in (
+            "departures",
+            "arrivals",
+            "recon-card",
+            "recon-status",
+            "inventory-banner",
+            "baseline-btn",
+            "reset-btn",
+            "manual-override",
+        ):
+            assert f'id="{dom_id}"' in html
+        for field in (
+            "camera_outside_departures",
+            "camera_inside_arrivals",
+            "discrepancy",
+            "first_discrepancy_at",
+        ):
+            assert field in js
+        assert "unaccounted for" in js
+
+    def test_dashboard_reports_unreachable_sources(self):
+        html = _public_text("index.html")
+        js = _public_text("dashboard.js")
+        assert 'id="api-notice"' in html
+        assert "unreachable" in js
+        assert "No snapshot from" in js
+        assert "go2rtc" in _public_text("live-viewer.js")
+
+    def test_raw_json_is_pretty_printed(self):
+        assert "JSON.stringify(app.state, null, 2)" in _public_text("dashboard.js")
+        assert "pre-wrap" in _public_text("box.css")

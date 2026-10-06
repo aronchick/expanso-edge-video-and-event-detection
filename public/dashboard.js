@@ -16,6 +16,7 @@
     outside: 0,
     inside: 0,
     apiUp: null,
+    apiStatus: 0,
     state: null,
     detectionsStatus: null,
     detections: null,
@@ -96,7 +97,7 @@
     if (app.apiUp === null) return;
 
     if (!app.apiUp) {
-      setSource('src-api', 'err', 'unreachable');
+      setSource('src-api', 'err', app.apiStatus === 0 ? 'unreachable' : 'error ' + app.apiStatus);
       setSource('src-pipeline', 'err', 'unknown');
     } else {
       setSource('src-api', 'ok', 'reachable');
@@ -260,7 +261,7 @@
       banner.dataset.state = 'wait';
       title.textContent = app.apiUp === false ? 'Detector counts unavailable' : 'No detector data yet';
       note.textContent = app.apiUp === false
-        ? 'The dashboard API is not reachable, so per-camera counts cannot load.'
+        ? 'The dashboard API is not answering, so per-camera counts cannot load.'
         : 'detect_loop.py has not written detections.json (the API answers 503). Reconciliation above does not need it. A manual baseline still works.';
 
       return;
@@ -369,7 +370,7 @@
   function renderEvents() {
     const holder = $('event-scroll');
     const items = collectEvents();
-    const signature = JSON.stringify(items);
+    const signature = JSON.stringify(items) + String(app.apiUp);
 
     if (signature === app.eventSignature) return;
 
@@ -381,7 +382,7 @@
 
       empty.className = 'event-empty';
       empty.textContent = app.apiUp === false
-        ? 'No events: the dashboard API is not reachable.'
+        ? 'No events: the dashboard API is not answering.'
         : 'Waiting for crossing events';
       holder.append(empty);
 
@@ -427,7 +428,8 @@
   async function pollState() {
     const result = await getJson('/api/state');
 
-    app.apiUp = result.status !== 0;
+    app.apiUp = result.ok;
+    app.apiStatus = result.status;
     app.state = result.ok ? result.data : null;
     renderAll();
   }
@@ -497,7 +499,7 @@
       head.textContent = 'No snapshot from ' + camera.id;
       why.className = 'dim';
       why.textContent = app.apiUp === false
-        ? 'The dashboard API is not reachable.'
+        ? 'The dashboard API is not answering.'
         : 'The API has no snapshots/' + camera.id + '.jpg yet. detect_loop.py writes it.';
       empty.append(head, why);
       renderSources();

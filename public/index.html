@@ -37,12 +37,12 @@
           <span class="item"><span class="name">Inside camera</span> <span id="src-cam-inside" data-kind="warn">checking</span></span>
         </div>
         <div class="notice" id="api-notice" data-kind="err" hidden>
-          <strong>The dashboard API is not reachable.</strong>
+          <strong>The dashboard API is not answering.</strong>
           <span id="api-notice-text">This page reads <code>/api/state</code> and <code>/api/detections</code> from esc-server on the same host. Start it with <code>uv run esc-server</code>. No counts are shown until it answers.</span>
         </div>
         <div class="notice" id="pipeline-notice" data-kind="warn" hidden>
           <strong>No crossing data yet.</strong>
-          The API is up but <code>state.json</code> does not exist. Start <code>esc-infer</code> for real cameras or <code>esc-simulate</code> for generated crossings.
+          The API is up but <code>state.json</code> does not exist. Start <code>esc-infer</code> to count crossings from the cameras.
         </div>
       </section>
 
