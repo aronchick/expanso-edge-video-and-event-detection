@@ -84,8 +84,10 @@ through the demo gateway (commit `0485c6d`, 2026-10-02):
   local YOLO-World and review images.
 - `internal-runbooks-and-ops-scripts` (commit `dad856f`): private by design.
 
-Also for decision: the architecture page keeps the hardware price table
-(`$866`) from before; its prices are unsourced.
+Closed: the architecture page's hardware price table now cites a public list
+price for every line (computer $749, two cameras $199.98, switch $52.99; total
+$1,002), with URLs and the 2026-10-05 access date in `docs/RESEARCH.md`. The
+old `$866` total had no source and is gone.
 
 Operator note: the event-specific environment variables for the S3 bucket,
 Jetson host, AWS region and AWS profile are now `EDGE_ISR_S3_BUCKET`,
