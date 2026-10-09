@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "demo": "demo-drone-detection",
+  "ports": {
+    "PORT": 21400,
+    "EDGE_API_PORT": 21401,
+    "GO2RTC_PORT": 21402,
+    "GO2RTC_RTSP_PORT": 21403,
+    "GO2RTC_MEDIA_PORT": 21404,
+    "GATEWAY_PORT": 21405,
+    "GUIDE_PORT": 21406
+  }
+}

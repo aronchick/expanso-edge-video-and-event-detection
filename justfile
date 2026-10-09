@@ -1,3 +1,12 @@
+export MODEL_GATEWAY_URL := `uv run --no-project scripts/demo-ports.py resolve --demo-dir . --allow-bound | jq -r '"http://127.0.0.1:" + (.GATEWAY_PORT|tostring)'`
+export PORT := `uv run --no-project scripts/demo-ports.py resolve --demo-dir . --allow-bound --format json | jq -r .PORT`
+export EDGE_API_PORT := `uv run --no-project scripts/demo-ports.py resolve --demo-dir . --allow-bound --format json | jq -r .EDGE_API_PORT`
+export GO2RTC_PORT := `uv run --no-project scripts/demo-ports.py resolve --demo-dir . --allow-bound --format json | jq -r .GO2RTC_PORT`
+export GO2RTC_RTSP_PORT := `uv run --no-project scripts/demo-ports.py resolve --demo-dir . --allow-bound --format json | jq -r .GO2RTC_RTSP_PORT`
+export GO2RTC_MEDIA_PORT := `uv run --no-project scripts/demo-ports.py resolve --demo-dir . --allow-bound --format json | jq -r .GO2RTC_MEDIA_PORT`
+export GATEWAY_PORT := `uv run --no-project scripts/demo-ports.py resolve --demo-dir . --allow-bound --format json | jq -r .GATEWAY_PORT`
+export GUIDE_PORT := `uv run --no-project scripts/demo-ports.py resolve --demo-dir . --allow-bound --format json | jq -r .GUIDE_PORT`
+
 # Edge-ISR demo orchestration.
 #
 # Three flows (everything starts/stops together — no loose processes):
@@ -21,12 +30,12 @@ orch_log   := state_dir / "orchestrator.log"
 sensor_north_log := state_dir / "sensor-north.log"
 sensor_south_log := state_dir / "sensor-south.log"
 go2rtc_log := state_dir / "go2rtc.log"
-port       := "8080"
+port := `uv run --no-project scripts/demo-ports.py resolve --demo-dir . --allow-bound | jq -r .PORT`
 
 go2rtc_bin    := "bin/go2rtc"
 go2rtc_config := "go2rtc.yaml"
-go2rtc_port   := "1984"
-go2rtc_rtsp_port := "8554"
+go2rtc_port := `uv run --no-project scripts/demo-ports.py resolve --demo-dir . --allow-bound | jq -r .GO2RTC_PORT`
+go2rtc_rtsp_port := `uv run --no-project scripts/demo-ports.py resolve --demo-dir . --allow-bound | jq -r .GO2RTC_RTSP_PORT`
 go2rtc_version := "1.9.14"
 
 # Expanso Edge daemon — registers the laptop as a node in the cloud
@@ -44,7 +53,7 @@ edge_log := state_dir / "expanso-edge.log"
 # staying on 9011 means turning the tunnel on never breaks the node.
 # The node reaches the cloud orchestrator over NATS:4222 either way; this
 # port is only the local introspection API.
-edge_api_listen := "127.0.0.1:9011"
+edge_api_listen := "127.0.0.1:" + `uv run --no-project scripts/demo-ports.py resolve --demo-dir . --allow-bound | jq -r .EDGE_API_PORT`
 
 # Fine-tuned drone+person+backpack model (3-class). Thresholds for this
 # specific weight file are tuned in detector.py (commit 283902b). Override
@@ -63,11 +72,11 @@ default:
 
 # guide: serve the generated guide on http://127.0.0.1:18281/guide/ (Ctrl-C stops it)
 guide:
-    python3 scripts/serve-guide.py
+    uv run scripts/serve-guide.py
 
 # guide-down: stop the guide server started by `just guide`
 guide-down:
-    python3 scripts/serve-guide.py --stop
+    uv run scripts/serve-guide.py --stop
 
 # cams: show what AVFoundation cameras macOS exposes + which the demo would
 # pick. Use this to debug enumeration (e.g. Ankers dropping off the USB bus)
@@ -361,7 +370,7 @@ tunnel-down:
 # each Anker stream. No fake events. Also bootstraps + runs the Expanso
 # Edge daemon so the laptop appears as a node in cloud.expanso.io and
 # jobs can be deployed from the cloud control plane.
-up: install-go2rtc deploy-jobs
+up: ports-preflight install-go2rtc deploy-jobs
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p {{state_dir}}
@@ -374,6 +383,14 @@ up: install-go2rtc deploy-jobs
     # sensor); expanso-edge needs the var exported BEFORE the binary
     # starts because there's no dotenv hook in Go.
     if [[ -f .env ]]; then set -a; source .env; set +a; fi
+    source scripts/port-env.sh
+    demo_ports_load "$PWD" --allow-bound
+    export MODEL_GATEWAY_URL="http://127.0.0.1:$GATEWAY_PORT"
+    export EDGE_ISR_PORT="$PORT"
+    export EDGE_ISR_ORCHESTRATOR="${EDGE_ISR_ORCHESTRATOR:-http://127.0.0.1:$PORT}"
+    export ORCHESTRATOR_URL="${ORCHESTRATOR_URL:-http://127.0.0.1:$PORT}"
+    export EDGE_ISR_NORTH_SOURCE="${EDGE_ISR_NORTH_SOURCE:-rtsp://127.0.0.1:$GO2RTC_RTSP_PORT/cam-outside}"
+    export EDGE_ISR_SOUTH_SOURCE="${EDGE_ISR_SOUTH_SOURCE:-rtsp://127.0.0.1:$GO2RTC_RTSP_PORT/cam-inside}"
     # expanso-edge starts probing NATS within milliseconds of launch, so
     # confirm egress is sane first. Default path is DIRECT to the cloud —
     # no jump box. This mainly catches a leftover tunnel DNS override,
@@ -460,6 +477,14 @@ edge:
     set -euo pipefail
     # Load .env so any EXPANSO_* / EDGE_ISR_* vars are exported before the binary.
     if [[ -f .env ]]; then set -a; source .env; set +a; fi
+    source scripts/port-env.sh
+    demo_ports_load "$PWD" --allow-bound
+    export MODEL_GATEWAY_URL="http://127.0.0.1:$GATEWAY_PORT"
+    export EDGE_ISR_PORT="$PORT"
+    export EDGE_ISR_ORCHESTRATOR="${EDGE_ISR_ORCHESTRATOR:-http://127.0.0.1:$PORT}"
+    export ORCHESTRATOR_URL="${ORCHESTRATOR_URL:-http://127.0.0.1:$PORT}"
+    export EDGE_ISR_NORTH_SOURCE="${EDGE_ISR_NORTH_SOURCE:-rtsp://127.0.0.1:$GO2RTC_RTSP_PORT/cam-outside}"
+    export EDGE_ISR_SOUTH_SOURCE="${EDGE_ISR_SOUTH_SOURCE:-rtsp://127.0.0.1:$GO2RTC_RTSP_PORT/cam-inside}"
     # The node reaches cloud.expanso.io (NATS) directly; this just catches a
     # leftover tunnel DNS override that would send it to a dead loopback port.
     ./scripts/check-egress.sh
@@ -723,21 +748,28 @@ video-check:
 # Model gateway: fixture replay is the default. Only an operator may opt into
 # a subscription backend for a bounded recording pass.
 gateway-up:
+    @uv run --no-project scripts/demo-ports.py resolve --demo-dir . --service GATEWAY_PORT >/dev/null
     mkdir -p .runtime
-    nohup uv run -s ../_demo-kit/model-gateway.py serve --config model-gateway.toml > .runtime/gateway.log 2>&1 & echo $! > .runtime/gateway.pid
+    nohup uv run -s ../_demo-kit/model-gateway.py serve --config model-gateway.toml --port "$GATEWAY_PORT" > .runtime/gateway.log 2>&1 & echo $! > .runtime/gateway.pid
 
 gateway-down:
     -[ -f .runtime/gateway.pid ] && kill "$(cat .runtime/gateway.pid)" 2>/dev/null && rm .runtime/gateway.pid
 
 gateway-status:
-    @uv run -s ../_demo-kit/model-gateway.py status --config model-gateway.toml
+    @uv run -s ../_demo-kit/model-gateway.py status --config model-gateway.toml --port "$GATEWAY_PORT"
 
 provider-check:
     @uv run -s ../_demo-kit/lint-demo-providers.py .
 
 test:
-    uv run pytest
+    uv run --extra test pytest
 
 check: provider-check
-    uv run ruff check .
-    uv run pytest
+    uv run --extra test ruff check .
+    uv run --extra test pytest
+
+ports:
+    @uv run --no-project scripts/demo-ports.py resolve --demo-dir . --allow-bound
+
+ports-preflight:
+    @uv run --no-project scripts/demo-ports.py resolve --demo-dir . --service PORT --service EDGE_API_PORT --service GO2RTC_PORT --service GO2RTC_RTSP_PORT --service GO2RTC_MEDIA_PORT >/dev/null

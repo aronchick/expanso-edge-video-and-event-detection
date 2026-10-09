@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PORT = 18281
+PORT = int(os.environ.get("GUIDE_PORT", "18281"))
 PIDFILE = ROOT / "artifacts" / "serve-guide.pid"
 
 

@@ -91,5 +91,9 @@ else
 fi
 
 # Static config — no per-stream substitution anymore.
-cp "$TEMPLATE" "$OUT"
+source "$ROOT/scripts/port-env.sh"
+demo_ports_load "$ROOT" --allow-bound
+sed -e "s/127.0.0.1:1984/127.0.0.1:$GO2RTC_PORT/g" \
+    -e "s/127.0.0.1:8554/127.0.0.1:$GO2RTC_RTSP_PORT/g" \
+    -e "s/:8555/:$GO2RTC_MEDIA_PORT/g" "$TEMPLATE" > "$OUT"
 echo "  ✓ wrote $OUT" >&2

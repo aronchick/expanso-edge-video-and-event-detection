@@ -24,7 +24,7 @@ function displayLabel(label) {
 // is NEVER black. MJPEG runs at ~10fps and gives ~500ms latency; WebRTC
 // runs at native ~25fps and ~150ms latency. WebRTC is the nice-to-have.
 
-const GO2RTC_BASE = `${location.protocol}//${location.hostname}:1984`;
+let GO2RTC_BASE = null;
 
 // Source dims are detected per-sector from the actual <video>'s videoWidth/Height
 // at draw time, NOT hardcoded - sensor's RTSP source can be sub-stream (640×360),
@@ -390,7 +390,19 @@ function pushBboxOverlay(e) {
 
 // Boot one SectorFeed per camera tile (after DOM exists). Each feed owns
 // its own MJPEG/WebRTC swap state and health watchdog independently.
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const response = await fetch('/runtime-ports');
+
+    if (!response.ok) return;
+    const ports = await response.json();
+
+    if (!Number.isInteger(ports.go2rtc)) return;
+    GO2RTC_BASE = `${location.protocol}//${location.hostname}:${ports.go2rtc}`;
+  } catch {
+    return;
+  }
+
   document.querySelectorAll('.sector-feed[data-stream]').forEach((el) => {
     new SectorFeed(el);
   });

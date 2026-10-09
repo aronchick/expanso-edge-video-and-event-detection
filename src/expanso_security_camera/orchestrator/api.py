@@ -107,6 +107,11 @@ def create_app(
     devices_path: str | Path | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Edge ISR Orchestrator", docs_url=None, redoc_url=None)
+
+    @app.get("/runtime-ports")
+    async def runtime_ports():
+        return {"go2rtc": int(os.environ.get("GO2RTC_PORT", "1984"))}
+
     store = EventStore(db_path, ndjson_path=ndjson_path)
     triggers = TriggerStore(triggers_path)
     # Correlator needs the trigger store so Rule 3 (drone-after-update)
@@ -584,7 +589,7 @@ def main() -> None:
     # `uv run` where the shell hasn't sourced .env.
     load_dotenv()
     parser = argparse.ArgumentParser(description="Edge-ISR orchestrator")
-    parser.add_argument("--host", default="0.0.0.0")
+    parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--db", default="orchestrator.db")
     parser.add_argument("--triggers", default="triggers.yaml")
