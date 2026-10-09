@@ -129,3 +129,7 @@ uv sync --extra test
 uv run ruff check . && uv run ruff format --check .
 uv run pytest
 ```
+
+`just ports` shows persistent local allocations declared in `ports.json`.
+Stopping the demo retains the assignments, so restarting keeps the same URL.
+An occupied existing assignment fails without silently changing the URL.

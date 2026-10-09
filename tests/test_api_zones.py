@@ -79,3 +79,9 @@ def test_ws_connect_sends_zones(tmp_path):
                 assert "total" in msg["data"]
                 break
         assert saw_zones, "dashboard relies on a zones snapshot on WS connect"
+
+
+def test_runtime_camera_signaling_port_tracks_allocation(tmp_path, monkeypatch):
+    monkeypatch.setenv("GO2RTC_PORT", "21402")
+    with TestClient(_app(tmp_path)) as client:
+        assert client.get("/runtime-ports").json() == {"go2rtc": 21402}

@@ -69,3 +69,6 @@ log:
   rtsp: warn
   streams: warn
   webrtc: warn
+
+webrtc:
+  listen: "127.0.0.1:8555"

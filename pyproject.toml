@@ -63,7 +63,7 @@ asyncio_mode = "auto"
 [tool.ruff]
 line-length = 100
 # The vendored public-bar checker is verified by digest; never reformat it.
-extend-exclude = [".demo-kit"]
+extend-exclude = [".demo-kit", "scripts/demo-ports.py"]
 target-version = "py311"
 
 [tool.ruff.lint]
