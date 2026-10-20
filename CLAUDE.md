@@ -1,8 +1,11 @@
-> **Directory-wide rules apply.** Read [`../AGENTS.md`](../AGENTS.md) first —
-> it governs every demo in `projects/demos/`. For anything involving a screen
-> recording, a finished video, publishing copy, or a launch, read
-> [`../demo-guidance/README.md`](../demo-guidance/README.md) before acting.
-> `_demo-kit` runs before you record; `demo-guidance` runs after.
+@AGENTS.md
+@DEMO_INVARIANTS.md
+
+Read [DEMO_INVARIANTS.md](DEMO_INVARIANTS.md) before acting. The vendored
+file carries the rules that must hold in every checkout and worktree.
+When this repository sits under `projects/demos`, `../AGENTS.md` applies
+additionally. In that workspace, consult `../demo-guidance/README.md`
+for recording, video review and publishing.
 
 # CLAUDE.md
 
